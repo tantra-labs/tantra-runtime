@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/vyapaar-runtime-actors",
+  "crates/vyapaar-runtime-api",
+  "crates/vyapaar-runtime-api-rest",
+  "crates/vyapaar-runtime-backtest",
+  "crates/vyapaar-runtime-config",
+  "crates/vyapaar-runtime-enhancer",
+  "crates/vyapaar-runtime-persistence",
+  "crates/vyapaar-runtime-jobs",
+  "crates/vyapaar-runtime-strategy",
+  "crates/vyapaar-runtime-testing",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0"
+repository = "https://github.com/vyapaar-labs/vyapaar-runtime"
+
+[workspace.dependencies]
+vyapaar-core = { path = "../vyapaar-core" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
