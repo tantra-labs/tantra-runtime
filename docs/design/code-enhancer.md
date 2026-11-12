@@ -1,7 +1,7 @@
-# `vyapaar-runtime-enhancer` — Strategy Enhancer Reference
+# `tantra-runtime-enhancer` — Strategy Enhancer Reference
 
-Crate `crates/vyapaar-runtime-enhancer/` — lib name `vyapaar_runtime_enhancer`.
-Crate doc: *"Automatic Strategy Enhancer for Vyapaar"*.
+Crate `crates/tantra-runtime-enhancer/` — lib name `tantra_runtime_enhancer`.
+Crate doc: *"Automatic Strategy Enhancer for Tantra"*.
 
 ## 1. Purpose
 
@@ -184,10 +184,10 @@ strength 0.1, elitism on (elite count 5), fitness weights `(0.5, 0.3, 0.15, 0.05
 
 ## 12. Dependencies
 
-`vyapaar-core` (types), `vyapaar-risk` (engine passthrough), `vyapaar-runtime-backtest`
-(`BacktestEngine`), `vyapaar-runtime-strategy` (`Strategy`, `DynStrategy`,
+`tantra-core` (types), `tantra-risk` (engine passthrough), `tantra-runtime-backtest`
+(`BacktestEngine`), `tantra-runtime-strategy` (`Strategy`, `DynStrategy`,
 `StrategyManifest`, `StrategyFactoryRegistry`, `manifest_to_parameter_grid`),
-`vyapaar-runtime-actors` (workspace umbrella), `rayon`, `rand`/`rand_distr` (all
+`tantra-runtime-actors` (workspace umbrella), `rayon`, `rand`/`rand_distr` (all
 `thread_rng()`), `statrs` (normal CDF), `rust_decimal`, `serde`/`serde_json`/`thiserror`/
 `chrono`/`num_cpus`.
 
@@ -217,5 +217,5 @@ exercised indirectly through the backtest crate's dev-dependency tests and the a
 
 - `code-backtest.md` — the engine feeding every fitness evaluation
 - `code-strategy.md` — manifests, parameter grids, and the factory registry being optimized
-- `vyapaar-core::analytics` — the six-gate validation kernel (DSR, PBO/CSCV, walk-forward,
+- `tantra-core::analytics` — the six-gate validation kernel (DSR, PBO/CSCV, walk-forward,
   holdout, block-bootstrap Monte Carlo, cost stress)

@@ -1,11 +1,11 @@
-# `vyapaar-runtime-api-rest` — Axum REST & WebSocket Gateway Reference
+# `tantra-runtime-api-rest` — Axum REST & WebSocket Gateway Reference
 
-Crate `crates/vyapaar-runtime-api-rest/` (41 src files, 39 test files + `tests/support/`).
+Crate `crates/tantra-runtime-api-rest/` (41 src files, 39 test files + `tests/support/`).
 
 ## 1. Purpose
 
 The HTTP boundary of the runtime. It implements the pure contracts of
-[`vyapaar-runtime-api`](code-api.md) as an Axum server: multi-version REST
+[`tantra-runtime-api`](code-api.md) as an Axum server: multi-version REST
 routing, bearer/JWT auth, backtest/sweep run execution against the real engine,
 bar ingest into the bar pump, order placement through risk + approval + execution
 gateway, portfolio/profile persistence, the chat agent runtime behind `/ws/chat`,
@@ -18,7 +18,7 @@ driver the Python SDK speaks to instead of a socket.
 |---|---|
 | `lib.rs` | Router assembly (`/api/v1`, `/api/v2`, legacy fallback), `legacy_v1_deprecation_notice`, `serve()` |
 | `v1.rs` | The ~60-route v1 table (legacy, supported) + `v1_headers` middleware |
-| `v2.rs` | Same routes behind `v2_response_envelope` (`api_version: "v2"`, `x-vyapaar-version: 2`) |
+| `v2.rs` | Same routes behind `v2_response_envelope` (`api_version: "v2"`, `x-tantra-version: 2`) |
 | `openapi.rs` | OpenAPI 3.1 documents for v1 ("supported for legacy software") and v2 |
 | `state.rs` | `AppState` + builder (catalog, depth, quotes, strategies, run store, portfolio, profile, approval queue, bar-ingest sender) |
 | `bootstrap.rs` | `ServeConfig` / startup wiring; `load_risk_limits` for `--risk-config` TOML |
@@ -32,7 +32,7 @@ driver the Python SDK speaks to instead of a socket.
 | `streams.rs` | SSE `GET /backtests/:id/events?resume_from_seq=N` |
 | `journal.rs` | Run/audit journal query endpoint |
 | `operator_journal.rs` | Operator-audit journal (approval actions) |
-| `trade_journal.rs` | Trade-performance journal routes (`vyapaar-ledger-performance` backed) |
+| `trade_journal.rs` | Trade-performance journal routes (`tantra-ledger-performance` backed) |
 | `orders.rs` | `POST /orders`, `DELETE /orders/:id`, fills, approval queue handlers; collar/lot/tick checks |
 | `exec.rs` | Execution-gateway integration for order routes |
 | `approval.rs` | `ApprovalQueue` (E5-S4): `VecDeque` + statuses `Pending/Approved/Rejected/Expired` |
@@ -63,8 +63,8 @@ One v1 route table serves three audiences (`lib.rs:262-280`):
 | Mount | Middleware | Effect |
 |---|---|---|
 | `/api/v1` | `v1_headers` | Legacy, supported; `api_version: "v1"` |
-| `/api/v2` | `v2_response_envelope` | Latest: rewrites envelope `api_version` to `"v2"`, adds `x-vyapaar-version: 2` |
-| un-prefixed (fallback) | `legacy_v1_deprecation_notice` | `Deprecation: true`, canonical `Link: </api/v1{path}>`; if `X-Vyapaar-Version: 2` or `Accept: application/vnd.vyapaar.v2+json`, serves the v2 envelope instead |
+| `/api/v2` | `v2_response_envelope` | Latest: rewrites envelope `api_version` to `"v2"`, adds `x-tantra-version: 2` |
+| un-prefixed (fallback) | `legacy_v1_deprecation_notice` | `Deprecation: true`, canonical `Link: </api/v1{path}>`; if `X-Tantra-Version: 2` or `Accept: application/vnd.tantra.v2+json`, serves the v2 envelope instead |
 
 Route groups (v1, authoritative in `v1.rs`):
 
@@ -111,7 +111,7 @@ Route groups (v1, authoritative in `v1.rs`):
 - `service.rs` — `RunService` runs submitted jobs on a bounded queue
   (`DEFAULT_MAX_QUEUED = 64`); `ShutdownReport` carries the final bar-ingest drain.
 - `executor.rs` — `BacktestExecutor` implements the API crate's `RunExecutor` port
-  against the real `vyapaar-runtime-backtest` engine:
+  against the real `tantra-runtime-backtest` engine:
   - `FillModel::L2` requires a tick source; missing/empty ticks refuse with the
     stable `l2_requires_ticks` error.
   - A **sweep** builds the Cartesian parameter grid from `{low, high, step}` objects,
@@ -128,7 +128,7 @@ Route groups (v1, authoritative in `v1.rs`):
 
 ## 7. Market Data & Ingest
 
-- `market.rs` converts `vyapaar-feed` quotes/bars (`f64`, dual UnixNanos stamps)
+- `market.rs` converts `tantra-feed` quotes/bars (`f64`, dual UnixNanos stamps)
   to canonical `Decimal` types **at this single boundary**, not threaded as floats;
   `lot_size`/`tick_size` likewise. Bars are bounded by `MAX_BAR_ROWS = 100_000`,
   depth by `1..=50` levels (default 5).
@@ -161,27 +161,27 @@ Route groups (v1, authoritative in `v1.rs`):
 - `profile.rs`/`profile_store.rs` — per-user dashboard profile (layouts, modules,
   watchlists) with revisions; single-tenant default user `"default"`.
 - `trade_journal.rs` — trade-performance journal (accounts, overview, trades,
-  per-trade PATCH, calendar, notes, compare) backed by `vyapaar-ledger-performance`.
+  per-trade PATCH, calendar, notes, compare) backed by `tantra-ledger-performance`.
 - `reports.rs` — derived report pages over stored runs/portfolio.
 
 ## 10. Chat Runtime (`/ws/chat`)
 
-`chat.rs` builds a `ChatRuntime` from environment, reusing the `vyapaar-agent`
+`chat.rs` builds a `ChatRuntime` from environment, reusing the `tantra-agent`
 chat stack (`ChatAgent`, `SessionStore`, `ToolRegistry`):
 
-- **LLM backend**: `VYAPAAR_GGUF_PATH` (local Candle-GGUF) takes priority;
-  otherwise the OpenAI/Ollama-compatible endpoint `VYAPAAR_LLM_BASE_URL` /
-  `VYAPAAR_LLM_MODEL` / `VYAPAAR_LLM_API_KEY`. Neither set ⇒ the socket answers
+- **LLM backend**: `TANTRA_GGUF_PATH` (local Candle-GGUF) takes priority;
+  otherwise the OpenAI/Ollama-compatible endpoint `TANTRA_LLM_BASE_URL` /
+  `TANTRA_LLM_MODEL` / `TANTRA_LLM_API_KEY`. Neither set ⇒ the socket answers
   with a clear `chat not configured` message.
-- **Tools**: `vyapaar_agent_chat_tools::catalog::register_read_only_tools` plus
+- **Tools**: `tantra_agent_chat_tools::catalog::register_read_only_tools` plus
   the alert tools (`chat_alerts.rs`); alerts persist on `Profile.alerts`.
 - **Sessions**: `InMemorySessionStore` — a restart loses sessions (documented,
   intentional).
 - **Readers** (`chat_market.rs`): `FeedMarketReader` (quote/depth/bars, bar cap 500),
   `FeedContentReader` (news/filings — stub-backed), `FeedSnapshotSource`.
-  The stubs cite their owning gaps: news → `vyapaar-data/docs/gaps/0006`,
-  filings → `vyapaar-data/docs/gaps/0007`, block deals → `0005`,
-  options chain → `vyapaar-market/docs/gaps/0001`, corporate actions → `0008`.
+  The stubs cite their owning gaps: news → `tantra-data/docs/gaps/0006`,
+  filings → `tantra-data/docs/gaps/0007`, block deals → `0005`,
+  options chain → `tantra-market/docs/gaps/0001`, corporate actions → `0008`.
 - `chat.rs` is env-aware and marked experimental in `openapi.rs` docs.
 
 ## 11. WebSockets (`ws.rs`)
@@ -197,11 +197,11 @@ chat stack (`ChatAgent`, `SessionStore`, `ToolRegistry`):
 ## 12. Dependencies
 
 Axum (ws, SSE), `tokio` (mpsc, oneshot, tasks), `serde_json`, `rust_decimal`,
-`jsonwebtoken`, `vyapaar-runtime-api` (contracts), `vyapaar-runtime-backtest`
-(the real engine), `vyapaar-runtime-feed`/`vyapaar-market-store` (Parquet),
-`vyapaar-agent` + `vyapaar-agent-chat` + `vyapaar-agent-chat-tools` (chat),
-`vyapaar-ledger-performance` (trade journal), `vyapaar-feed`/`vyapaar-market-core`
-(conversion source), `vyapaar-exec-core` (broker gateway), `vyapaar-risk`.
+`jsonwebtoken`, `tantra-runtime-api` (contracts), `tantra-runtime-backtest`
+(the real engine), `tantra-runtime-feed`/`tantra-market-store` (Parquet),
+`tantra-agent` + `tantra-agent-chat` + `tantra-agent-chat-tools` (chat),
+`tantra-ledger-performance` (trade journal), `tantra-feed`/`tantra-market-core`
+(conversion source), `tantra-exec-core` (broker gateway), `tantra-risk`.
 
 ## 13. Tests (`tests/`, 39 files + `support/`)
 
@@ -217,7 +217,7 @@ Axum (ws, SSE), `tokio` (mpsc, oneshot, tasks), `serde_json`, `rust_decimal`,
 
 ## 14. Invariants & Notables
 
-- **Contract-first**: every DTO, error code, and cap lives in `vyapaar-runtime-api`;
+- **Contract-first**: every DTO, error code, and cap lives in `tantra-runtime-api`;
   this crate never invents a wire shape.
 - **Decimal at the boundary**: broker-feed floats and JSON numbers convert to
   `Decimal` exactly once, at `market.rs`/`orders.rs`.
@@ -233,5 +233,5 @@ Axum (ws, SSE), `tokio` (mpsc, oneshot, tasks), `serde_json`, `rust_decimal`,
 - `code-api.md` — the pure contracts this crate implements
 - `code-backtest.md` — the engine behind `BacktestExecutor`
 - `code-strategy.md` — manifests the `/strategies` routes compile
-- `vyapaar-agent-chat` — chat agent stack reused by `/ws/chat`
-- `vyapaar-runtime/docs/gaps/README.md` — open stubs cited above
+- `tantra-agent-chat` — chat agent stack reused by `/ws/chat`
+- `tantra-runtime/docs/gaps/README.md` — open stubs cited above

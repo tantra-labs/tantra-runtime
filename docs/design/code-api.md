@@ -1,6 +1,6 @@
-# `vyapaar-runtime-api` — API Contract Reference
+# `tantra-runtime-api` — API Contract Reference
 
-Crate `crates/vyapaar-runtime-api/` (18 src files, ~5k lines, 4 test files).
+Crate `crates/tantra-runtime-api/` (18 src files, ~5k lines, 4 test files).
 
 ## 1. Purpose
 
@@ -12,7 +12,7 @@ The pure "API contract" crate — zero HTTP. It defines:
 - request validation and resolution (limits, defaults),
 - strategy-IR compilation and screener AST evaluation,
 - the reader-adapter traits (`JournalWriter`, `RunExecutor`, `PortfolioReader`,
-  `MarketReader`) that `vyapaar-runtime-api-rest` implements.
+  `MarketReader`) that `tantra-runtime-api-rest` implements.
 
 Both the Axum server and the Python FFI dispatch layer speak these types, so client and server
 cannot drift.
@@ -103,13 +103,13 @@ cannot drift.
 - `RuntimeMarketReader` — `quote` / `depth` / `bars` / `instruments` / `instrument` /
   `calendar` / `search` / `ticks` / `options_chain`, plus `set_*` seed mutators for tests.
   Unseeded sources and options chains return **honest `PortError::unavailable`** stubs citing
-  the owning gaps (`vyapaar-runtime/docs/gaps/0007`, `vyapaar-market/docs/gaps/0001`,
-  `vyapaar-data/docs/gaps/0008`).
+  the owning gaps (`tantra-runtime/docs/gaps/0007`, `tantra-market/docs/gaps/0001`,
+  `tantra-data/docs/gaps/0008`).
 - `RuntimeSnapshotSource` — chat snapshot feed.
 
 ## 8. Dependencies
 
-`vyapaar-core`, `serde`, `serde_json`, `rust_decimal`, `chrono`, `thiserror`, `sha2`,
+`tantra-core`, `serde`, `serde_json`, `rust_decimal`, `chrono`, `thiserror`, `sha2`,
 `uuid` (v4). Dev: `proptest`.
 
 ## 9. Tests (`tests/`, 4 files)
@@ -134,4 +134,4 @@ cannot drift.
 
 - `code-api-rest.md` — the Axum implementation of these contracts
 - `code-jobs.md` — the run lifecycle consumed by job-driven runs
-- `vyapaar-core` — shared `FillReport`/`OrderRequest` types behind the DTOs
+- `tantra-core` — shared `FillReport`/`OrderRequest` types behind the DTOs

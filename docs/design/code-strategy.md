@@ -1,22 +1,22 @@
-# `vyapaar-runtime-strategy` — Strategy Runtime Reference
+# `tantra-runtime-strategy` — Strategy Runtime Reference
 
-Crate `crates/vyapaar-runtime-strategy/` — lib name `vyapaar_runtime_strategy`.
-Description: *"Strategy trait, runner state machine, and manifest contracts for Vyapaar"*.
+Crate `crates/tantra-runtime-strategy/` — lib name `tantra_runtime_strategy`.
+Description: *"Strategy trait, runner state machine, and manifest contracts for Tantra"*.
 Crate lints: `#![deny(missing_docs)]`, `#![deny(rustdoc::broken_intra_doc_links)]`,
 `#![deny(unsafe_code)]`.
 
 ## 1. Purpose
 
-The strategy-authoring contract (ADR 008), mirroring the Python `vyapaar.strategies` package:
+The strategy-authoring contract (ADR 008), mirroring the Python `tantra.strategies` package:
 
 - A [`Strategy`] reacts to typed events (`Bar`, `Tick::Quote`, `Tick::Ltp`, `FillReport`) and
   acts **only** through its [`StrategyContext`] — reading the clock, positions, cash, instrument
   metadata — and emits [`OrderIntent`]s. It never touches the execution engine, I/O, or the wall
   clock, so the same strategy runs unchanged in backtest, paper, and live.
 - [`StrategyRunner`] pairs a strategy + [`LedgerContext`] with an optional
-  `vyapaar_risk::RiskEngine` pre-trade gate, converts intents into `vyapaar_core::OrderRequest`s
+  `tantra_risk::RiskEngine` pre-trade gate, converts intents into `tantra_core::OrderRequest`s
   with deterministic ids, and hands them to the host (actor runtime, backtester, anything
-  implementing `vyapaar_core::ports::ExecutionGateway`). This crate owns no execution gateway
+  implementing `tantra_core::ports::ExecutionGateway`). This crate owns no execution gateway
   and stays zero-I/O.
 - [`StrategyManifest`] / [`StrategyIr`] / `step.toml` (`StepManifest`) are the data-only,
   hashable run contracts: a strategy is described *once* by a verify step and everything
@@ -46,14 +46,14 @@ The strategy-authoring contract (ADR 008), mirroring the Python `vyapaar.strateg
 | `error.rs` | `StrategyError::{Intent, Other}`, `Result<T>` |
 | `order/`, `pnl/`, `position/`, `risk/` | Empty placeholder `mod.rs` stubs |
 
-Removed history: the `CacheContext` backed by `vyapaar_engine::StateCache` and the runner's old
-`ExecutionEngine`/`Handler` base were deleted in the `vyapaar-core`/`vyapaar-risk` migration;
-`vyapaar-engine` is fully out of the dependency graph.
+Removed history: the `CacheContext` backed by `tantra_engine::StateCache` and the runner's old
+`ExecutionEngine`/`Handler` base were deleted in the `tantra-core`/`tantra-risk` migration;
+`tantra-engine` is fully out of the dependency graph.
 
 ## 3. `Strategy` Trait
 
 `pub trait Strategy: Send + 'static` — the hook set matches Python
-`vyapaar.strategies.base.Strategy`; all hooks except `name` default to no-ops:
+`tantra.strategies.base.Strategy`; all hooks except `name` default to no-ops:
 
 | Method | Semantics |
 |---|---|
@@ -106,7 +106,7 @@ pub struct OrderIntent {
 }
 ```
 
-- Price/type coherence is enforced by the type system via `vyapaar_core::OrderType`:
+- Price/type coherence is enforced by the type system via `tantra_core::OrderType`:
   `Market`, `Limit(Price)`, `StopLoss(Price)` (trigger), `StopLimit { trigger, limit }`.
   The old runtime errors (`MissingPrice`, `UnexpectedPrice`, …) are no longer representable.
   **No trailing-stop variant exists** — strategies recompute stop triggers per event.
@@ -114,7 +114,7 @@ pub struct OrderIntent {
 - Constructors (all default `TimeInForce::Day`): `market_buy/_sell`, `limit_buy/_sell`,
   `stop_buy/_sell` (→ `StopLoss`), `stop_limit_buy/_sell`.
 - Wire form `OrderIntentRepr` is `#[serde(deny_unknown_fields)]`; `TryFrom` runs `validate()`.
-- Conversions to `vyapaar_core::OrderRequest`: `into_order(algo_id)`,
+- Conversions to `tantra_core::OrderRequest`: `into_order(algo_id)`,
   `into_order_with_id(client_order_id, algo_id)` (deterministic-replay path),
   `to_order_request[_with_algo|_with_id]`.
 
@@ -180,7 +180,7 @@ as `source_hash`.
 
 ### 7.2 `step.toml` IR grammar (`StepManifest`)
 
-Matches `vyapaar-strategies/schema/step.schema.json`:
+Matches `tantra-strategies/schema/step.schema.json`:
 
 - `StepKind` (snake_case): `Screen | Filter | Signal | Size | Risk | Execute`.
 - `StepParam { type, default, optional, min/max/step, choices, pattern, description, sweepable }`.
@@ -198,7 +198,7 @@ Matches `vyapaar-strategies/schema/step.schema.json`:
 Validates the manifest, rejects an empty subscription list (`IrError::NoSubscriptions`), and for
 `Universe::Explicit` rejects any subscribed instrument outside the universe
 (`IrError::SubscriptionOutsideUniverse`). Output: `schema_version` (must equal
-`vyapaar_core::SCHEMA_VERSION`), `strategy_api_version`, embedded manifest, resolved
+`tantra_core::SCHEMA_VERSION`), `strategy_api_version`, embedded manifest, resolved
 `IrUniverse` (sorted + deduped), per-channel `IrSubscriptions { bars, quotes, trades }`,
 `timeframes` (driving first), `warmup_bars`. `IrError::code()` exposes stable snake_case codes
 (`empty_name`, `no_subscriptions`, `subscription_outside_universe`, …) for agents/CLI.
@@ -233,19 +233,19 @@ byte-identical sim fills). `Dispatcher { risk_engine, broker, algo_id }`:
 - `cancel_order` → broker cancel → `risk_engine.record_cancellation` (OTR tracking).
 - `DispatchError`: `Intent`, `RiskRefusal(Box<RiskRefusal>)`, `BrokerRejection`,
   `SessionExpired`, `MarketClosed`, `RateLimited`, `Network` — `map_broker_error` maps the
-  `vyapaar-exec` wire taxonomy onto these messages.
+  `tantra-exec` wire taxonomy onto these messages.
 
 ### 8.3 Adapters
 
 | Adapter | `broker_name()` | Behaviour |
 |---|---|---|
 | `PaperAdapter` | `"paper"` (prefix `PAPER`) | In-process sim over shared `AdapterState`; default cash ₹1,000,000. |
-| `ZerodhaKiteAdapter` (`ZerodhaAdapter`) | `"zerodha"` (prefix `KITE`) | With credentials: dedicated tokio `Runtime` + `block_on` over the real `vyapaar-exec-zerodha` `ZerodhaExecutor` (Kite Connect `POST /orders/regular`, `DELETE /orders/regular/{id}`); errors mapped via `map_broker_error` (auth → session expired, rate-limit → rate limited, transport → network). Without credentials: deterministic sim scaffold with the same economics. The `block_on` seam must not run on a tokio worker thread (documented in code). |
-| `AngelOneSmartApiAdapter` (`AngelOneAdapter`) | `"angelone"` (prefix `SMARTAPI`) | Simulation scaffold identical in economics to paper — pending a real `vyapaar-exec-angelone` transport (GAP-0003 note); credential accessors exist but are unused. |
+| `ZerodhaKiteAdapter` (`ZerodhaAdapter`) | `"zerodha"` (prefix `KITE`) | With credentials: dedicated tokio `Runtime` + `block_on` over the real `tantra-exec-zerodha` `ZerodhaExecutor` (Kite Connect `POST /orders/regular`, `DELETE /orders/regular/{id}`); errors mapped via `map_broker_error` (auth → session expired, rate-limit → rate limited, transport → network). Without credentials: deterministic sim scaffold with the same economics. The `block_on` seam must not run on a tokio worker thread (documented in code). |
+| `AngelOneSmartApiAdapter` (`AngelOneAdapter`) | `"angelone"` (prefix `SMARTAPI`) | Simulation scaffold identical in economics to paper — pending a real `tantra-exec-angelone` transport (GAP-0003 note); credential accessors exist but are unused. |
 
 `AdapterState::execute_order` fills at `limit_price()` else the recorded market price, updates
 cash/positions, computes the statutory `FeeBreakdown` via
-`vyapaar_market_finance::india::costs::NseCashEquitySchedule::delivery().compute_costs`
+`tantra_market_finance::india::costs::NseCashEquitySchedule::delivery().compute_costs`
 (brokerage, STT, exchange charges, GST, stamp duty, SEBI charges — the DP charge is folded into
 `exchange_charges`), and emits a `FillReport` with `fill_id = "FILL-{seq:04}"` and
 `order_id = "{prefix}-{client_order_id}"`. Cancels append to `cancelled_orders`; `equity()` =
@@ -256,7 +256,7 @@ cash + Σ qty·market price.
 | Strategy | Behaviour |
 |---|---|
 | `BuyAndHold` | One `market_buy` on the first bar, then nothing. |
-| `SmaCrossover` | `vyapaar_market_indicators::Sma` over `bar.close`; market buy on cross-up, sell on cross-down; panics unless `0 < fast < slow`. `MAX_SMA_PERIOD` is declared but unenforced. |
+| `SmaCrossover` | `tantra_market_indicators::Sma` over `bar.close`; market buy on cross-up, sell on cross-down; panics unless `0 < fast < slow`. `MAX_SMA_PERIOD` is declared but unenforced. |
 | `RsiReversal` | `Rsi` with internal `Side` state to avoid repeat signals; panics if `period == 0` or `oversold >= overbought`. |
 | `ContractProbe` | Conformance-fixture strategy recording `Observation { hook, now, position, cash, busy, open_positions }` in every hook; exercises market/limit/stop/stop-limit intents in lot/tick quantities. |
 
@@ -264,11 +264,11 @@ cash + Σ qty·market price.
 
 | Dependency | Use |
 |---|---|
-| `vyapaar-core` | `Bar`, `Tick`, `MarketEvent`, `FillReport`, `OrderRequest`, `OrderEvent`, `OrderType`, `Price/Quantity/Money`, `FeeBreakdown`, `SCHEMA_VERSION` |
-| `vyapaar-risk` | `RiskEngine`, `RiskRefusal` |
-| `vyapaar-market-indicators` | `Sma`, `Rsi` for the built-ins |
-| `vyapaar-market-finance` | statutory cost schedule |
-| `vyapaar-exec-core` / `vyapaar-exec-zerodha` | broker wire transport |
+| `tantra-core` | `Bar`, `Tick`, `MarketEvent`, `FillReport`, `OrderRequest`, `OrderEvent`, `OrderType`, `Price/Quantity/Money`, `FeeBreakdown`, `SCHEMA_VERSION` |
+| `tantra-risk` | `RiskEngine`, `RiskRefusal` |
+| `tantra-market-indicators` | `Sma`, `Rsi` for the built-ins |
+| `tantra-market-finance` | statutory cost schedule |
+| `tantra-exec-core` / `tantra-exec-zerodha` | broker wire transport |
 | `tokio` | dedicated runtime for the sync→async Zerodha seam |
 | `serde`/`serde_json`/`schemars` | manifest/intent/IR wire + JSON Schema |
 | `toml`, `sha2`, `chrono`, `rust_decimal`, `thiserror` | step parsing, source hashes, event clock, exact math, errors |
@@ -313,4 +313,4 @@ Gated-out (dead by default): `conformance.rs`, `runner_semantics.rs`, `runner_ev
 - `code-backtest.md` — the engine that drives this runner
 - `code-enhancer.md` — optimizer consumes the manifest parameter grid + factory registry
 - `code-config.md` — run configs embed a `StrategyManifest`
-- `vyapaar-risk` — the pre-trade gate
+- `tantra-risk` — the pre-trade gate

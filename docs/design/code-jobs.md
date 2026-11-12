@@ -1,6 +1,6 @@
-# `vyapaar-runtime-jobs` — Job Scheduler Reference
+# `tantra-runtime-jobs` — Job Scheduler Reference
 
-Crate `crates/vyapaar-runtime-jobs/` (5 src files, ~1.7k lines).
+Crate `crates/tantra-runtime-jobs/` (5 src files, ~1.7k lines).
 Crate doc: *"Scheduled cron & background job runner"* — cron expressions, job definitions, and
 built-in job implementations for pre-market TOTP refresh, EOD settlement, and snapshot jobs.
 Includes a persistent file-backed registry, multi-dimensional budgets, heartbeat lease fencing,
@@ -12,7 +12,7 @@ The scheduling layer of the runtime: persistent job specs with 5-field Vixie cro
 claim/heartbeat/release fencing to prevent double execution, per-job budgets across six
 dimensions, an approvals queue for manual gates, and a bounded worker pool with panic
 isolation. Run lifecycle (RunIds, journals, strategy dispatch) is driven *through* these jobs
-by the API layer (`code-api.md`) and the `vyapaar-ui` CLI (`vyapaar jobs ...`).
+by the API layer (`code-api.md`) and the `tantra-ui` CLI (`tantra jobs ...`).
 
 ## 2. Module Map
 
@@ -38,8 +38,8 @@ by the API layer (`code-api.md`) and the `vyapaar-ui` CLI (`vyapaar jobs ...`).
 
 `JobScheduler` is a **trait** (`register_job`/`unregister_job[_by_name]`/`get_job`/`list_jobs`/
 `start`/`stop`/`state`) — this crate defines the contract only; there is **no concrete
-tick-driven loop implementation** inside the workspace (the CLI half lives in `vyapaar-ui`,
-`vyapaar-cli`). `SchedulerState { Stopped, Running, Paused }`.
+tick-driven loop implementation** inside the workspace (the CLI half lives in `tantra-ui`,
+`tantra-cli`). `SchedulerState { Stopped, Running, Paused }`.
 
 ## 4. `CronSchedule` (5-field Vixie)
 
@@ -66,7 +66,7 @@ Option<FencingLease>`, `fencing_counter: u64`, `created_at`, `last_run_at`, `nex
 - `load_or_create(path)` — creates parent dirs + an empty file when missing.
 - `save()` — **atomic tmp-rename**: pretty JSON (sorted by `created_at`) →
   `path.with_extension("json.tmp")` → `sync_all()` → `fs::rename`. Default location used by the
-  CLI layer: `~/.vyapaar/jobs.json`.
+  CLI layer: `~/.tantra/jobs.json`.
 - `add_job` (rejects duplicate names), `get_job[_mut]`, `list_jobs`, `remove_job`,
   `pause_job`/`resume_job`, `disable`/`enable` on specs.
 - `claim_job(id, worker_id, ttl, now)` — refuses paused/pending-approval jobs and valid
@@ -122,12 +122,12 @@ ttl_secs }`:
 | `SnapshotJob` | `0 0 * * *` (midnight daily) | `positions_snapshot` / `portfolio_snapshot` / `system_snapshot` (by `SnapshotType`) | Simulated |
 
 All built-in `execute()` bodies are **simulated stubs** (`tokio::time::sleep` + log) — real
-TOTP refresh integration lives in `vyapaar-exec-auth`; the schedules and registry lifecycle are
+TOTP refresh integration lives in `tantra-exec-auth`; the schedules and registry lifecycle are
 the production surface. Each job has a `with_schedule(...)` constructor variant.
 
 ## 10. Dependencies
 
-`vyapaar-core` (declared); externals: `tokio` (full), `chrono`, `serde`/`serde_json`,
+`tantra-core` (declared); externals: `tokio` (full), `chrono`, `serde`/`serde_json`,
 `thiserror`, `tracing`, `async-trait`, `sqlx 0.8` (only for the `JobError::Storage` variant —
 no SQL storage in this crate), `uuid`, `rayon 1.9` (sweep pools), `num_cpus`, `rust_decimal`,
 `cron 0.17` (fire-time evaluation). Dev: `futures`, `tempfile`, `rust_decimal_macros`.
@@ -153,6 +153,6 @@ no SQL storage in this crate), `uuid`, `rayon 1.9` (sweep pools), `num_cpus`, `r
 ## Related
 
 - `code-api.md` — `RunId` / run manifests / journals consumed by job runs
-- `code-api-rest.md` — `vyapaar serve` integration
-- `vyapaar-exec-auth` — the real TOTP refresh capability the pre-market job stubs for
-- `vyapaar-ui` (`vyapaar-cli`) — `vyapaar jobs add/list/run/tick/logs/pause/resume/approvals/...`
+- `code-api-rest.md` — `tantra serve` integration
+- `tantra-exec-auth` — the real TOTP refresh capability the pre-market job stubs for
+- `tantra-ui` (`tantra-cli`) — `tantra jobs add/list/run/tick/logs/pause/resume/approvals/...`

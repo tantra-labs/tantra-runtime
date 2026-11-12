@@ -1,8 +1,8 @@
-# `vyapaar-runtime-persistence` — Persistence Reference
+# `tantra-runtime-persistence` — Persistence Reference
 
-Crate `crates/vyapaar-runtime-persistence/` (11 src files, ~3.4k lines;
+Crate `crates/tantra-runtime-persistence/` (11 src files, ~3.4k lines;
 `migrations/{sqlite,postgres}` SQL pairs).
-Crate doc: *"sqlx persistence for `vyapaar-runtime` (PostgreSQL / SQLite): relational
+Crate doc: *"sqlx persistence for `tantra-runtime` (PostgreSQL / SQLite): relational
 repositories, an embedded schema-migration runner, and the SEBI append-only regulatory audit
 ledger. All monetary values are persisted as exact decimal strings (`DECIMAL(30,16)` on
 PostgreSQL, `TEXT` on SQLite) and all timestamps are passed explicitly as
@@ -12,7 +12,7 @@ PostgreSQL, `TEXT` on SQLite) and all timestamps are passed explicitly as
 
 - Typed relational stores for orders, fills, FIFO tax lots, traders, LLM/strategy decisions,
   and agent chat sessions.
-- Four `vyapaar_ledger::repository` trait implementations (DDD adapters over in-memory caches
+- Four `tantra_ledger::repository` trait implementations (DDD adapters over in-memory caches
   with an async `persist_to_db` write-back step).
 - The append-only SEBI audit ledger for exchange compliance inspections.
 
@@ -29,7 +29,7 @@ PostgreSQL, `TEXT` on SQLite) and all timestamps are passed explicitly as
 | `fills.rs` | `FillStore` / `PersistedFill` — idempotent fill ingest + exact Decimal order aggregation |
 | `positions.rs` | `PositionStore` / `PersistedPosition` / `PersistedPositionLot` — long-only FIFO tax-lot ledger |
 | `decisions.rs` | `DecisionStore` / `PersistedDecision` / `sha256_hex` |
-| `sessions.rs` | `SqlxSessionStore` — agent chat sessions/messages implementing `vyapaar_agent_core::ports::SessionStore` |
+| `sessions.rs` | `SqlxSessionStore` — agent chat sessions/messages implementing `tantra_agent_core::ports::SessionStore` |
 | `domain_stores.rs` | DDD repository adapters over the stores above |
 
 Type aliases: `OrderRepository = OrderStore`, `FillRepository = FillStore`,
@@ -112,13 +112,13 @@ pub enum Database { Postgres(PgPool), Sqlite(SqlitePool) }
   (ordered by timestamp), `count()`, `export_ndjson(writer)`.
 
 ### `SqlxSessionStore` (agent chat)
-- Implements `vyapaar_agent_core::ports::SessionStore`: `create`, `append` (transactional,
+- Implements `tantra_agent_core::ports::SessionStore`: `create`, `append` (transactional,
   updates `updated_at`), `messages`, `most_recent`, `list` (filter on profile/mode/archived,
   newest first, default limit 50), `rename`, `update_provider`, `truncate_after`.
 - `RuntimeMode` mapped to `live`/`paper`/`backtest`; unique-violation ⇒ `StoreError::conflict`.
 
 ### DDD domain-store adapters (`domain_stores.rs`)
-Implement `vyapaar_ledger::repository` traits (synchronous trait objects over in-memory
+Implement `tantra_ledger::repository` traits (synchronous trait objects over in-memory
 `RwLock` caches; SQL persistence is the separate `persist_to_db` step):
 - `SqlxOrderStore: OrderRepository` — `get_order` / `save_order` / `list_active_orders` +
   async `persist_to_db` (translates `OrderRecord` → upsert/status/broker-id updates).
@@ -137,8 +137,8 @@ available. SQLite: positional binding, RFC-3339 text timestamps, upserts re-read
 
 ## 7. Dependencies
 
-`vyapaar-core`, `vyapaar-ledger` (repository traits, `MatchedLot`/`TaxLot`),
-`vyapaar-agent-core` (`ports::SessionStore`); `sqlx 0.8` (runtime-tokio-rustls, postgres,
+`tantra-core`, `tantra-ledger` (repository traits, `MatchedLot`/`TaxLot`),
+`tantra-agent-core` (`ports::SessionStore`); `sqlx 0.8` (runtime-tokio-rustls, postgres,
 sqlite, uuid, chrono, rust_decimal, macros, migrate), `async-trait`, `chrono`,
 `serde`/`serde_json`, `uuid`, `rust_decimal`, `thiserror`, `tracing`, `sha2 0.10`, `tokio`
 (sync + time features).
@@ -175,5 +175,5 @@ sqlite, uuid, chrono, rust_decimal, macros, migrate), `async-trait`, `chrono`,
 ## Related
 
 - `code-actors.md` — audit-ledger consumers
-- `vyapaar-ledger` — repository trait definitions
-- `vyapaar-agent-core` — `SessionStore` port
+- `tantra-ledger` — repository trait definitions
+- `tantra-agent-core` — `SessionStore` port

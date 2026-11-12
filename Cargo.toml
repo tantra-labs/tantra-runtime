@@ -1,20 +1,20 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/vyapaar-runtime-actors",
-  "crates/vyapaar-runtime-api",
-  "crates/vyapaar-runtime-api-rest",
-  "crates/vyapaar-runtime-backtest",
-  "crates/vyapaar-runtime-config",
-  "crates/vyapaar-runtime-enhancer",
-  "crates/vyapaar-runtime-feed",
-  "crates/vyapaar-indicators",
-  "crates/vyapaar-runtime-jobs",
-  "crates/vyapaar-runtime-market",
-  "crates/vyapaar-runtime-persistence",
-  "crates/vyapaar-runtime-strategy",
-  "crates/vyapaar-runtime-test-utils",
-  "crates/vyapaar-runtime-testing",
+  "crates/tantra-runtime-actors",
+  "crates/tantra-runtime-api",
+  "crates/tantra-runtime-api-rest",
+  "crates/tantra-runtime-backtest",
+  "crates/tantra-runtime-config",
+  "crates/tantra-runtime-enhancer",
+  "crates/tantra-runtime-feed",
+  "crates/tantra-indicators",
+  "crates/tantra-runtime-jobs",
+  "crates/tantra-runtime-market",
+  "crates/tantra-runtime-persistence",
+  "crates/tantra-runtime-strategy",
+  "crates/tantra-runtime-test-utils",
+  "crates/tantra-runtime-testing",
 ]
 
 [workspace.package]
@@ -22,69 +22,69 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "AGPL-3.0"
-repository = "https://github.com/vyapaar-labs/vyapaar-runtime"
+repository = "https://github.com/tantra-labs/tantra-runtime"
 
 [workspace.dependencies]
-# Vyapaar internal crates
-vyapaar-core = { path = "../vyapaar-core" }
-vyapaar-risk = { path = "../vyapaar-risk" }
-vyapaar-ledger = { path = "../vyapaar-ledger/crates/vyapaar-ledger" }
-vyapaar-ledger-portfolio = { path = "../vyapaar-ledger/crates/vyapaar-ledger-portfolio" }
-vyapaar-ledger-oms = { path = "../vyapaar-ledger/crates/vyapaar-ledger-oms" }
-vyapaar-ledger-journal = { path = "../vyapaar-ledger/crates/vyapaar-ledger-journal" }
-vyapaar-ledger-performance = { path = "../vyapaar-ledger/crates/vyapaar-ledger-performance" }
-vyapaar-runtime-actors = { path = "crates/vyapaar-runtime-actors" }
-vyapaar-runtime-api = { path = "crates/vyapaar-runtime-api" }
-vyapaar-runtime-api-rest = { path = "crates/vyapaar-runtime-api-rest" }
-vyapaar-runtime-backtest = { path = "crates/vyapaar-runtime-backtest" }
-vyapaar-runtime-config = { path = "crates/vyapaar-runtime-config" }
-vyapaar-runtime-enhancer = { path = "crates/vyapaar-runtime-enhancer" }
-vyapaar-runtime-persistence = { path = "crates/vyapaar-runtime-persistence" }
-vyapaar-runtime-jobs = { path = "crates/vyapaar-runtime-jobs" }
-vyapaar-runtime-strategy = { path = "crates/vyapaar-runtime-strategy" }
-vyapaar-runtime-testing = { path = "crates/vyapaar-runtime-testing" }
-vyapaar-api-rest = { path = "crates/vyapaar-runtime-api-rest" }
-vyapaar-api = { path = "crates/vyapaar-runtime-api" }
-vyapaar-backtest = { path = "crates/vyapaar-runtime-backtest" }
-vyapaar-actors = { path = "crates/vyapaar-runtime-actors" }
-vyapaar-indicators = { path = "crates/vyapaar-indicators" }
-vyapaar-runtime-test-utils = { path = "crates/vyapaar-runtime-test-utils" }
-vyapaar-runtime-feed = { path = "crates/vyapaar-runtime-feed" }
-vyapaar-runtime-market = { path = "crates/vyapaar-runtime-market" }
-vyapaar-market-feed = { path = "../vyapaar-market/crates/vyapaar-market-feed" }
-vyapaar-market-store = { path = "../vyapaar-market/crates/vyapaar-market-store" }
-vyapaar-market-core = { path = "../vyapaar-market/crates/vyapaar-market-core" }
-vyapaar-market-normalizer = { path = "../vyapaar-market/crates/vyapaar-market-normalizer" }
-vyapaar-market-indicators = { path = "../vyapaar-market/crates/vyapaar-market-indicators" }
-vyapaar-market-signals = { path = "../vyapaar-market/crates/vyapaar-market-signals" }
-vyapaar-market-loaders = { path = "../vyapaar-market/crates/vyapaar-market-loaders" }
-vyapaar-market-finance = { path = "../vyapaar-market/crates/vyapaar-market-finance" }
-vyapaar-market-zerodha = { path = "../vyapaar-market/crates/vyapaar-market-zerodha" }
-vyapaar-market-upstox = { path = "../vyapaar-market/crates/vyapaar-market-upstox" }
-vyapaar-market-fyers = { path = "../vyapaar-market/crates/vyapaar-market-fyers" }
-vyapaar-market-angelone = { path = "../vyapaar-market/crates/vyapaar-market-angelone" }
-vyapaar-exec-core = { path = "../vyapaar-exec/crates/vyapaar-exec-core" }
-vyapaar-exec-auth = { path = "../vyapaar-exec/crates/vyapaar-exec-auth" }
-vyapaar-exec-router = { path = "../vyapaar-exec/crates/vyapaar-exec-router" }
-vyapaar-exec-slicer = { path = "../vyapaar-exec/crates/vyapaar-exec-slicer" }
-vyapaar-exec-audit = { path = "../vyapaar-exec/crates/vyapaar-exec-audit" }
-vyapaar-exec-zerodha = { path = "../vyapaar-exec/crates/vyapaar-exec-zerodha" }
-vyapaar-exec-upstox = { path = "../vyapaar-exec/crates/vyapaar-exec-upstox" }
-vyapaar-exec-angelone = { path = "../vyapaar-exec/crates/vyapaar-exec-angelone" }
-vyapaar-agent-core = { path = "../vyapaar-agent/crates/vyapaar-agent-core" }
-vyapaar-agent = { path = "../vyapaar-agent/crates/vyapaar-agent" }
-vyapaar-agent-chat = { path = "../vyapaar-agent/crates/vyapaar-agent-chat" }
-vyapaar-agent-chat-tools = { path = "../vyapaar-agent/crates/vyapaar-agent-chat-tools" }
-vyapaar-agent-prompt = { path = "../vyapaar-agent/crates/vyapaar-agent-prompt" }
-vyapaar-agent-replay = { path = "../vyapaar-agent/crates/vyapaar-agent-replay" }
-vyapaar-agent-llm = { path = "../vyapaar-agent/crates/vyapaar-agent-llm" }
-vyapaar-agent-trader-loop = { path = "../vyapaar-agent/crates/vyapaar-agent-trader-loop" }
-vyapaar-agent-research = { path = "../vyapaar-agent/crates/vyapaar-agent-research" }
-vyapaar-agent-analytics = { path = "../vyapaar-agent/crates/vyapaar-agent-analytics" }
-vyapaar-agent-genetic = { path = "../vyapaar-agent/crates/vyapaar-agent-genetic" }
-vyapaar-agent-mcp = { path = "../vyapaar-agent/crates/vyapaar-agent-mcp" }
-vyapaar-ffi-codegen = { path = "../vyapaar-ffi/crates/vyapaar-ffi-codegen" }
-vyapaar-ffi-py = { path = "../vyapaar-ffi/crates/vyapaar-ffi-py" }
+# Tantra internal crates
+tantra-core = { path = "../tantra-core" }
+tantra-risk = { path = "../tantra-risk" }
+tantra-ledger = { path = "../tantra-ledger/crates/tantra-ledger" }
+tantra-ledger-portfolio = { path = "../tantra-ledger/crates/tantra-ledger-portfolio" }
+tantra-ledger-oms = { path = "../tantra-ledger/crates/tantra-ledger-oms" }
+tantra-ledger-journal = { path = "../tantra-ledger/crates/tantra-ledger-journal" }
+tantra-ledger-performance = { path = "../tantra-ledger/crates/tantra-ledger-performance" }
+tantra-runtime-actors = { path = "crates/tantra-runtime-actors" }
+tantra-runtime-api = { path = "crates/tantra-runtime-api" }
+tantra-runtime-api-rest = { path = "crates/tantra-runtime-api-rest" }
+tantra-runtime-backtest = { path = "crates/tantra-runtime-backtest" }
+tantra-runtime-config = { path = "crates/tantra-runtime-config" }
+tantra-runtime-enhancer = { path = "crates/tantra-runtime-enhancer" }
+tantra-runtime-persistence = { path = "crates/tantra-runtime-persistence" }
+tantra-runtime-jobs = { path = "crates/tantra-runtime-jobs" }
+tantra-runtime-strategy = { path = "crates/tantra-runtime-strategy" }
+tantra-runtime-testing = { path = "crates/tantra-runtime-testing" }
+tantra-api-rest = { path = "crates/tantra-runtime-api-rest" }
+tantra-api = { path = "crates/tantra-runtime-api" }
+tantra-backtest = { path = "crates/tantra-runtime-backtest" }
+tantra-actors = { path = "crates/tantra-runtime-actors" }
+tantra-indicators = { path = "crates/tantra-indicators" }
+tantra-runtime-test-utils = { path = "crates/tantra-runtime-test-utils" }
+tantra-runtime-feed = { path = "crates/tantra-runtime-feed" }
+tantra-runtime-market = { path = "crates/tantra-runtime-market" }
+tantra-market-feed = { path = "../tantra-market/crates/tantra-market-feed" }
+tantra-market-store = { path = "../tantra-market/crates/tantra-market-store" }
+tantra-market-core = { path = "../tantra-market/crates/tantra-market-core" }
+tantra-market-normalizer = { path = "../tantra-market/crates/tantra-market-normalizer" }
+tantra-market-indicators = { path = "../tantra-market/crates/tantra-market-indicators" }
+tantra-market-signals = { path = "../tantra-market/crates/tantra-market-signals" }
+tantra-market-loaders = { path = "../tantra-market/crates/tantra-market-loaders" }
+tantra-market-finance = { path = "../tantra-market/crates/tantra-market-finance" }
+tantra-market-zerodha = { path = "../tantra-market/crates/tantra-market-zerodha" }
+tantra-market-upstox = { path = "../tantra-market/crates/tantra-market-upstox" }
+tantra-market-fyers = { path = "../tantra-market/crates/tantra-market-fyers" }
+tantra-market-angelone = { path = "../tantra-market/crates/tantra-market-angelone" }
+tantra-exec-core = { path = "../tantra-exec/crates/tantra-exec-core" }
+tantra-exec-auth = { path = "../tantra-exec/crates/tantra-exec-auth" }
+tantra-exec-router = { path = "../tantra-exec/crates/tantra-exec-router" }
+tantra-exec-slicer = { path = "../tantra-exec/crates/tantra-exec-slicer" }
+tantra-exec-audit = { path = "../tantra-exec/crates/tantra-exec-audit" }
+tantra-exec-zerodha = { path = "../tantra-exec/crates/tantra-exec-zerodha" }
+tantra-exec-upstox = { path = "../tantra-exec/crates/tantra-exec-upstox" }
+tantra-exec-angelone = { path = "../tantra-exec/crates/tantra-exec-angelone" }
+tantra-agent-core = { path = "../tantra-agent/crates/tantra-agent-core" }
+tantra-agent = { path = "../tantra-agent/crates/tantra-agent" }
+tantra-agent-chat = { path = "../tantra-agent/crates/tantra-agent-chat" }
+tantra-agent-chat-tools = { path = "../tantra-agent/crates/tantra-agent-chat-tools" }
+tantra-agent-prompt = { path = "../tantra-agent/crates/tantra-agent-prompt" }
+tantra-agent-replay = { path = "../tantra-agent/crates/tantra-agent-replay" }
+tantra-agent-llm = { path = "../tantra-agent/crates/tantra-agent-llm" }
+tantra-agent-trader-loop = { path = "../tantra-agent/crates/tantra-agent-trader-loop" }
+tantra-agent-research = { path = "../tantra-agent/crates/tantra-agent-research" }
+tantra-agent-analytics = { path = "../tantra-agent/crates/tantra-agent-analytics" }
+tantra-agent-genetic = { path = "../tantra-agent/crates/tantra-agent-genetic" }
+tantra-agent-mcp = { path = "../tantra-agent/crates/tantra-agent-mcp" }
+tantra-ffi-codegen = { path = "../tantra-ffi/crates/tantra-ffi-codegen" }
+tantra-ffi-py = { path = "../tantra-ffi/crates/tantra-ffi-py" }
 
 # External dependencies
 tokio = { version = "1", features = ["full"] }

@@ -1,13 +1,13 @@
-# `vyapaar-runtime-config` — Run Configuration Reference
+# `tantra-runtime-config` — Run Configuration Reference
 
-Crate `crates/vyapaar-runtime-config/` (1 src file, 3 test files).
+Crate `crates/tantra-runtime-config/` (1 src file, 3 test files).
 
 ## 1. Purpose
 
 The single declared type a caller submits to run a backtest. Config is the input
 to every surface — a backtest, a sweep, a live session, a CI job — so it is one
 schema the code generator, the REST layer, and the CLI all walk, instead of a
-TOML parsed ad hoc in four places. It lives in its own crate (not `vyapaar-cli`)
+TOML parsed ad hoc in four places. It lives in its own crate (not `tantra-cli`)
 so codegen and REST depend on it without the CLI.
 
 ## 2. Public API
@@ -21,11 +21,11 @@ pub struct BacktestRunConfig {
     pub execution: ExecutionConfig,   // default fill_model = BarFill
     pub account: AccountConfig,       // default starting_cash = 1_000_000.0, currency = "INR"
     pub seed: u64,                    // required; same seed + data ⇒ identical journal
-    pub risk: RiskLimits,             // re-exported from vyapaar_risk (ADR 0018); absent = no limits
+    pub risk: RiskLimits,             // re-exported from tantra_risk (ADR 0018); absent = no limits
 }
 ```
 
-- `DataSourceConfig` — `Local { root }` (Parquet catalog read via `vyapaar-feed`)
+- `DataSourceConfig` — `Local { root }` (Parquet catalog read via `tantra-feed`)
   or `Adapter { name }` (broker adapter resolved at run time, e.g. `dhan`).
 - `ExecutionConfig { fill_model, cost_model_version = "latest", slippage_multiplier = 1.0, apply_market_calendar = true }`.
   `FillModel` (non-exhaustive, snake_case on the wire): `BarFill` (default: fill at
@@ -37,7 +37,7 @@ pub struct BacktestRunConfig {
   (a missing field ⇒ `false`) while the struct's `Default` impl sets `true` —
   explicit TOML and programmatic defaults differ.
 - `AccountConfig { starting_cash: f64, currency = "INR" }`.
-- `[risk]` is the `vyapaar_risk::RiskLimits` / `OrderRateLimit` pair re-exported
+- `[risk]` is the `tantra_risk::RiskLimits` / `OrderRateLimit` pair re-exported
   here so run configs, the CLI, and the REST server share one definition.
 
 ### `validate()` — checked at the door
@@ -82,12 +82,12 @@ consumes it; the same bytes are echoed into the run's assumptions block.
 
 The historical header comment in `alpha30_factor.toml` still says
 `honba_config::BacktestRunConfig` and `crates/honba-config/tests/configs.rs` —
-a rename-era leftover; the type is `vyapaar_runtime_config::BacktestRunConfig`.
+a rename-era leftover; the type is `tantra_runtime_config::BacktestRunConfig`.
 
 ## 5. Dependencies
 
-`schemars` (JsonSchema for codegen), `serde`, `vyapaar-core` (`InstrumentId`),
-`vyapaar-risk` (`RiskLimits`, `OrderRateLimit`), `vyapaar-runtime-strategy`
+`schemars` (JsonSchema for codegen), `serde`, `tantra-core` (`InstrumentId`),
+`tantra-risk` (`RiskLimits`, `OrderRateLimit`), `tantra-runtime-strategy`
 (`StrategyManifest`, `Universe`).
 
 ## 6. Tests (`tests/`, 3 files)

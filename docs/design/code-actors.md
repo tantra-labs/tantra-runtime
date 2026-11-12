@@ -1,6 +1,6 @@
-# `vyapaar-runtime-actors` — Actor System Reference
+# `tantra-runtime-actors` — Actor System Reference
 
-Crate `crates/vyapaar-runtime-actors/` (13 src files, ~3.2k lines).
+Crate `crates/tantra-runtime-actors/` (13 src files, ~3.2k lines).
 Crate doc: *"Asynchronous actor runtime and supervision tree for market data, strategies,
 risk gate, and execution"*.
 
@@ -20,7 +20,7 @@ verify functions, and deterministic backpressure.
 | `market_data.rs` | `MarketDataActor` — tick/bar ingestion, subscription filtering, coalescing, backpressure, broadcast |
 | `strategy.rs` | `Strategy` trait (actor-side async trait) + `StrategyActor<S>` |
 | `sizing.rs` | `PositionSizingActor` + `SimplePositionSizer` (hexagonal `PositionSizer` port) |
-| `risk.rs` | `RiskActor` — synchronous `vyapaar_risk::RiskEngine` wrapper, breach events, audit persistence |
+| `risk.rs` | `RiskActor` — synchronous `tantra_risk::RiskEngine` wrapper, breach events, audit persistence |
 | `execution.rs` | `ExecutionActor` — broker dispatch via `BrokerExecutor`, OMS idempotency, audit persistence |
 | `portfolio.rs` | `PortfolioActor` — FIFO tax-lot accounting, statutory fee calc, ledger posting; `SymbolMapper` |
 | `supervisor.rs` | `Supervisor` — supervision-tree construction, restart strategies, staged graceful shutdown |
@@ -88,7 +88,7 @@ span + metrics.
 
 ### `PositionSizingActor`
 Default sizer `SimplePositionSizer` (delegates to pure
-`vyapaar_core::sizing::calculate_position_size` via the `PositionSizer` port); defaults
+`tantra_core::sizing::calculate_position_size` via the `PositionSizer` port); defaults
 `SizingMethod::FixedFractional { risk_pct: 0.01 }`. Entry price = limit price else ₹100.00
 placeholder; zero-size results keep quantity 1; sizer errors forward the unadjusted order.
 Portfolio updates arrive only via the explicit `UpdatePortfolio` message (no auto-fill sync).
@@ -108,15 +108,15 @@ on `client_order_id` (duplicate ⇒ `InvalidRequest`), `register_order` at `Pend
 timed `broker.place_order` — ack ⇒ `New` + audit + metrics; error ⇒ `Rejected`. `CancelOrder`
 on success emits the `Cancelled` span (fresh correlation `Uuid::new_v4()`), an audit row, and
 forwards `RiskMsg::RecordCancellation`. `RiskBreachEvent` is mirrored into
-`vyapaar_runtime_persistence::RiskBreachEvent` for the audit ledger. Shutdown drains remaining
+`tantra_runtime_persistence::RiskBreachEvent` for the audit ledger. Shutdown drains remaining
 queued messages (`try_recv` loop) before stopping.
 
 ### `PortfolioActor` (standalone, not wired by `Supervisor`)
 Consumes `PortfolioMsg`; owns a single default account. `ProcessFill`:
-`vyapaar_ledger_portfolio::apply_fill_to_account` (FIFO tax-lot matching) + exact-`Decimal`
+`tantra_ledger_portfolio::apply_fill_to_account` (FIFO tax-lot matching) + exact-`Decimal`
 statutory fees (STT 0.1% delivery / 0.025% intraday sell-only; NSE turnover ₹2.97/crore; SEBI
 ₹10/crore; stamp duty 0.015% buy-side; GST 18%; DP ₹13.50+GST on delivery sell — all
-`.floor()`; brokerage placeholder ₹0) + a `vyapaar_ledger_journal::Transaction` posting.
+`.floor()`; brokerage placeholder ₹0) + a `tantra_ledger_journal::Transaction` posting.
 `GetSnapshot` computes MTM unrealized PnL from marks; `GetTaxSummary` delegates to
 `TaxSummary::from_fills`; `SettleTrades` is a **stub** (zeroed `PortfolioSettleResult`).
 `SymbolMapper` maps broker exchange tokens → canonical `InstrumentId`.
@@ -164,12 +164,12 @@ actual-vs-threshold.
 
 ## 7. Dependencies
 
-`vyapaar-core`, `vyapaar-risk`, `vyapaar-ledger` (+ `-portfolio`/`-oms`/`-journal`),
-`vyapaar-runtime-persistence` (`SqliteAuditLedger` + the `RiskBreachEvent` mirror),
-`vyapaar-exec-core` (`BrokerExecutor`/`BrokerError`); `tokio` (full), `tokio-util 0.7`
+`tantra-core`, `tantra-risk`, `tantra-ledger` (+ `-portfolio`/`-oms`/`-journal`),
+`tantra-runtime-persistence` (`SqliteAuditLedger` + the `RiskBreachEvent` mirror),
+`tantra-exec-core` (`BrokerExecutor`/`BrokerError`); `tokio` (full), `tokio-util 0.7`
 (CancellationToken), `async-trait`, `futures`, `chrono`, `rust_decimal`, `thiserror`,
 `tracing`, `serde`/`serde_json`, `uuid`, `prometheus 0.13`, `axum 0.7`. Dev:
-`tracing-subscriber`, `vyapaar-runtime-testing`.
+`tracing-subscriber`, `tantra-runtime-testing`.
 
 ## 8. Tests (`tests/`, 5 files)
 
@@ -196,6 +196,6 @@ actual-vs-threshold.
 
 - `code-persistence.md` — `SqliteAuditLedger` used by Risk/Execution audit
 - `code-api-rest.md` — the HTTP/WS surface that feeds the actor system
-- `vyapaar-risk` — `RiskActor` delegates to `RiskEngine`
-- `vyapaar-exec` — `ExecutionActor` dispatches to `BrokerExecutor`
-- `vyapaar-ledger` — `PortfolioActor` uses portfolio/OMS/journal crates
+- `tantra-risk` — `RiskActor` delegates to `RiskEngine`
+- `tantra-exec` — `ExecutionActor` dispatches to `BrokerExecutor`
+- `tantra-ledger` — `PortfolioActor` uses portfolio/OMS/journal crates

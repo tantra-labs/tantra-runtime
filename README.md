@@ -1,4 +1,4 @@
-# व्यापार・运行时 vyapaar-runtime
+# व्यापार・运行时 tantra-runtime
 
 > *Central Runtime & Automation: Tokio actor pipeline, event-driven backtester, strategy enhancer (GA/WFO), Axum REST/WS API, cron jobs, and SQLite snapshots.*
 
@@ -6,17 +6,17 @@ Core orchestration engine uniting data feeds, risk gates, strategies, and execut
 
 ## Subcrates
 
-- `vyapaar-runtime` — Unified runtime runner
-- `vyapaar-runtime-actors` — Tokio actor engine and message router
-- `vyapaar-runtime-backtest` — Event-driven historical backtester
-- `vyapaar-runtime-strategy` — Strategy lifecycle manager and signal pipeline
-- `vyapaar-runtime-enhancer` — Genetic algorithm & walk-forward optimizer
-- `vyapaar-runtime-persistence` — SQLite state snapshots & git2 versioned state
-- `vyapaar-runtime-api` — Core RPC/API definitions
-- `vyapaar-runtime-api-rest` — Axum REST & WebSocket server
-- `vyapaar-runtime-jobs` — Cron scheduler & background task worker
-- `vyapaar-runtime-config` — Layered environment & TOML configuration
-- `vyapaar-runtime-testing` — Mock brokers, feeds, and harness fixtures
+- `tantra-runtime` — Unified runtime runner
+- `tantra-runtime-actors` — Tokio actor engine and message router
+- `tantra-runtime-backtest` — Event-driven historical backtester
+- `tantra-runtime-strategy` — Strategy lifecycle manager and signal pipeline
+- `tantra-runtime-enhancer` — Genetic algorithm & walk-forward optimizer
+- `tantra-runtime-persistence` — SQLite state snapshots & git2 versioned state
+- `tantra-runtime-api` — Core RPC/API definitions
+- `tantra-runtime-api-rest` — Axum REST & WebSocket server
+- `tantra-runtime-jobs` — Cron scheduler & background task worker
+- `tantra-runtime-config` — Layered environment & TOML configuration
+- `tantra-runtime-testing` — Mock brokers, feeds, and harness fixtures
 
 ## Build & Test
 

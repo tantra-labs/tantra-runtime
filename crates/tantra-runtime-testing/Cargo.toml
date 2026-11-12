@@ -1,0 +1,33 @@
+[package]
+name = "tantra-runtime-testing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "tantra_runtime_testing"
+
+[dependencies]
+tantra-core.workspace = true
+tantra-risk.workspace = true
+tantra-runtime-config.workspace = true
+tantra-runtime-strategy.workspace = true
+tantra-ledger-portfolio.workspace = true
+tantra-market-core.workspace = true
+tantra-exec-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+arrow.workspace = true
+parquet.workspace = true
+tempfile = "3"

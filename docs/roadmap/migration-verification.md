@@ -1,6 +1,6 @@
-# `vyapaar-runtime` — Migration Verification Milestone
+# `tantra-runtime` — Migration Verification Milestone
 
-Verification commands for the `honba-ya → vyapaar-runtime` migration:
+Verification commands for the `honba-ya → tantra-runtime` migration:
 
 ```bash
 # Run from the repository root
@@ -14,18 +14,18 @@ cargo test --workspace
 
 | Milestone | Status |
 |-----------|--------|
-| `vyapaar-runtime-config` — Typed TOML/env configuration | Complete |
-| `vyapaar-runtime-testing` — Deterministic `MockBroker`, `ScriptedGateway` | Complete |
-| `vyapaar-runtime-strategy` — `Strategy` trait, `StepPipeline` | Complete |
-| `vyapaar-runtime-persistence` — SQLite/PostgreSQL ledger repositories | Complete |
-| `vyapaar-runtime-backtest` — Event-driven backtester | Complete |
-| `vyapaar-runtime-enhancer` — GA, Bayesian TPE, WFO, DSR optimizers | Complete |
-| `vyapaar-runtime-actors` — Supervised Tokio actor pipeline | Complete |
-| `vyapaar-runtime-jobs` — `JobScheduler`, `CronSchedule`, `JobSpec` | Complete |
-| `vyapaar-runtime-api` — API service traits and DTOs | Complete |
-| `vyapaar-runtime-api-rest` — Axum REST + `/ws/live` WebSocket | Complete |
-| `vyapaar-runtime-feed`, `vyapaar-runtime-market`, `vyapaar-indicators` | Complete |
-| `vyapaar-runtime-test-utils` — Shared test utilities | Complete |
+| `tantra-runtime-config` — Typed TOML/env configuration | Complete |
+| `tantra-runtime-testing` — Deterministic `MockBroker`, `ScriptedGateway` | Complete |
+| `tantra-runtime-strategy` — `Strategy` trait, `StepPipeline` | Complete |
+| `tantra-runtime-persistence` — SQLite/PostgreSQL ledger repositories | Complete |
+| `tantra-runtime-backtest` — Event-driven backtester | Complete |
+| `tantra-runtime-enhancer` — GA, Bayesian TPE, WFO, DSR optimizers | Complete |
+| `tantra-runtime-actors` — Supervised Tokio actor pipeline | Complete |
+| `tantra-runtime-jobs` — `JobScheduler`, `CronSchedule`, `JobSpec` | Complete |
+| `tantra-runtime-api` — API service traits and DTOs | Complete |
+| `tantra-runtime-api-rest` — Axum REST + `/ws/live` WebSocket | Complete |
+| `tantra-runtime-feed`, `tantra-runtime-market`, `tantra-indicators` | Complete |
+| `tantra-runtime-test-utils` — Shared test utilities | Complete |
 | `cargo fmt --check` | Clean |
 | `cargo clippy --all-targets -- -D warnings` | Clean |
 | `cargo test --workspace` | Passing |

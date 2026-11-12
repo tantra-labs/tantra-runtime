@@ -1,17 +1,17 @@
-# `vyapaar-runtime-testing` & `vyapaar-runtime-test-utils` — Test Harness Reference
+# `tantra-runtime-testing` & `tantra-runtime-test-utils` — Test Harness Reference
 
-Crates `crates/vyapaar-runtime-testing/` (5 src files) and
-`crates/vyapaar-runtime-test-utils/` (stub).
+Crates `crates/tantra-runtime-testing/` (5 src files) and
+`crates/tantra-runtime-test-utils/` (stub).
 
 ## 1. Purpose
 
-`vyapaar-runtime-testing` is the deterministic test harness for the runtime's
+`tantra-runtime-testing` is the deterministic test harness for the runtime's
 actor pipeline, execution paths, and backtests: a mock `BrokerExecutor`, an
 empty `MarketDataFeed`, simulation fill helpers, and fixed-time fixtures.
-`vyapaar-runtime-test-utils` is an empty stub placeholder (`// Stub crate:
-vyapaar-testing`) kept for workspace shape.
+`tantra-runtime-test-utils` is an empty stub placeholder (`// Stub crate:
+tantra-testing`) kept for workspace shape.
 
-## 2. Module Map (`vyapaar-runtime-testing`)
+## 2. Module Map (`tantra-runtime-testing`)
 
 | File | Contents |
 |---|---|
@@ -51,7 +51,7 @@ pub fn simulated_fill(
 ) -> Fill
 ```
 
-Builds a `vyapaar_ledger_portfolio::Fill` directly (Delivery product,
+Builds a `tantra_ledger_portfolio::Fill` directly (Delivery product,
 `account_id = "default"`, trade id `SIM-{ts_nanos}`) — no broker in the loop.
 
 ### Fixtures (`fixtures.rs`)
@@ -74,15 +74,15 @@ feed them to actor pipelines or backtests with `MockBrokerExecutor` /
 
 ## 5. Dependencies
 
-`vyapaar-core`, `vyapaar-ledger-portfolio`, `vyapaar-exec-core`
-(`BrokerExecutor` port), `vyapaar-market-core` (`MarketDataFeed`, `Tick`),
+`tantra-core`, `tantra-ledger-portfolio`, `tantra-exec-core`
+(`BrokerExecutor` port), `tantra-market-core` (`MarketDataFeed`, `Tick`),
 `tokio`, `async-trait`, `rust_decimal`, `rust_decimal_macros`, `chrono`,
 `uuid`, `futures`.
 
 ## 6. Tests
 
 The crate is the test support library; it has no own `tests/` directory. Its
-consumers include `vyapaar-runtime-actors` (`actor_runtime_tests.rs`,
+consumers include `tantra-runtime-actors` (`actor_runtime_tests.rs`,
 `e2e_integration_stress.rs`, `observability_audit_tests.rs`) and other runtime
 crates' test suites.
 
@@ -93,13 +93,13 @@ crates' test suites.
 - **No wall-clock, no network, no I/O**: mocks are in-memory only.
 - **Zero floats in assertions**: `exact_decimal` is the only sanctioned f64
   entry point, and it converts exactly via string parsing.
-- The sibling placeholder crates `vyapaar-runtime-market` and
-  `vyapaar-indicators` are also stubs (`// Stub crate: ...`); real market-data
-  and indicator code lives in the `vyapaar-market` repo. See `code-feed.md`
+- The sibling placeholder crates `tantra-runtime-market` and
+  `tantra-indicators` are also stubs (`// Stub crate: ...`); real market-data
+  and indicator code lives in the `tantra-market` repo. See `code-feed.md`
   for the placeholder table.
 
 ## Related
 
 - `code-actors.md` — the pipelines these mocks drive
 - `code-backtest.md` — the engine `simulated_fill` feeds
-- `vyapaar-exec-core` — the `BrokerExecutor` port `MockBrokerExecutor` implements
+- `tantra-exec-core` — the `BrokerExecutor` port `MockBrokerExecutor` implements

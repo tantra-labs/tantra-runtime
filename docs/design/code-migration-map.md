@@ -1,45 +1,45 @@
-# `vyapaar-runtime` — Historical Migration Map (honba-ya → vyapaar-runtime)
+# `tantra-runtime` — Historical Migration Map (honba-ya → tantra-runtime)
 
-> **Tier**: Tier 3B (Depends on `vyapaar-core`, `vyapaar-risk`, `vyapaar-ledger`, `vyapaar-market`, `vyapaar-exec`)
+> **Tier**: Tier 3B (Depends on `tantra-core`, `tantra-risk`, `tantra-ledger`, `tantra-market`, `tantra-exec`)
 > **Source**: `honba-workspace/honba-ya`
-> **Target**: `vyapaar-runtime`
+> **Target**: `tantra-runtime`
 > **Status**: Migration complete (all 10 sub-crates ported).
 
 ## Sub-Crate Mapping Table (Migrated in Listed Order)
 
-| Order | Source Crate (`honba-ya/crates/`) | Target Crate (`vyapaar-runtime/crates/`) | Key Refactoring & Renames |
+| Order | Source Crate (`honba-ya/crates/`) | Target Crate (`tantra-runtime/crates/`) | Key Refactoring & Renames |
 | :---: | :--- | :--- | :--- |
-| 1 | `honba-ya-config` | `vyapaar-runtime-config` | Port config loaders and TOML schemas. |
-| 2 | `honba-ya-testing` | `vyapaar-runtime-testing` | Move `src/tests/*.rs` to `tests/`. Remove `#[cfg(test)] mod tests;` from `src/lib.rs`. |
-| 3 | `honba-ya-strategy` | `vyapaar-runtime-strategy` | Move `src/tests/*.rs` to `tests/`. Remove `#[cfg(test)] mod tests;` from `src/lib.rs`. Wire to `vyapaar_risk`. |
-| 4 | `honba-ya-persistence` | `vyapaar-runtime-persistence` | Copy `migrations/` and `src/`. Implement `vyapaar_ledger` repository traits. |
-| 5 | `honba-ya-backtest` | `vyapaar-runtime-backtest` | Wire to `vyapaar_ledger_journal`, `vyapaar_ledger_portfolio`, `vyapaar_market_finance`, `vyapaar_runtime_strategy`. |
-| 6 | `honba-ya-enhancer` | `vyapaar-runtime-enhancer` | Port GA, Bayesian TPE, WFO, DSR, and Odysseus optimizers. |
-| 7 | `honba-ya-actors` | `vyapaar-runtime-actors` | Port actor pipeline and supervision tree. |
-| 8 | *(New Crate)* | `vyapaar-runtime-jobs` | Implement deterministic `JobScheduler`, `CronSchedule`, `JobSpec` + `tests/unit_tests.rs`. |
-| 9 | `honba-ya-api` | `vyapaar-runtime-api` | Port API service traits and models. |
-| 10 | `honba-ya-api-rest` | `vyapaar-runtime-api-rest` | Port Axum REST routes, `/ws/live` WebSocket broadcaster, screener endpoints, and OpenAPI generator. |
-| *(new)* | *(new)* | `vyapaar-runtime-feed` | Market data feed adapter crate. |
-| *(new)* | *(new)* | `vyapaar-runtime-market` | Market data normalization crate. |
-| *(new)* | *(new)* | `vyapaar-indicators` | Technical indicators crate. |
-| *(new)* | *(new)* | `vyapaar-runtime-test-utils` | Shared test utilities crate. |
+| 1 | `honba-ya-config` | `tantra-runtime-config` | Port config loaders and TOML schemas. |
+| 2 | `honba-ya-testing` | `tantra-runtime-testing` | Move `src/tests/*.rs` to `tests/`. Remove `#[cfg(test)] mod tests;` from `src/lib.rs`. |
+| 3 | `honba-ya-strategy` | `tantra-runtime-strategy` | Move `src/tests/*.rs` to `tests/`. Remove `#[cfg(test)] mod tests;` from `src/lib.rs`. Wire to `tantra_risk`. |
+| 4 | `honba-ya-persistence` | `tantra-runtime-persistence` | Copy `migrations/` and `src/`. Implement `tantra_ledger` repository traits. |
+| 5 | `honba-ya-backtest` | `tantra-runtime-backtest` | Wire to `tantra_ledger_journal`, `tantra_ledger_portfolio`, `tantra_market_finance`, `tantra_runtime_strategy`. |
+| 6 | `honba-ya-enhancer` | `tantra-runtime-enhancer` | Port GA, Bayesian TPE, WFO, DSR, and Odysseus optimizers. |
+| 7 | `honba-ya-actors` | `tantra-runtime-actors` | Port actor pipeline and supervision tree. |
+| 8 | *(New Crate)* | `tantra-runtime-jobs` | Implement deterministic `JobScheduler`, `CronSchedule`, `JobSpec` + `tests/unit_tests.rs`. |
+| 9 | `honba-ya-api` | `tantra-runtime-api` | Port API service traits and models. |
+| 10 | `honba-ya-api-rest` | `tantra-runtime-api-rest` | Port Axum REST routes, `/ws/live` WebSocket broadcaster, screener endpoints, and OpenAPI generator. |
+| *(new)* | *(new)* | `tantra-runtime-feed` | Market data feed adapter crate. |
+| *(new)* | *(new)* | `tantra-runtime-market` | Market data normalization crate. |
+| *(new)* | *(new)* | `tantra-indicators` | Technical indicators crate. |
+| *(new)* | *(new)* | `tantra-runtime-test-utils` | Shared test utilities crate. |
 
 ## Mandatory DDD Fixes During Migration
 
 1. **Strict Parallel Test Directory Compliance**:
-   - In `honba-ya-strategy`, `src/tests/` (`context.rs`, `dyn_strategy.rs`, `intent.rs`, `ir.rs`, `ledger.rs`, `look_ahead.rs`, `manifest.rs`, `mtf.rs`, `runner_*.rs`) lived inside `src/`. Move them into `crates/vyapaar-runtime-strategy/tests/`.
-   - In `honba-ya-testing`, `src/tests/` (`assert.rs`, `feed.rs`, `fixtures.rs`, `ports.rs`, `recorder.rs`, `scripted_gateway.rs`) lived inside `src/`. Move them into `crates/vyapaar-runtime-testing/tests/`.
+   - In `honba-ya-strategy`, `src/tests/` (`context.rs`, `dyn_strategy.rs`, `intent.rs`, `ir.rs`, `ledger.rs`, `look_ahead.rs`, `manifest.rs`, `mtf.rs`, `runner_*.rs`) lived inside `src/`. Move them into `crates/tantra-runtime-strategy/tests/`.
+   - In `honba-ya-testing`, `src/tests/` (`assert.rs`, `feed.rs`, `fixtures.rs`, `ports.rs`, `recorder.rs`, `scripted_gateway.rs`) lived inside `src/`. Move them into `crates/tantra-runtime-testing/tests/`.
 2. **Import Replacements**:
-   - `honba_core` → `vyapaar_core`
-   - `honba_mon` → `vyapaar_risk`
-   - `honba_kokoro` → `vyapaar_ledger`
-   - `honba_kokoro_oms` → `vyapaar_ledger_oms`
-   - `honba_kokoro_portfolio` / `honba_portfolio` → `vyapaar_ledger_portfolio`
-   - `honba_kokoro_ledger` → `vyapaar_ledger_journal`
-   - `honba_me_*` → `vyapaar_market_*` (`honba_me_market` → `vyapaar_market_finance`)
-   - `honba_te_*` → `vyapaar_exec_*`
-   - `honba_ya_*` → `vyapaar_runtime_*`
-3. Copy `honba-ya/configs/` into `vyapaar-runtime/configs/`.
+   - `honba_core` → `tantra_core`
+   - `honba_mon` → `tantra_risk`
+   - `honba_kokoro` → `tantra_ledger`
+   - `honba_kokoro_oms` → `tantra_ledger_oms`
+   - `honba_kokoro_portfolio` / `honba_portfolio` → `tantra_ledger_portfolio`
+   - `honba_kokoro_ledger` → `tantra_ledger_journal`
+   - `honba_me_*` → `tantra_market_*` (`honba_me_market` → `tantra_market_finance`)
+   - `honba_te_*` → `tantra_exec_*`
+   - `honba_ya_*` → `tantra_runtime_*`
+3. Copy `honba-ya/configs/` into `tantra-runtime/configs/`.
 
 ## Verification Commands
 

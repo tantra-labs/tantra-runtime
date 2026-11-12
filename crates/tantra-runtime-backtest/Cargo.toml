@@ -1,0 +1,36 @@
+[package]
+name = "tantra-runtime-backtest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "tantra_runtime_backtest"
+
+[dependencies]
+tantra-core.workspace = true
+tantra-risk.workspace = true
+tantra-ledger.workspace = true
+tantra-ledger-portfolio.workspace = true
+tantra-ledger-journal.workspace = true
+tantra-runtime-strategy.workspace = true
+arrow.workspace = true
+parquet.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tempfile = "3"
+tantra-agent.workspace = true

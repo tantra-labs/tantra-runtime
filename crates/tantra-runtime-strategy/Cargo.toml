@@ -1,0 +1,39 @@
+[package]
+name = "tantra-runtime-strategy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Strategy trait, runner state machine, and manifest contracts for Tantra"
+
+[lib]
+name = "tantra_runtime_strategy"
+
+[dependencies]
+tantra-core.workspace = true
+tantra-risk.workspace = true
+tantra-market-indicators.workspace = true
+tantra-market-finance.workspace = true
+tantra-exec-core.workspace = true
+tantra-exec-zerodha.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+rust_decimal.workspace = true
+toml.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+serde_json.workspace = true
+tantra-runtime-test-utils.workspace = true
+tantra-runtime-feed.workspace = true
+tantra-runtime-market.workspace = true
+tantra-runtime-testing.workspace = true
+
+[features]
+legacy_engine = []

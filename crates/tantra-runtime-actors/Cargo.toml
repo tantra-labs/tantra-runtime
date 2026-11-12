@@ -1,0 +1,41 @@
+[package]
+name = "tantra-runtime-actors"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Asynchronous actor runtime and supervision tree for market data, strategies, risk gate, and execution"
+
+[lib]
+name = "tantra_runtime_actors"
+
+[dependencies]
+tantra-core.workspace = true
+tantra-risk.workspace = true
+tantra-ledger.workspace = true
+tantra-runtime-persistence.workspace = true
+tantra-exec-core = { path = "../../../tantra-exec/crates/tantra-exec-core" }
+tokio.workspace = true
+tokio-util.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+prometheus.workspace = true
+axum.workspace = true
+tantra-ledger-portfolio.workspace = true
+tantra-ledger-oms.workspace = true
+tantra-ledger-journal.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tracing-subscriber.workspace = true
+tantra-runtime-testing = { path = "../tantra-runtime-testing" }
+tantra-exec-core = { path = "../../../tantra-exec/crates/tantra-exec-core" }

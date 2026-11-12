@@ -1,16 +1,16 @@
-# `vyapaar-runtime` — TDD & Engineering Roadmap
+# `tantra-runtime` — TDD & Engineering Roadmap
 
 ## Milestone 1: Config, Testing Harness & Pure Strategy Runtime (P0) — [COMPLETED]
-- [x] Port `vyapaar-runtime-config`, `vyapaar-runtime-testing`, and `vyapaar-runtime-strategy`.
-- [x] Relocate `src/tests/` out of `vyapaar-runtime-strategy/src/` and `vyapaar-runtime-testing/src/` into `tests/`.
+- [x] Port `tantra-runtime-config`, `tantra-runtime-testing`, and `tantra-runtime-strategy`.
+- [x] Relocate `src/tests/` out of `tantra-runtime-strategy/src/` and `tantra-runtime-testing/src/` into `tests/`.
 
 ## Milestone 2: Persistence, Backtester & Strategy Enhancer (P0) — [COMPLETED]
-- [x] Port `vyapaar-runtime-persistence` implementing `vyapaar-ledger` repository traits.
-- [x] Port `vyapaar-runtime-backtest` and `vyapaar-runtime-enhancer`.
+- [x] Port `tantra-runtime-persistence` implementing `tantra-ledger` repository traits.
+- [x] Port `tantra-runtime-backtest` and `tantra-runtime-enhancer`.
 
 ## Milestone 3: Supervised Actors, Cron Jobs & Axum REST/WS Gateway (P0) — [COMPLETED]
-- [x] Port `vyapaar-runtime-actors`, `vyapaar-runtime-api`, and `vyapaar-runtime-api-rest`.
-- [x] Implement `vyapaar-runtime-jobs` (`JobScheduler`, `ScheduledJob`, `JobStatus`, deterministic tick-driven cron evaluator).
+- [x] Port `tantra-runtime-actors`, `tantra-runtime-api`, and `tantra-runtime-api-rest`.
+- [x] Implement `tantra-runtime-jobs` (`JobScheduler`, `ScheduledJob`, `JobStatus`, deterministic tick-driven cron evaluator).
 
 ## Migration Verification — [COMPLETED]
 - [x] `cargo fmt --check` — clean

@@ -1,0 +1,25 @@
+[package]
+name = "tantra-runtime-enhancer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Strategy optimization and enhancement tools for Tantra platform"
+
+[dependencies]
+tantra-core.workspace = true
+tantra-risk.workspace = true
+tantra-runtime-actors.workspace = true
+tantra-runtime-backtest.workspace = true
+tantra-runtime-strategy.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+rand_distr.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+num_cpus.workspace = true
+rayon.workspace = true
+statrs.workspace = true

@@ -4,7 +4,7 @@
 
 ## What's stubbed or hardcoded
 
-`crates/vyapaar-runtime-api-rest/src/chat_market.rs`'s `FeedMarketReader`/`FeedSnapshotSource`
+`crates/tantra-runtime-api-rest/src/chat_market.rs`'s `FeedMarketReader`/`FeedSnapshotSource`
 close the market/screener stand-in of
 `docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md` by reading through to the
 same `InstrumentMaster`/`BarReader`/`QuoteReader`/`RiskEngine` ports `AppState` already serves
@@ -18,8 +18,8 @@ and are either approximated or answered with an explicit error rather than fabri
    either, so there is nothing real to report; zero is a placeholder, not an observed value.
 3. **`MarketReader::indicators` and `MarketReader::macro_series` always answer
    `PortError::unavailable`.** No indicator engine or macro-economic data source exists anywhere
-   in `vyapaar-runtime` yet for the chat tools to read from.
-4. **`InstrumentSearchResult::name` falls back to the raw symbol.** `vyapaar_market_store::wire::Instrument`
+   in `tantra-runtime` yet for the chat tools to read from.
+4. **`InstrumentSearchResult::name` falls back to the raw symbol.** `tantra_market_store::wire::Instrument`
    has no human-readable display-name field, only `id()` (the `InstrumentId`), `kind()`,
    `currency()`, `lot_size()`, `tick_size()`.
 5. **`SnapshotData::regime` and `SnapshotData::risk_metrics` are always `None`/empty.**
@@ -28,29 +28,29 @@ and are either approximated or answered with an explicit error rather than fabri
 6. **`MarketReader::block_deals` always answers `PortError::unavailable`.** Added with chat tool
    `block_deals` (plan 0004 Phases 1–3): no block/bulk deal disclosure data source is ingested
    anywhere yet — the upstream ingestion decision lives in
-   `vyapaar-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`. The tool reports the gap
+   `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`. The tool reports the gap
    explicitly instead of the model fabricating deals.
 7. **`ContentReader::news_search` and `ContentReader::filings_search` always answer
    `PortError::unavailable`.** Added with chat tools `news_search`/`filings_search`
-   (`vyapaar-agent` plan 0006 Phase 3) via the new
-   `crates/vyapaar-runtime-api-rest/src/chat_content.rs::FeedContentReader`: news has no data
-   source anywhere yet (`vyapaar-data/docs/gaps/0006-news-ingestion.md`), and filings are ingested
-   in `vyapaar-data`'s Python service (closed gap 0003) but nothing bridges that lakehouse into
-   Rust consumers yet (`vyapaar-data/docs/gaps/0007-filings-rust-bridge.md`). Both report the gap
+   (`tantra-agent` plan 0006 Phase 3) via the new
+   `crates/tantra-runtime-api-rest/src/chat_content.rs::FeedContentReader`: news has no data
+   source anywhere yet (`tantra-data/docs/gaps/0006-news-ingestion.md`), and filings are ingested
+   in `tantra-data`'s Python service (closed gap 0003) but nothing bridges that lakehouse into
+   Rust consumers yet (`tantra-data/docs/gaps/0007-filings-rust-bridge.md`). Both report the gap
    explicitly instead of the model fabricating headlines or filings.
 8. **`MarketReader::options_chain` always answers `PortError::unavailable`.** Added with chat
-   tool `options_chain` (`vyapaar-agent` plan 0006 Phase 4): `vyapaar-market` holds
+   tool `options_chain` (`tantra-agent` plan 0006 Phase 4): `tantra-market` holds
    contract-reference columns and Greeks pricing but serves no chain enumeration/reader yet
-   (`vyapaar-market/docs/gaps/0001-options-chain-reader.md`, that repo's first filed gap). The
+   (`tantra-market/docs/gaps/0001-options-chain-reader.md`, that repo's first filed gap). The
    seedable `RuntimeMarketReader` (runtime-api) accepts a `set_options_chain` store for tests,
    but `FeedMarketReader` has nothing real to read.
 9. **`MarketReader::corporate_actions` always answers `PortError::unavailable`** in
-   `FeedMarketReader`. Added with chat tool `corporate_actions` (`vyapaar-agent` plan 0006
-   Phase 4): the historical corporate-actions reader exists Python-side (`vyapaar_data`'s
+   `FeedMarketReader`. Added with chat tool `corporate_actions` (`tantra-agent` plan 0006
+   Phase 4): the historical corporate-actions reader exists Python-side (`tantra_data`'s
    `CorporateActionsRepository`/`DuckDbCorporateActionsStore`) but has no Rust-consumer bridge
-   (`vyapaar-data/docs/gaps/0008-corporate-actions-rust-bridge.md`), and its real-world
+   (`tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`), and its real-world
    population additionally waits on
-   `vyapaar-data/docs/gaps/0009-corporate-actions-ingestion.md`. The seedable
+   `tantra-data/docs/gaps/0009-corporate-actions-ingestion.md`. The seedable
    `RuntimeMarketReader` accepts a `set_corporate_actions` store for tests.
 
 ## Why
@@ -66,20 +66,20 @@ scope for a read-through wiring pass.
 
 - Items 1–2: wire a last-trade/volume feed into `QuoteReader` (or a sibling port) and read it from
   `FeedMarketReader::quote`.
-- Item 3: stand up an indicator engine (or reuse one from `vyapaar-market`'s 100+ indicator
+- Item 3: stand up an indicator engine (or reuse one from `tantra-market`'s 100+ indicator
   library) and a macro-economic data source, and implement `FeedMarketReader::indicators`/
   `macro_series` against them instead of returning `PortError::unavailable`.
-- Item 4: add a display-name field to `Instrument` (`vyapaar-market-store`'s `wire.rs`) sourced
+- Item 4: add a display-name field to `Instrument` (`tantra-market-store`'s `wire.rs`) sourced
   from instrument reference data, and read it in `FeedMarketReader::search_instruments`.
 - Item 5: decide which risk metrics (OTR counters, halt status, kill-switch state) the chat agent
   should see, and either build or find a market-regime classifier; wire both into
   `FeedSnapshotSource::snapshot`.
-- Item 6: close `vyapaar-data` gap 0005 (disclosure ingestion), then replace
+- Item 6: close `tantra-data` gap 0005 (disclosure ingestion), then replace
   `FeedMarketReader::block_deals`'s stub with a real read (plan 0004 Phase 4).
-- Item 7: close `vyapaar-data` gaps 0006 (news ingestion) and 0007 (filings → Rust bridge),
+- Item 7: close `tantra-data` gaps 0006 (news ingestion) and 0007 (filings → Rust bridge),
   then replace `FeedContentReader`'s stubs with real reads through the bridge.
-- Item 8: close `vyapaar-market/docs/gaps/0001` (chain enumeration/reader), then replace
+- Item 8: close `tantra-market/docs/gaps/0001` (chain enumeration/reader), then replace
   `FeedMarketReader::options_chain`'s stub with a real read.
-- Item 9: close `vyapaar-data` gaps 0008 (corporate-actions → Rust bridge) and 0009
+- Item 9: close `tantra-data` gaps 0008 (corporate-actions → Rust bridge) and 0009
   (historical ingestion), then replace `FeedMarketReader::corporate_actions`'s stub with a
   real read through the bridge.

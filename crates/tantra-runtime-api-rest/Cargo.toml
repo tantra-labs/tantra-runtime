@@ -1,0 +1,68 @@
+[package]
+name = "tantra-runtime-api-rest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "REST API server for the Tantra platform (axum)"
+
+[lib]
+name = "tantra_runtime_api_rest"
+
+[dependencies]
+tantra-core.workspace = true
+tantra-risk.workspace = true
+tantra-runtime-api.workspace = true
+tantra-runtime-feed.workspace = true
+tantra-runtime-market.workspace = true
+tantra-market-finance.workspace = true
+tantra-runtime-strategy.workspace = true
+tantra-agent-analytics.workspace = true
+tantra-agent-chat.workspace = true
+tantra-agent-core.workspace = true
+tantra-agent-llm.workspace = true
+tantra-agent-chat-tools.workspace = true
+tantra-ledger.workspace = true
+tantra-runtime-config.workspace = true
+tantra-runtime-backtest.workspace = true
+tantra-ledger-journal.workspace = true
+tantra-ledger-portfolio.workspace = true
+tantra-ledger-performance.workspace = true
+tantra-runtime-testing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+schemars.workspace = true
+async-trait.workspace = true
+async-stream.workspace = true
+futures.workspace = true
+tokio-stream.workspace = true
+http-body-util.workspace = true
+serde_urlencoded = "0.7"
+# JWT authentication (HMAC-SHA256 and RSA verification)
+jsonwebtoken = { version = "9.3", default-features = false, features = ["use_pem"] }
+rsa = { version = "0.10.0-rc.19", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+# Run ids: OS entropy at the edge (ADR 0017 decision 2); chrono formats manifest timestamps.
+getrandom = "0.3"
+chrono.workspace = true
+toml = "0.8"
+hex = "0.4"
+sha2 = "0.10"
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+arrow.workspace = true
+parquet.workspace = true
+tempfile = "3"
+tantra-runtime-test-utils = { path = "../tantra-runtime-test-utils" }
+tokio-tungstenite = "0.24"

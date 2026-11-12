@@ -1,0 +1,31 @@
+[package]
+name = "tantra-runtime-persistence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "tantra_runtime_persistence"
+
+[dependencies]
+sqlx.workspace = true
+tantra-core.workspace = true
+tantra-ledger.workspace = true
+tantra-agent-core.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+futures.workspace = true
+rust_decimal_macros.workspace = true

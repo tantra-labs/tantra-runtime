@@ -1,4 +1,4 @@
-# `vyapaar-runtime` Agent Guidelines & Architecture Invariants
+# `tantra-runtime` Agent Guidelines & Architecture Invariants
 
 **Subsystem**: House (Central Actor Runtime & Tester)
 **Language**: Rust (Tokio)
@@ -7,11 +7,11 @@
 ---
 
 ## 1. Role & Architectural Hints
-* `vyapaar-runtime` is the orchestrator and application runtime:
+* `tantra-runtime` is the orchestrator and application runtime:
   1. **Actor System**: Concurrency via message passing across `tokio::sync::mpsc` channels (`MarketDataActor`, `StrategyActor`, `RiskActor`, `ExecutionActor`).
   2. **Event-Driven Backtester**: Processes `MarketEvent` -> `SignalEvent` -> `OrderEvent` -> `FillEvent` with exact parity to live trading.
   3. **Multi-Tier Enhancer**: Vectorized pre-filter, event-driven simulation, and concurrent parameter sweeps (Genetic Algorithms, Bayesian Optimization, Walk-Forward Optimization, Deflated Sharpe Ratio).
-  4. **Headless Axum REST API (`vyapaar-runtime-api-rest`)**: Production OpenAPI 3.1 endpoints and `/ws/live` streaming WebSocket.
+  4. **Headless Axum REST API (`tantra-runtime-api-rest`)**: Production OpenAPI 3.1 endpoints and `/ws/live` streaming WebSocket.
 * **Idea Inheritance**:
   - **NautilusTrader**: Deterministic event-driven backtesting with research-live parity.
   - **Barter-rs**: Concurrent backtesting and latency simulation.

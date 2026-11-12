@@ -1,25 +1,25 @@
-# `vyapaar-runtime-backtest` — Event-Driven Backtester Reference
+# `tantra-runtime-backtest` — Event-Driven Backtester Reference
 
-Crate `crates/vyapaar-runtime-backtest/` — lib name `vyapaar_runtime_backtest`.
+Crate `crates/tantra-runtime-backtest/` — lib name `tantra_runtime_backtest`.
 Crate doc: *"Research-live parity event-driven backtesting engine"*.
 
 ## 1. Purpose
 
-- Drive the **real** sync `vyapaar_runtime_strategy::Strategy` through
-  `vyapaar_runtime_strategy::StrategyRunner` — the identical runner live/paper use — so a
+- Drive the **real** sync `tantra_runtime_strategy::Strategy` through
+  `tantra_runtime_strategy::StrategyRunner` — the identical runner live/paper use — so a
   backtest gets the same pre-trade risk gating, warm-up-bar suppression, and intent/order
   rejection bookkeeping instead of a reimplemented subset.
 - Enforce the canonical event chain `MarketEvent → SignalEvent → OrderEvent → FillEvent`
   deterministically (no wall clock; every timestamp comes from the event).
 - Simulate Indian microstructure: statutory taxes/brokerage via
-  `vyapaar_ledger_journal::TaxCalculator`, double-entry journaling via `post_transaction`,
-  FIFO position/PnL via `vyapaar_ledger_portfolio::AccountState`, ICCL T+1 Demat settlement &
+  `tantra_ledger_journal::TaxCalculator`, double-entry journaling via `post_transaction`,
+  FIFO position/PnL via `tantra_ledger_portfolio::AccountState`, ICCL T+1 Demat settlement &
   margin holdbacks via `ClearingCalendar`/`DematHoldings`/`SettlementEngine`, optional L2 depth
   simulation with latency, slippage, participation caps, adverse fills, and SEBI MIS 15:20
   square-off.
 
 Parity is achieved **by delegation, not reimplementation**: costs, journaling, positions/PnL,
-and settlement use the same canonical `vyapaar-ledger-*` implementations the live actor path
+and settlement use the same canonical `tantra-ledger-*` implementations the live actor path
 uses, so backtest and live agree byte-for-byte on cost and settlement math.
 
 ## 2. Module Map
@@ -67,7 +67,7 @@ Construction wraps the strategy in
 `StrategyRunner::with_context(LedgerContext::with_cash(Money::inr(starting_cash)))
 .with_risk(risk_engine).with_warmup_bars(config.warmup_bars)`, builds
 `ClearingCalendar::with_holidays(&calendar.holidays())` (injecting the real NSE holiday data so
-`vyapaar_ledger_portfolio` never hardcodes its own copy), a `SettlementEngine`,
+`tantra_ledger_portfolio` never hardcodes its own copy), a `SettlementEngine`,
 `AccountState`, `DematHoldings`, and (when L2 is on) an `OrderBook`.
 
 Run entry points:
@@ -87,7 +87,7 @@ pub struct BacktestResult {
     pub final_equity: Decimal,           // settled cash + MTM of live positions
     pub net_pnl: Decimal,                // final_equity − initial_cash
     pub gross_pnl: Decimal,              // FIFO realized PnL summed over fills
-    pub total_fees: TaxBreakdown,        // vyapaar_ledger_journal::TaxBreakdown
+    pub total_fees: TaxBreakdown,        // tantra_ledger_journal::TaxBreakdown
     pub total_trades: usize,             // fills booked
     pub total_signals: usize,            // submitted + order/intent rejections + suppressed
     pub refused_orders: usize,           // runner order rejections
@@ -186,7 +186,7 @@ strategy).
   `load_market_events` sorts by `(timestamp, exchange, symbol)` — the deterministic interleaving.
 - `inspect_summary` (bar counts, first/last timestamps/closes) and `verify_integrity` (empty
   partitions, retrograde timestamps, OHLC bounds, negative volume → `CatalogVerificationReport`).
-- Implements `vyapaar_core::BarReader` (`M1→"1M"` … `W1→"1W"` timeframe mapping).
+- Implements `tantra_core::BarReader` (`M1→"1M"` … `W1→"1W"` timeframe mapping).
 - Column decoding: timestamp `"ts"`|`"timestamp"` as `Int64` (ns) or `Timestamp(...)`; prices as
   `Decimal128` (native, no float) or `Float64` via `decimal_from_f64_lossless` (4-dp, normalized,
   kills binary-float artifacts); volume clamped ≥ 0.
@@ -201,7 +201,7 @@ strategy).
 - `is_trading_day` (Muhurat always trading; weekends never), `session_for_date`,
   `next_trading_day` (strictly after), `is_market_open(utc)` (converts to IST), and
   `holidays()` (Muhurat dates **excluded** — they are trading days).
-- Implements the object-safe `vyapaar_core::TradingCalendar` port, so the engine and enhancer
+- Implements the object-safe `tantra_core::TradingCalendar` port, so the engine and enhancer
   stay decoupled from the concrete NSE venue.
 
 ## 10. `sim/` Modules
@@ -216,12 +216,12 @@ strategy).
 
 ## 11. Dependencies
 
-`vyapaar-core` (types, `BarReader`, `TradingCalendar`, sizing ports), `vyapaar-risk`
-(`RiskEngine`), `vyapaar-ledger-portfolio` (`AccountState`, `ClearingCalendar`, `DematHoldings`,
-`SettlementEngine`), `vyapaar-ledger-journal` (`ProductType`, `TaxBreakdown`, `TaxCalculator`,
-`Transaction`, `post_transaction`), `vyapaar-runtime-strategy` (`Strategy`, `StrategyRunner`,
+`tantra-core` (types, `BarReader`, `TradingCalendar`, sizing ports), `tantra-risk`
+(`RiskEngine`), `tantra-ledger-portfolio` (`AccountState`, `ClearingCalendar`, `DematHoldings`,
+`SettlementEngine`), `tantra-ledger-journal` (`ProductType`, `TaxBreakdown`, `TaxCalculator`,
+`Transaction`, `post_transaction`), `tantra-runtime-strategy` (`Strategy`, `StrategyRunner`,
 `LedgerContext`), `arrow`/`parquet` (catalog), `rust_decimal`, `chrono`, `serde`, `uuid`,
-`tracing`, `tokio`. Dev: `tempfile` (synthetic catalogs), `vyapaar-agent` (deterministic
+`tracing`, `tokio`. Dev: `tempfile` (synthetic catalogs), `tantra-agent` (deterministic
 LLM-prompt replay test).
 
 ## 12. Tests (`tests/`, 10 files, 41 tests)
@@ -237,7 +237,7 @@ LLM-prompt replay test).
 | `l2_participation_cap_tests.rs` | Market orders clamped to the participation cap; within-cap fills fully |
 | `mis_square_off_tests.rs` | All open MIS positions closed at 15:20 IST; eligibility tracking; no square-off for delivery |
 | `stop_fill_tests.rs` | Gap-below sell stop fills at bar open; no gap fills at trigger; gap-above buy stop; untriggered stop keeps market fill; same-bar stop-before-target (E3); stop-limit unmarketable then marketable |
-| `catalog_and_settlement_tests.rs` | L2 depth-walking VWAP + limit matching; spread-crossing + adverse-fill slippage; ICCL T+1 settlement, margin holdbacks, double-entry ledger; intraday statutory rates; synthetic partitions + `BarReader`; Lakehouse v2 `Decimal128` schema; real `vyapaar-data` catalog ingestion when present |
+| `catalog_and_settlement_tests.rs` | L2 depth-walking VWAP + limit matching; spread-crossing + adverse-fill slippage; ICCL T+1 settlement, margin holdbacks, double-entry ledger; intraday statutory rates; synthetic partitions + `BarReader`; Lakehouse v2 `Decimal128` schema; real `tantra-data` catalog ingestion when present |
 
 ## 13. Invariants & Notables
 
@@ -262,5 +262,5 @@ LLM-prompt replay test).
 
 - `code-strategy.md` — the runner this engine drives
 - `code-enhancer.md` — optimizer evaluates candidates through this engine
-- `vyapaar-ledger-portfolio` / `vyapaar-ledger-journal` — canonical accounting the engine delegates to
-- `vyapaar-risk` — the pre-trade gate inside the runner
+- `tantra-ledger-portfolio` / `tantra-ledger-journal` — canonical accounting the engine delegates to
+- `tantra-risk` — the pre-trade gate inside the runner

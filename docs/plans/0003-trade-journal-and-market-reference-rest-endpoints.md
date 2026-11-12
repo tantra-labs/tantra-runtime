@@ -6,9 +6,9 @@
 
 ## 0. Executive Summary & Objective
 
-`vyapaar-ui-web` (the Next.js web UI, a sibling repo) is planning to replicate
+`tantra-ui-web` (the Next.js web UI, a sibling repo) is planning to replicate
 vela.luxalgo.com's Journal / Calendar / Reports features — see its own
-`vyapaar-ui-web/docs/plans/0011-vela-journal-calendar-reports-domain-model.md`.
+`tantra-ui-web/docs/plans/0011-vela-journal-calendar-reports-domain-model.md`.
 That UI needs two kinds of data this repo does not yet serve over HTTP:
 
 1. **Trade-journal analytics**: per-trade annotations (tags, rating, review,
@@ -21,36 +21,36 @@ That UI needs two kinds of data this repo does not yet serve over HTTP:
 Neither concept is domain logic this repo owns. The actual domain logic and
 data live upstream:
 
-- `vyapaar-ledger/docs/plans/0002-trade-performance-journal.md` — a new pure
-  domain crate, `vyapaar-ledger-performance`, computing trade annotations and
+- `tantra-ledger/docs/plans/0002-trade-performance-journal.md` — a new pure
+  domain crate, `tantra-ledger-performance`, computing trade annotations and
   the performance-metrics/edge-score math this plan's endpoints would expose.
-- `vyapaar-data/docs/gaps/0010-economic-calendar-ingestion.md` — economic
+- `tantra-data/docs/gaps/0010-economic-calendar-ingestion.md` — economic
   calendar ingestion.
-- `vyapaar-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` —
+- `tantra-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` —
   company fundamentals / symbol-profile data.
 
 This plan's objective is narrow: define the **REST wrapper layer** in
-`vyapaar-runtime-api-rest` that exposes those upstream capabilities to
-`vyapaar-ui-web`, once each upstream dependency lands. This plan is not the
+`tantra-runtime-api-rest` that exposes those upstream capabilities to
+`tantra-ui-web`, once each upstream dependency lands. This plan is not the
 source of truth for any of the underlying math or data — it only specifies
 the HTTP surface, request/response shapes, and which existing handler files
 the new routes belong in.
 
 ### Naming-collision warning (read this before implementing)
 
-`vyapaar-runtime-api-rest` already has **two unrelated things both called
+`tantra-runtime-api-rest` already has **two unrelated things both called
 "journal"**, and this plan's new routes must not collide with either:
 
-1. `crates/vyapaar-runtime-api-rest/src/journal.rs` — the NDJSON *run-journal*
+1. `crates/tantra-runtime-api-rest/src/journal.rs` — the NDJSON *run-journal*
    writer (`NdjsonJournal`, `FileJournalWriter`, implements
-   `vyapaar_runtime_api::JournalWriter`): one line per backtest/strategy-run
+   `tantra_runtime_api::JournalWriter`): one line per backtest/strategy-run
    event (`events.ndjson`).
-2. `crates/vyapaar-runtime-api-rest/src/operator_journal.rs` — a separate
+2. `crates/tantra-runtime-api-rest/src/operator_journal.rs` — a separate
    append-only audit log of accepted `PUT /trading-state` changes (operator
    halts/resumes, per ADR 0018).
 3. Existing live routes already using the word "journal":
    `GET /backtests/:id/journal`, `GET /sweeps/:id/journal`,
-   `GET /journals/:id` — all in `crates/vyapaar-runtime-api-rest/src/v1.rs`,
+   `GET /journals/:id` — all in `crates/tantra-runtime-api-rest/src/v1.rs`,
    all serving run/backtest *execution* journals. Completely unrelated to
    trade performance.
 
@@ -66,7 +66,7 @@ listing:
 
 ## 1. Context & Gaps Covered
 
-### 1.1 What this repo already has (verified against `crates/vyapaar-runtime-api-rest/src/v1.rs`)
+### 1.1 What this repo already has (verified against `crates/tantra-runtime-api-rest/src/v1.rs`)
 
 Current route table, so this plan proposes only genuinely missing endpoints:
 
@@ -111,23 +111,23 @@ already does. Where sensible, the new handlers should reuse
 `/portfolio/trades` and `/reports/equity-curve`'s underlying data rather than
 re-fetching it a different way — this is an implementation-time optimization
 note, not a hard requirement, since the new routes ultimately call
-`vyapaar-ledger-performance`, which itself depends on
-`vyapaar-ledger-portfolio` and does not need to re-derive anything
-`vyapaar-ledger-portfolio` already computes.
+`tantra-ledger-performance`, which itself depends on
+`tantra-ledger-portfolio` and does not need to re-derive anything
+`tantra-ledger-portfolio` already computes.
 
 ### 1.2 Gaps covered (upstream, cited not owned)
 
-- `vyapaar-ledger/docs/plans/0002-trade-performance-journal.md` — provides
-  the `vyapaar-ledger-performance` crate (trade annotations + performance
+- `tantra-ledger/docs/plans/0002-trade-performance-journal.md` — provides
+  the `tantra-ledger-performance` crate (trade annotations + performance
   metrics + edge score + daily P&L calendar + account comparison) that
   Phase 1 and Phase 2 of this plan wrap.
-- `vyapaar-data/docs/gaps/0010-economic-calendar-ingestion.md` — provides the
+- `tantra-data/docs/gaps/0010-economic-calendar-ingestion.md` — provides the
   economic/earnings/dividends/splits/IPO calendar data that Phase 3's
   `/market-data/calendar` wraps.
-- `vyapaar-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` —
+- `tantra-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` —
   provides the company-fundamentals data that Phase 3's
   `/market-data/symbol-profile/:id` wraps.
-- `vyapaar-ui-web/docs/plans/0011-vela-journal-calendar-reports-domain-model.md`
+- `tantra-ui-web/docs/plans/0011-vela-journal-calendar-reports-domain-model.md`
   — the consumer; its own three-way-account finding (journal accounts vs.
   live OMS accounts vs. UI workspace state) matches §2.1 below.
 
@@ -142,13 +142,13 @@ Response shapes below mirror vela.luxalgo.com's own live API contract
 adapted to this repo's existing path conventions (e.g. `/portfolio/trades`
 style) rather than copied as literal paths.
 
-**Trade journal** (new file: `crates/vyapaar-runtime-api-rest/src/trade_journal.rs`):
+**Trade journal** (new file: `crates/tantra-runtime-api-rest/src/trade_journal.rs`):
 
 - `GET /trade-journal/accounts` — list journal accounts. This is the new
-  `vyapaar-ledger-performance` entity from the ledger plan, and is **not**
+  `tantra-ledger-performance` entity from the ledger plan, and is **not**
   the same as `/portfolio/accounts` (live OMS/trading accounts). State this
   distinction explicitly in the handler doc-comment — it is the same
-  three-way-account finding `vyapaar-ui-web`'s plan 0011 documents.
+  three-way-account finding `tantra-ui-web`'s plan 0011 documents.
 - `POST /trade-journal/accounts` — create one (manual / imported /
   broker-synced provenance).
 - `GET /trade-journal/overview?range=<range>&compare=<previous|none>` — the
@@ -183,12 +183,12 @@ style) rather than copied as literal paths.
   `?account=&mode=previous` — two-sided metrics comparison.
 
 **Market reference data** (new functions in the existing
-`crates/vyapaar-runtime-api-rest/src/market.rs` — these are market-reference
+`crates/tantra-runtime-api-rest/src/market.rs` — these are market-reference
 concerns, same file as the existing instrument/quote/bar/depth handlers, not
 a new file):
 
 - `GET /market-data/symbol-profile/:id` — company fundamentals (backed by
-  `vyapaar-data`'s gap 0002):
+  `tantra-data`'s gap 0002):
   ```json
   {"symbol":, "name":, "description":, "ceo":, "employees":, "website":, "headquarters":, "industry":, "sector":, "ipoDate":, "exchange":, "country":, "image":, "marketCap":, "beta":, "lastDividend":, "range":, "averageVolume":, "isEtf":, "isActivelyTrading":}
   ```
@@ -201,13 +201,13 @@ a new file):
   reason; revisit only if a future caller needs fundamentals and the
   instrument record in one round trip.)
 - `GET /market-data/calendar?from=&to=&category=` — economic/earnings/
-  dividends/splits/IPO events (backed by `vyapaar-data`'s gap 0001),
+  dividends/splits/IPO events (backed by `tantra-data`'s gap 0001),
   category-filterable per vela.luxalgo.com's own observed filter pills
   (`Economic` / `Earnings` / `Dividends` / `Splits` / `IPO`).
 
 ### 2.2 Explicitly not proposed
 
-- A `/workspaces` endpoint for saving UI tab-layout state. `vyapaar-ui-web`'s
+- A `/workspaces` endpoint for saving UI tab-layout state. `tantra-ui-web`'s
   own plan 0011 reasoned this is a UI-session-state concern best owned by
   that repo's own Next.js backend-for-frontend, not this Rust
   domain-focused REST crate. Not second-guessed here — noted only so a
@@ -218,8 +218,8 @@ a new file):
 **Phase 1** — core read/annotate surface:
 `/trade-journal/accounts` (GET, POST), `/trade-journal/overview`,
 `/trade-journal/trades` (GET + PATCH). New `trade_journal.rs` handler file
-calling into the new `vyapaar-ledger-performance` crate. **Depends on**
-`vyapaar-ledger/docs/plans/0002-trade-performance-journal.md` landing first.
+calling into the new `tantra-ledger-performance` crate. **Depends on**
+`tantra-ledger/docs/plans/0002-trade-performance-journal.md` landing first.
 
 **Phase 2** — calendar, notes, comparison:
 `/trade-journal/calendar`, `/trade-journal/notes` (GET + POST),
@@ -229,12 +229,12 @@ upstream ledger plan as Phase 1.
 **Phase 3** — market reference data:
 `/market-data/symbol-profile/:id`, `/market-data/calendar`. New functions in
 the existing `market.rs` (not a new file). **Depends on**
-`vyapaar-data/docs/gaps/0010-economic-calendar-ingestion.md` and
-`vyapaar-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` landing
+`tantra-data/docs/gaps/0010-economic-calendar-ingestion.md` and
+`tantra-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` landing
 first.
 
 Every phase above also requires a matching OpenAPI entry in
-`crates/vyapaar-runtime-api-rest/src/openapi.rs` as an implementation-phase
+`crates/tantra-runtime-api-rest/src/openapi.rs` as an implementation-phase
 task (not drafted in this plan — the OpenAPI JSON itself is generated code,
 not design).
 
@@ -243,6 +243,6 @@ not design).
 Every phase in this plan is blocked on its cited upstream repo's own plan or
 gap landing first. This document specifies a REST-wrapper layer only — it is
 not the source of truth for any of the underlying domain logic
-(`vyapaar-ledger-performance`) or data (`vyapaar-data`'s calendar and
+(`tantra-ledger-performance`) or data (`tantra-data`'s calendar and
 fundamentals ingestion), and implementation should not begin on a phase
 until its upstream dependency is itself implemented.
