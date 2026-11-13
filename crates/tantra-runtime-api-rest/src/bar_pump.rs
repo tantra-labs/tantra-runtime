@@ -18,21 +18,21 @@ use tantra_core::rust_decimal::prelude::ToPrimitive;
 use crate::AppState;
 
 /// Converts a canonical bar to `tantra-feed`'s own wire shape for
-/// [`LiveQuoteStore::put_bar`](tantra_runtime_feed::LiveQuoteStore::put_bar) (ADR 0030; see
+/// [`LiveQuoteStore::put_bar`](crate::market_feed::LiveQuoteStore::put_bar) (ADR 0030; see
 /// `tantra-me-feed::wire`'s module doc for why the two `Bar` types differ: that crate's
 /// columnar engine is still `f64`/dual-timestamp and has not been ported onto `Decimal`).
 /// `put_bar` only reads the instrument, close and `ts_event`, so the bar specification
 /// built here is a placeholder — a live-fed [`tantra_core::Bar`] carries no timeframe of its
 /// own to put in it, and nothing downstream of `put_bar` reads it back.
-fn to_feed_bar(bar: &Bar) -> tantra_runtime_feed::wire::Bar {
-    let spec = tantra_runtime_feed::wire::BarSpecification::new(
+fn to_feed_bar(bar: &Bar) -> crate::market_feed::wire::Bar {
+    let spec = crate::market_feed::wire::BarSpecification::new(
         1,
-        tantra_runtime_feed::wire::BarAggregation::Minute,
-        tantra_runtime_feed::wire::PriceType::Last,
+        crate::market_feed::wire::BarAggregation::Minute,
+        crate::market_feed::wire::PriceType::Last,
     );
-    let ts = tantra_runtime_feed::wire::UnixNanos::from_datetime(bar.timestamp);
-    tantra_runtime_feed::wire::Bar::new(
-        tantra_runtime_feed::wire::BarType::new(bar.instrument.clone(), spec),
+    let ts = crate::market_feed::wire::UnixNanos::from_datetime(bar.timestamp);
+    crate::market_feed::wire::Bar::new(
+        crate::market_feed::wire::BarType::new(bar.instrument.clone(), spec),
         bar.open.0.to_f64().unwrap_or_default(),
         bar.high.0.to_f64().unwrap_or_default(),
         bar.low.0.to_f64().unwrap_or_default(),

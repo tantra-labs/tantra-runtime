@@ -5,11 +5,11 @@
 use crate::{Database, with_executor};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use thiserror::Error;
-use uuid::Uuid;
 use tantra_core::{
     InstrumentId, OrderRequest, OrderSide, OrderStatus, OrderType, Price, TimeInForce,
 };
+use thiserror::Error;
+use uuid::Uuid;
 
 /// Order store errors.
 #[derive(Debug, Error)]

@@ -6,13 +6,13 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use rust_decimal_macros::dec;
 use serde_json::{Value, json};
-use tower::util::ServiceExt;
 use tantra_core::{Currency, Exchange, InstrumentId, InstrumentKind};
-use tantra_runtime_api_rest::{AppState, api_router_with};
-use tantra_runtime_feed::wire::{
+use tantra_runtime_api_rest::market_feed::wire::{
     BarAggregation, BarSpecification, Instrument, PriceType, UnixNanos,
 };
-use tantra_runtime_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
+use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
+use tantra_runtime_api_rest::{AppState, api_router_with};
+use tower::util::ServiceExt;
 
 fn iid() -> InstrumentId {
     InstrumentId::new(Exchange::Nse, "X")

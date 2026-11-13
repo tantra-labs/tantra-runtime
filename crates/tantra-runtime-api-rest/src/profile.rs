@@ -13,10 +13,10 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use serde::Serialize;
 use serde_json::json;
-use tracing::error;
 use tantra_runtime_api::{
     ErrorCode, ErrorDetail, LayoutDocument, LayoutsResponse, ModulesResponse, ProfileRevision,
 };
+use tracing::error;
 
 use crate::market::{failure, success};
 use crate::profile_store::Result;

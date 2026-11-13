@@ -18,12 +18,12 @@ use axum::{
     routing::get,
 };
 use std::sync::Arc;
+use tantra_runtime_api::{ApiResponse, ErrorCode, ErrorDetail};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
-use tantra_runtime_api::{ApiResponse, ErrorCode, ErrorDetail};
 
 mod approval;
 mod auth;
@@ -41,6 +41,7 @@ mod executor;
 mod ingest;
 mod journal;
 mod market;
+pub mod market_feed;
 mod openapi;
 mod operator_journal;
 pub mod orders;
@@ -99,11 +100,11 @@ pub use service::{
 };
 pub use state::AppState;
 pub use streams::get_backtest_events;
+pub use tantra_runtime_api::JournalWriter;
 pub use ticks_file::{
     ParquetBarsSummary, equity_curve, import_ticks_ndjson, load_parquet_bars_summary,
     load_ticks_ndjson, pair_fills, parse_ticks_ndjson,
 };
-pub use tantra_runtime_api::JournalWriter;
 pub use ws::ws_handler;
 
 pub use v1::{

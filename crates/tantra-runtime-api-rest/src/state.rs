@@ -8,14 +8,14 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
+use crate::market_feed::ports::{BarReader, DepthReader, InstrumentMaster, QuoteReader};
+use crate::market_feed::wire::UnixNanos;
+use crate::market_feed::{DatasetReader, LiveQuoteStore, ReaderError};
 use tantra_core::Currency;
 use tantra_core::rust_decimal::Decimal;
 use tantra_ledger_performance::store::JournalStore;
 use tantra_risk::RiskEngine;
 use tantra_runtime_api::{ErrorDetail, StrategyCatalog, TradingState};
-use tantra_runtime_feed::ports::{BarReader, DepthReader, InstrumentMaster, QuoteReader};
-use tantra_runtime_feed::wire::UnixNanos;
-use tantra_runtime_feed::{DatasetReader, LiveQuoteStore, ReaderError};
 
 use crate::{
     ApprovalQueue, BacktestExecutor, OrderLedger, PortfolioStore, ProfileStore, RunService,
@@ -82,7 +82,7 @@ pub struct AppState {
     live: Option<Arc<LiveQuoteStore>>,
     /// The quote/trade tick source `fill_model = l2` runs match against (ADR 0030); `None`
     /// refuses such runs with `l2_requires_ticks`.
-    ticks: Option<Arc<dyn tantra_runtime_feed::ports::TickReader>>,
+    ticks: Option<Arc<dyn crate::market_feed::ports::TickReader>>,
     /// Execution config the run service's executor is built with (default: bar fills).
     execution: tantra_runtime_config::ExecutionConfig,
     /// The sending side of the bar ingest channel behind `POST /bars`; `None` until
@@ -252,7 +252,7 @@ impl AppState {
     #[must_use]
     pub fn with_tick_reader(
         mut self,
-        ticks: Arc<dyn tantra_runtime_feed::ports::TickReader>,
+        ticks: Arc<dyn crate::market_feed::ports::TickReader>,
     ) -> Self {
         self.ticks = Some(ticks);
         self
@@ -406,7 +406,7 @@ impl Default for AppState {
 /// canonical `Decimal`-valued [`tantra_core::Bar`] at this boundary, exactly as
 /// `market.rs`'s `GET /bars/{id}` does.
 struct SyncBarReader {
-    inner: Arc<dyn tantra_runtime_feed::ports::BarReader>,
+    inner: Arc<dyn crate::market_feed::ports::BarReader>,
 }
 
 impl tantra_core::BarReader for SyncBarReader {
@@ -414,7 +414,7 @@ impl tantra_core::BarReader for SyncBarReader {
         &self,
         req: &tantra_core::BarRequest,
     ) -> tantra_core::PortResult<Vec<tantra_core::Bar>> {
-        let feed_req = tantra_runtime_feed::ports::BarRequest::new(
+        let feed_req = crate::market_feed::ports::BarRequest::new(
             req.instrument.clone(),
             to_feed_spec(req.timeframe),
             Some(UnixNanos::from_datetime(req.from)),
@@ -431,7 +431,7 @@ impl tantra_core::BarReader for SyncBarReader {
 /// backtest executor reads through; see [`SyncBarReader`]. Quotes and trades are read
 /// separately and merged into one chronological [`tantra_core::Tick`] stream.
 struct SyncTickReader {
-    inner: Arc<dyn tantra_runtime_feed::ports::TickReader>,
+    inner: Arc<dyn crate::market_feed::ports::TickReader>,
 }
 
 impl tantra_core::TickReader for SyncTickReader {
@@ -439,7 +439,7 @@ impl tantra_core::TickReader for SyncTickReader {
         &self,
         req: &tantra_core::TickRequest,
     ) -> tantra_core::PortResult<Vec<tantra_core::Tick>> {
-        let feed_req = tantra_runtime_feed::ports::TickRequest::new(
+        let feed_req = crate::market_feed::ports::TickRequest::new(
             req.instrument.clone(),
             Some(UnixNanos::from_datetime(req.from)),
             Some(UnixNanos::from_datetime(req.to)),
@@ -459,10 +459,8 @@ impl tantra_core::TickReader for SyncTickReader {
 
 /// Maps a canonical [`tantra_core::Timeframe`] to the feed's bar specification, the inverse
 /// of the executor's `bar_spec` -> `Timeframe` mapping.
-fn to_feed_spec(
-    timeframe: tantra_core::Timeframe,
-) -> tantra_runtime_feed::wire::BarSpecification {
-    use tantra_runtime_feed::wire::{BarAggregation, PriceType};
+fn to_feed_spec(timeframe: tantra_core::Timeframe) -> crate::market_feed::wire::BarSpecification {
+    use crate::market_feed::wire::{BarAggregation, PriceType};
     let (step, aggregation) = match timeframe {
         tantra_core::Timeframe::M1 => (1, BarAggregation::Minute),
         tantra_core::Timeframe::M5 => (5, BarAggregation::Minute),
@@ -472,12 +470,12 @@ fn to_feed_spec(
         tantra_core::Timeframe::D1 => (1, BarAggregation::Day),
         tantra_core::Timeframe::W1 => (1, BarAggregation::Week),
     };
-    tantra_runtime_feed::wire::BarSpecification::new(step, aggregation, PriceType::Last)
+    crate::market_feed::wire::BarSpecification::new(step, aggregation, PriceType::Last)
 }
 
 /// Converts a feed bar (`f64`-valued, dual `UnixNanos` timestamps) to the canonical
 /// `Decimal`-valued [`tantra_core::Bar`], at the sync-port boundary.
-fn feed_bar_to_core(bar: tantra_runtime_feed::wire::Bar) -> tantra_core::Bar {
+fn feed_bar_to_core(bar: crate::market_feed::wire::Bar) -> tantra_core::Bar {
     tantra_core::Bar {
         instrument: bar.bar_type().instrument_id().clone(),
         open: tantra_core::Price::new(Decimal::from_f64_retain(bar.open()).unwrap_or_default()),
@@ -492,7 +490,7 @@ fn feed_bar_to_core(bar: tantra_runtime_feed::wire::Bar) -> tantra_core::Bar {
 }
 
 /// Converts a feed quote tick to the canonical [`tantra_core::Tick::Quote`].
-fn feed_quote_to_core(quote: tantra_runtime_feed::wire::QuoteTick) -> tantra_core::Tick {
+fn feed_quote_to_core(quote: crate::market_feed::wire::QuoteTick) -> tantra_core::Tick {
     tantra_core::Tick::Quote {
         instrument: quote.instrument_id().clone(),
         bid: tantra_core::Price::new(
@@ -515,12 +513,10 @@ fn feed_quote_to_core(quote: tantra_runtime_feed::wire::QuoteTick) -> tantra_cor
 }
 
 /// Converts a feed trade tick to the canonical [`tantra_core::Tick::Ltp`].
-fn feed_trade_to_core(trade: tantra_runtime_feed::wire::TradeTick) -> tantra_core::Tick {
+fn feed_trade_to_core(trade: crate::market_feed::wire::TradeTick) -> tantra_core::Tick {
     tantra_core::Tick::Ltp {
         instrument: trade.instrument_id().clone(),
-        price: tantra_core::Price::new(
-            Decimal::from_f64_retain(trade.price()).unwrap_or_default(),
-        ),
+        price: tantra_core::Price::new(Decimal::from_f64_retain(trade.price()).unwrap_or_default()),
         volume: tantra_core::Quantity::new(
             Decimal::from_f64_retain(trade.size()).unwrap_or_default(),
         ),
@@ -531,15 +527,15 @@ fn feed_trade_to_core(trade: tantra_runtime_feed::wire::TradeTick) -> tantra_cor
 
 /// Maps the feed's async port error onto the canonical [`tantra_core::PortError`] the sync
 /// executor's error mapping understands.
-fn feed_port_error(e: tantra_runtime_feed::ports::PortError) -> tantra_core::PortError {
+fn feed_port_error(e: crate::market_feed::ports::PortError) -> tantra_core::PortError {
     match e {
-        tantra_runtime_feed::ports::PortError::Unsupported(msg) => {
+        crate::market_feed::ports::PortError::Unsupported(msg) => {
             tantra_core::PortError::Unsupported(msg)
         }
-        tantra_runtime_feed::ports::PortError::Internal(msg) => {
+        crate::market_feed::ports::PortError::Internal(msg) => {
             tantra_core::PortError::CalculationFailed(msg)
         }
-        tantra_runtime_feed::ports::PortError::Terminal(msg) => {
+        crate::market_feed::ports::PortError::Terminal(msg) => {
             tantra_core::PortError::ConnectionFailed(msg)
         }
     }

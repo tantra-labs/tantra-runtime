@@ -30,9 +30,6 @@ sha2.workspace = true
 [dev-dependencies]
 chrono.workspace = true
 serde_json.workspace = true
-tantra-runtime-test-utils.workspace = true
-tantra-runtime-feed.workspace = true
-tantra-runtime-market.workspace = true
 tantra-runtime-testing.workspace = true
 
 [features]

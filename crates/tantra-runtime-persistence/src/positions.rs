@@ -11,8 +11,8 @@ use crate::{Database, with_executor};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sqlx::Row;
-use thiserror::Error;
 use tantra_core::{InstrumentId, OrderSide};
+use thiserror::Error;
 
 /// Position store errors.
 #[derive(Debug, Error)]

@@ -5,8 +5,8 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use serde_json::{Value, json};
-use tower::util::ServiceExt;
 use tantra_runtime_api_rest::{ApiConfig, AppState, api_router_with, api_router_with_config};
+use tower::util::ServiceExt;
 
 // sha256("test") and sha256("other")
 const HASH_A: &str = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";

@@ -11,9 +11,9 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 use std::path::Path;
 use std::str::FromStr;
+use tantra_core::{FillReport, OrderAck, OrderRequest, Price, Quantity};
 use thiserror::Error;
 use uuid::Uuid;
-use tantra_core::{FillReport, OrderAck, OrderRequest, Price, Quantity};
 
 /// Audit errors.
 #[derive(Debug, Error)]

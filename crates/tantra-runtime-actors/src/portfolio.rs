@@ -4,8 +4,6 @@
 use rust_decimal::Decimal;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use tokio::sync::mpsc;
-use tracing::info;
 use tantra_core::{FillReport, InstrumentId, Money, OrderSide, Price};
 use tantra_ledger_journal::{Transaction, post_transaction};
 use tantra_ledger_portfolio::{
@@ -14,6 +12,8 @@ use tantra_ledger_portfolio::{
     compute_capital_gains,
 };
 use tantra_runtime_persistence::SqliteAuditLedger;
+use tokio::sync::mpsc;
+use tracing::info;
 
 use crate::messages::{
     ActorStatus, FeeBreakdown, PortfolioError, PortfolioMsg, PortfolioSettleResult,

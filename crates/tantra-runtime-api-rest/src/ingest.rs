@@ -19,9 +19,9 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use serde_json::json;
-use tokio::sync::mpsc::error::TrySendError;
 use tantra_runtime_api::{BarsIngestRequest, BarsIngestResponse};
 use tantra_runtime_api::{ErrorCode, ErrorDetail};
+use tokio::sync::mpsc::error::TrySendError;
 
 use crate::market::{failure, success};
 use crate::{ApiJson, AppState};

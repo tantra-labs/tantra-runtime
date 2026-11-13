@@ -18,12 +18,14 @@ use tantra_runtime_api::{
     ResolvedRequest, ResolvedSweep, RunExecutor, RunId, RunJob, RunKind, RunManifest, RunOutcome,
     RunStatus, StrategyCatalog, compile_strategy,
 };
+use tantra_runtime_api_rest::market_feed::wire::{
+    BarAggregation, BarSpecification, PriceType, UnixNanos,
+};
+use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
 use tantra_runtime_api_rest::{
     BacktestExecutor, RunClock, RunEntropy, RunService, RunServiceConfig, RunStore,
     StrategyRegistry,
 };
-use tantra_runtime_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
-use tantra_runtime_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
 
 /// 2026-10-08T00:00:00Z.
 pub const T0: u64 = 1_791_417_600_000;

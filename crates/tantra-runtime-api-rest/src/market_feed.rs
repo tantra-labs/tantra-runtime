@@ -1,9 +1,10 @@
-//! Re-export shim for the runtime API layer.
+//! Market-data feed/read ports re-exported from `tantra-market-store`.
 //!
 //! The Parquet tick store, market-data catalog, and wire types live in
-//! `tantra-market-store` (Tier 2A). This crate keeps the historical
-//! `tantra_runtime_feed` import path working for `tantra-runtime-api-rest`
-//! and other runtime consumers.
+//! `tantra-market-store` (Tier 2A). The historical `tantra_runtime_feed`
+//! shim crate was absorbed into this module during crate-topology
+//! consolidation (root plan 0003, gap 0004) so consumers keep a single
+//! import path instead of reaching into the store crate directly.
 
 pub use tantra_market_store::{
     CatalogError, CatalogInstrumentMaster, ColumnarSlice, ColumnarSliceBuilder, CsvReportWriter,
@@ -14,7 +15,7 @@ pub use tantra_market_store::{
     TickRecorder, TickStoreError, snapshot_schema, tick_schema, write_tick_file,
 };
 
-/// Local port traits and data types.
+/// Local port traits and data types (historical `tantra_runtime_feed::ports` path).
 pub mod ports {
     pub use tantra_market_store::ports::*;
 }
@@ -24,7 +25,7 @@ pub mod import {
     pub use tantra_market_store::import::*;
 }
 
-/// Local market-data wire types.
+/// Local market-data wire types (historical `tantra_runtime_feed::wire` path).
 pub mod wire {
     pub use tantra_market_store::wire::*;
 }

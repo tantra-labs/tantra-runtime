@@ -14,8 +14,7 @@ name = "tantra_runtime_api_rest"
 tantra-core.workspace = true
 tantra-risk.workspace = true
 tantra-runtime-api.workspace = true
-tantra-runtime-feed.workspace = true
-tantra-runtime-market.workspace = true
+tantra-market-store.workspace = true
 tantra-market-finance.workspace = true
 tantra-runtime-strategy.workspace = true
 tantra-agent-analytics.workspace = true
@@ -64,5 +63,4 @@ uuid.workspace = true
 arrow.workspace = true
 parquet.workspace = true
 tempfile = "3"
-tantra-runtime-test-utils = { path = "../tantra-runtime-test-utils" }
 tokio-tungstenite = "0.24"

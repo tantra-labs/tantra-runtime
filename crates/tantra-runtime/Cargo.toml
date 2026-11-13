@@ -1,0 +1,20 @@
+[package]
+name = "tantra-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Facade of the tantra-runtime bounded context (House): re-exports the member crates"
+
+[dependencies]
+tantra-runtime-actors = { workspace = true }
+tantra-runtime-api = { workspace = true }
+tantra-runtime-api-rest = { workspace = true }
+tantra-runtime-backtest = { workspace = true }
+tantra-runtime-config = { workspace = true }
+tantra-runtime-enhancer = { workspace = true }
+tantra-runtime-jobs = { workspace = true }
+tantra-runtime-persistence = { workspace = true }
+tantra-runtime-strategy = { workspace = true }
+tantra-runtime-testing = { workspace = true }

@@ -14,18 +14,24 @@ use axum::http::{Request, StatusCode};
 use parquet::arrow::ArrowWriter;
 use serde_json::{Value, json};
 use std::str::FromStr;
-use tower::util::ServiceExt;
 use tantra_core::{Exchange, InstrumentId};
+use tantra_runtime_api_rest::market_feed::import::parquet_source::bar_schema;
+use tantra_runtime_api_rest::market_feed::wire::{
+    BarAggregation, BarSpecification, PriceType, UnixNanos,
+};
+use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
 use tantra_runtime_api_rest::{AppState, api_router_with};
-use tantra_runtime_feed::import::parquet_source::bar_schema;
-use tantra_runtime_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
-use tantra_runtime_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
+use tower::util::ServiceExt;
 
 const MINUTE: u64 = 60_000_000_000;
 /// 2024-01-01T00:00:00Z.
 const T0: u64 = 1_704_067_200_000_000_000;
 
-fn slice(symbol: &str, exchange: &str, count: u64) -> tantra_runtime_feed::ColumnarSlice {
+fn slice(
+    symbol: &str,
+    exchange: &str,
+    count: u64,
+) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
     let spec = BarSpecification::new(1, BarAggregation::Minute, PriceType::Last);
     let mut builder = ColumnarSliceBuilder::new(
         InstrumentId::new(Exchange::from_str(exchange).unwrap(), symbol),

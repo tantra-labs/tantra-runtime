@@ -4,12 +4,12 @@ use std::time::Duration;
 
 use chrono::Utc;
 use rust_decimal_macros::dec;
-use tempfile::TempDir;
-use uuid::Uuid;
 use tantra_runtime_jobs::{
     ApprovalPolicy, BudgetExceededError, BudgetUsage, CronSchedule, FencingError, FencingLease,
     FileJobRegistry, JobBudgets, JobSpec, JobStatus, MissedPolicy, RegistryError,
 };
+use tempfile::TempDir;
+use uuid::Uuid;
 
 #[test]
 fn test_job_spec_rich_attributes() {

@@ -4,9 +4,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
+use tantra_core::{InstrumentId, Tick};
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, info, warn};
-use tantra_core::{InstrumentId, Tick};
 
 use crate::messages::{ActorStatus, MarketDataMsg, StrategyMsg};
 use crate::metrics::MetricsCollector;

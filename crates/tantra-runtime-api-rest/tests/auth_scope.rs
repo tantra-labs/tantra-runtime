@@ -5,9 +5,9 @@
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tower::util::ServiceExt;
 use tantra_runtime_api::ENDPOINTS;
 use tantra_runtime_api_rest::{ROUTE_SCOPES, api_router, unscoped_routes};
+use tower::util::ServiceExt;
 
 #[test]
 fn drift_test_fails_on_new_route() {

@@ -416,9 +416,8 @@ fn staged_shutdown_cancels_pending_first_and_running_after_the_grace() {
 
     // Phase one: admission stops, pending is cancelled, running is untouched.
     assert_eq!(store.begin_shutdown(), 1);
-    let status = |id: &tantra_runtime_api::RunId| {
-        store.load(id.as_str(), RunKind::Backtest).unwrap().status
-    };
+    let status =
+        |id: &tantra_runtime_api::RunId| store.load(id.as_str(), RunKind::Backtest).unwrap().status;
     assert_eq!(status(&pending.run_id), RunStatus::Cancelled);
     assert_eq!(status(&running.run_id), RunStatus::Running);
     // A run that finishes within the grace completes normally.

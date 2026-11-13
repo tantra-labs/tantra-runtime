@@ -13,8 +13,8 @@ use std::sync::Arc;
 use axum::Extension;
 use axum::extract::State;
 use axum::response::Response;
-use tracing::info;
 use tantra_runtime_api::{TradingStateChange, TradingStateRequest, TradingStateResponse};
+use tracing::info;
 
 use crate::auth::TokenInfo;
 use crate::market::success;

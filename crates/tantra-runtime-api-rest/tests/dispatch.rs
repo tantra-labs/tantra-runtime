@@ -10,8 +10,8 @@ use arrow::array::{ArrayRef, Float64Array, Int64Array};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
 use serde_json::{Value, json};
+use tantra_runtime_api_rest::market_feed::import::parquet_source::bar_schema;
 use tantra_runtime_api_rest::{AppState, DispatchError, api_router_with, dispatch};
-use tantra_runtime_feed::import::parquet_source::bar_schema;
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 

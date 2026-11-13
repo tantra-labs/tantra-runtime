@@ -34,8 +34,8 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use serde_json::json;
-use tracing::error;
 use tantra_runtime_api::{ErrorCode, ErrorDetail};
+use tracing::error;
 
 use crate::caller::Caller;
 use crate::market::{failure, success};

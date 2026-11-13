@@ -16,7 +16,6 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
-use tracing::error;
 use tantra_core::rust_decimal::Decimal;
 use tantra_core::{FillReport as Trade, OrderSide};
 use tantra_runtime_api::{
@@ -26,6 +25,7 @@ use tantra_runtime_api::{
     PortfolioValueChartResponse, PositionAuditTrailResponse, SnapshotEntry, TaxReportResponse,
     TaxReportSummary, TaxTransaction, WACEntry, WeightedAverageCostResponse,
 };
+use tracing::error;
 
 use crate::caller::Caller;
 use crate::market::{failure, success};

@@ -13,12 +13,12 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
 use support::*;
-use tower::util::ServiceExt;
 use tantra_core::{Exchange, InstrumentId};
+use tantra_runtime_api_rest::market_feed::wire::{QuoteTick, UnixNanos};
+use tantra_runtime_api_rest::market_feed::{ParquetTickStore, TICK_DIR, write_tick_file};
 use tantra_runtime_api_rest::{AppState, RunServiceConfig, api_router_with};
 use tantra_runtime_config::{ExecutionConfig, FillModel};
-use tantra_runtime_feed::wire::{QuoteTick, UnixNanos};
-use tantra_runtime_feed::{ParquetTickStore, TICK_DIR, write_tick_file};
+use tower::util::ServiceExt;
 
 const BARS_FROM_NS: u64 = 1_704_067_200_000_000_000;
 const DAY_NS: u64 = 86_400_000_000_000;

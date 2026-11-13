@@ -9,6 +9,8 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
+use crate::market_feed::ports::{BarReader, BarRequest, InstrumentMaster, QuoteReader};
+use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -21,8 +23,6 @@ use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
 use tantra_core::{InstrumentId, Price, PriceBand, Quantity};
 use tantra_risk::RiskEngine;
-use tantra_runtime_feed::ports::{BarReader, BarRequest, InstrumentMaster, QuoteReader};
-use tantra_runtime_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 
 /// Bar-count cap shared with `tantra_runtime_api::chat_adapters::RuntimeMarketReader`.
 const MAX_BAR_CAP: usize = 500;
@@ -32,11 +32,11 @@ fn to_decimal(x: f64) -> Decimal {
 }
 
 /// Maps the feed's async port error onto the chat tool catalog's own `PortError`.
-fn feed_port_error(e: tantra_runtime_feed::ports::PortError) -> PortError {
+fn feed_port_error(e: crate::market_feed::ports::PortError) -> PortError {
     match e {
-        tantra_runtime_feed::ports::PortError::Unsupported(msg) => PortError::unavailable(msg),
-        tantra_runtime_feed::ports::PortError::Internal(msg) => PortError::internal(msg),
-        tantra_runtime_feed::ports::PortError::Terminal(msg) => PortError::internal(msg),
+        crate::market_feed::ports::PortError::Unsupported(msg) => PortError::unavailable(msg),
+        crate::market_feed::ports::PortError::Internal(msg) => PortError::internal(msg),
+        crate::market_feed::ports::PortError::Terminal(msg) => PortError::internal(msg),
     }
 }
 

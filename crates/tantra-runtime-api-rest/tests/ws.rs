@@ -1,9 +1,9 @@
 //! Integration tests for the /ws and /ws/market WebSocket endpoints.
 
+use tantra_runtime_api_rest::{AppState, serve};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
-use tantra_runtime_api_rest::{AppState, serve};
 
 async fn ws_handshake(addr: std::net::SocketAddr, path: &str) -> u16 {
     let mut stream = TcpStream::connect(addr).await.unwrap();
@@ -64,13 +64,13 @@ async fn ws_market_endpoint_responds_with_101_switching_protocols() {
 async fn ws_streams_ticks_to_client() {
     use futures::StreamExt;
     use std::time::Duration;
-    use tokio::sync::broadcast;
     use tantra_core::{Currency, Exchange, InstrumentId, InstrumentKind, Price, Quantity, Tick};
-    use tantra_runtime_api_rest::ws::WsTick;
-    use tantra_runtime_feed::wire::{
+    use tantra_runtime_api_rest::market_feed::wire::{
         BarAggregation, BarSpecification, Instrument, PriceType, UnixNanos,
     };
-    use tantra_runtime_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
+    use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
+    use tantra_runtime_api_rest::ws::WsTick;
+    use tokio::sync::broadcast;
 
     let id = InstrumentId::new(Exchange::Nse, "RELIANCE");
     let spec = BarSpecification::new(1, BarAggregation::Minute, PriceType::Last);

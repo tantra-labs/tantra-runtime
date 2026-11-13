@@ -8,6 +8,8 @@
 
 use std::sync::Arc;
 
+use crate::market_feed::ports::{BarRequest, PortError};
+use crate::market_feed::wire::UnixNanos;
 use axum::{
     async_trait,
     extract::{FromRequestParts, Path, Query, State, rejection::QueryRejection},
@@ -22,8 +24,6 @@ use tantra_runtime_api::{
     ErrorDetail, InstrumentsQuery, InstrumentsResponse, QuotesQuery, QuotesResponse,
     ResponseEnvelope, instrument_json, parse_instrument_id,
 };
-use tantra_runtime_feed::ports::{BarRequest, PortError};
-use tantra_runtime_feed::wire::UnixNanos;
 
 use crate::AppState;
 
@@ -47,7 +47,7 @@ fn to_api_kind(kind: tantra_core::InstrumentKind) -> tantra_runtime_api::wire::I
 /// feed side (its Parquet catalog predates `Decimal`) and `Decimal` on the wire, so they are
 /// converted at this one JSON-response boundary, not threaded through as `f64`.
 fn to_api_instrument(
-    instrument: &tantra_runtime_feed::wire::Instrument,
+    instrument: &crate::market_feed::wire::Instrument,
 ) -> tantra_runtime_api::wire::Instrument {
     tantra_runtime_api::wire::Instrument::new(
         instrument.id().clone(),
@@ -61,9 +61,7 @@ fn to_api_instrument(
 /// Converts a `tantra-feed` quote (`f64`-valued, dual `UnixNanos` timestamps) to the
 /// `tantra_runtime_api::wire::QuoteTick` `GET /quotes` serializes (`Decimal`-valued,
 /// `chrono::DateTime<Utc>`), at the JSON-response boundary.
-fn to_api_quote(
-    quote: tantra_runtime_feed::wire::QuoteTick,
-) -> tantra_runtime_api::wire::QuoteTick {
+fn to_api_quote(quote: crate::market_feed::wire::QuoteTick) -> tantra_runtime_api::wire::QuoteTick {
     tantra_runtime_api::wire::QuoteTick::new(
         quote.instrument_id().clone(),
         Decimal::from_f64_retain(quote.bid_price()).unwrap_or_default(),
@@ -78,7 +76,7 @@ fn to_api_quote(
 /// Converts a `tantra-feed` bar (`f64`-valued, dual `UnixNanos` timestamps) to the canonical
 /// `tantra_core::Bar` that `BarsResponse` serializes directly (ADR: the REST bars contract
 /// reuses the domain `Bar`, not a separate wire copy), at the JSON-response boundary.
-fn to_core_bar(bar: tantra_runtime_feed::wire::Bar) -> tantra_core::Bar {
+fn to_core_bar(bar: crate::market_feed::wire::Bar) -> tantra_core::Bar {
     tantra_core::Bar {
         instrument: bar.bar_type().instrument_id().clone(),
         open: tantra_core::Price::new(Decimal::from_f64_retain(bar.open()).unwrap_or_default()),
@@ -175,7 +173,7 @@ pub(crate) fn instrument_not_found(id: &tantra_core::InstrumentId) -> Response {
 pub(crate) async fn master_get(
     state: &AppState,
     id: &tantra_core::InstrumentId,
-) -> Result<Option<tantra_runtime_feed::wire::Instrument>, ErrorDetail> {
+) -> Result<Option<crate::market_feed::wire::Instrument>, ErrorDetail> {
     state
         .instruments
         .get_instrument(id)
@@ -185,7 +183,7 @@ pub(crate) async fn master_get(
 
 /// Maps a port failure to a status and an envelope code.
 ///
-/// `tantra_runtime_feed::ports::PortError` has only three variants (`Unsupported`,
+/// `crate::market_feed::ports::PortError` has only three variants (`Unsupported`,
 /// `Internal`, `Terminal`) — leaner than the old `tantra_runtime_api` taxonomy
 /// this used to branch on (`InvalidRequest`/`Unavailable`/`Timeout`/
 /// `Transport`), so the mapping collapses to that.

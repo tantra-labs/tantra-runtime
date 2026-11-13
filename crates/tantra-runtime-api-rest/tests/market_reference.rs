@@ -3,8 +3,8 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
-use tower::util::ServiceExt;
 use tantra_runtime_api_rest::api_router;
+use tower::util::ServiceExt;
 
 async fn call(method: &str, uri: &str) -> (StatusCode, Value) {
     let res = api_router()

@@ -11,13 +11,13 @@ use arrow::array::{ArrayRef, Float64Array, Int64Array};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
 use serde_json::Value;
-use tokio::sync::oneshot;
+use tantra_runtime_api_rest::market_feed::import::parquet_source::bar_schema;
 use tantra_runtime_api_rest::{
     ServeConfig, ServeOutcome, import_ticks_ndjson, parse_fill_model, parse_trading_state,
     prepare_server,
 };
 use tantra_runtime_config::FillModel;
-use tantra_runtime_feed::import::parquet_source::bar_schema;
+use tokio::sync::oneshot;
 
 fn data_dir(root: &Path, name: &str) -> PathBuf {
     let dir = root.join(name);

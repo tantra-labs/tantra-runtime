@@ -4,9 +4,7 @@ use std::fmt;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tantra_core::{
-    InstrumentId, OrderRequest, OrderSide, OrderType, Price, Quantity, TimeInForce,
-};
+use tantra_core::{InstrumentId, OrderRequest, OrderSide, OrderType, Price, Quantity, TimeInForce};
 
 /// A strategy's desire to trade, before it becomes a concrete
 /// [`OrderRequest`].

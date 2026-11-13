@@ -36,6 +36,7 @@ use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tracing::{debug, warn};
 
+use crate::market_feed::ports::{BarReader, InstrumentMaster, QuoteReader};
 use tantra_agent_chat::{ChatAgent, InMemorySessionStore, SessionSelector, ToolRegistry};
 use tantra_agent_chat_tools::ports::alert::{AlertReader, AlertWriter};
 use tantra_agent_chat_tools::ports::error::PortError;
@@ -48,7 +49,6 @@ use tantra_core::{AccountId, InstrumentId, Money};
 use tantra_ledger::TaxLot;
 use tantra_ledger::repository::OrderRecord;
 use tantra_risk::RiskEngine;
-use tantra_runtime_feed::ports::{BarReader, InstrumentMaster, QuoteReader};
 
 use crate::AppState;
 use crate::chat_market::{FeedMarketReader, FeedSnapshotSource};

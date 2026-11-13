@@ -17,10 +17,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::market_feed::{InMemoryTickReader, ParquetTickStore};
 use anyhow::{Context, Result, bail};
 use tantra_core::TradingState;
 use tantra_runtime_config::{ExecutionConfig, FillModel};
-use tantra_runtime_feed::{InMemoryTickReader, ParquetTickStore};
 
 use crate::{
     ApiConfig, AppState, BarPumpReport, JwtConfig, RetentionPolicy, RunServiceConfig,
@@ -421,7 +421,7 @@ pub fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         .with_execution(execution);
 
     if let Some(ticks) = ticks {
-        let reader: Arc<dyn tantra_runtime_feed::ports::TickReader> = match ticks {
+        let reader: Arc<dyn crate::market_feed::ports::TickReader> = match ticks {
             TickSource::Ndjson(reader) => Arc::new(reader),
             TickSource::Parquet(store) => Arc::new(store),
         };

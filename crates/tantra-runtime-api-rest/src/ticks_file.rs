@@ -14,16 +14,16 @@
 
 use std::path::Path;
 
+use crate::market_feed::wire::{AggressorSide, QuoteTick, TradeTick, UnixNanos};
+use crate::market_feed::{
+    InMemoryTickReader, ParquetBarSource, ParquetTickStore, TICK_DIR, write_tick_file,
+};
 use anyhow::{Context, Result, bail};
 use rust_decimal::prelude::ToPrimitive;
 use serde::Deserialize;
 use tantra_agent_analytics::RoundTrip;
 use tantra_core::{Exchange, FillReport, InstrumentId};
 use tantra_market_finance::india::exchange::resolve_instrument;
-use tantra_runtime_feed::wire::{AggressorSide, QuoteTick, TradeTick, UnixNanos};
-use tantra_runtime_feed::{
-    InMemoryTickReader, ParquetBarSource, ParquetTickStore, TICK_DIR, write_tick_file,
-};
 
 /// The only NDJSON ticks format version supported by this build (ADR 0030).
 pub const VERSION: u64 = 1;
@@ -105,7 +105,7 @@ pub fn parse_ticks_ndjson(text: &str) -> Result<InMemoryTickReader> {
                 bid_size,
                 ask_size,
             } => {
-                // `tantra_runtime_feed::wire::QuoteTick`'s custom `Deserialize` refuses crossed quotes
+                // `crate::market_feed::wire::QuoteTick`'s custom `Deserialize` refuses crossed quotes
                 // (bid > ask), while non-negative finite sizes are enforced here.
                 if !bid_size.is_finite()
                     || bid_size < 0.0

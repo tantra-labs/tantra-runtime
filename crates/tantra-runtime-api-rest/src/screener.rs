@@ -6,6 +6,8 @@
 
 use std::sync::Arc;
 
+use crate::market_feed::ports::BarRequest;
+use crate::market_feed::wire::UnixNanos;
 use axum::{extract::State, response::Response};
 use tantra_core::rust_decimal::Decimal;
 use tantra_core::{Bar, Price, Quantity};
@@ -13,8 +15,6 @@ use tantra_runtime_api::wire::{BarAggregation, BarSpecification, PriceType};
 use tantra_runtime_api::{
     ScreenerQuery, ScreenerResponse, ScreenerResultRow, check_scan_budget, check_screener_rows,
 };
-use tantra_runtime_feed::ports::BarRequest;
-use tantra_runtime_feed::wire::UnixNanos;
 
 use crate::AppState;
 use crate::market::{
@@ -26,31 +26,31 @@ use crate::market::{
 /// `BarSpecification`, at the boundary where this handler reads bars through the feed port.
 /// Mirrors `catalog::to_feed_spec` (private to that module, so duplicated here rather than
 /// reaching into a module this file doesn't own).
-fn to_feed_spec(spec: BarSpecification) -> tantra_runtime_feed::wire::BarSpecification {
+fn to_feed_spec(spec: BarSpecification) -> crate::market_feed::wire::BarSpecification {
     let aggregation = match spec.aggregation() {
-        BarAggregation::Second => tantra_runtime_feed::wire::BarAggregation::Second,
-        BarAggregation::Minute => tantra_runtime_feed::wire::BarAggregation::Minute,
-        BarAggregation::Hour => tantra_runtime_feed::wire::BarAggregation::Hour,
-        BarAggregation::Day => tantra_runtime_feed::wire::BarAggregation::Day,
-        BarAggregation::Week => tantra_runtime_feed::wire::BarAggregation::Week,
-        BarAggregation::Month => tantra_runtime_feed::wire::BarAggregation::Month,
+        BarAggregation::Second => crate::market_feed::wire::BarAggregation::Second,
+        BarAggregation::Minute => crate::market_feed::wire::BarAggregation::Minute,
+        BarAggregation::Hour => crate::market_feed::wire::BarAggregation::Hour,
+        BarAggregation::Day => crate::market_feed::wire::BarAggregation::Day,
+        BarAggregation::Week => crate::market_feed::wire::BarAggregation::Week,
+        BarAggregation::Month => crate::market_feed::wire::BarAggregation::Month,
     };
     let price_type = match spec.price_type() {
-        PriceType::Last => tantra_runtime_feed::wire::PriceType::Last,
-        PriceType::Bid => tantra_runtime_feed::wire::PriceType::Bid,
-        PriceType::Ask => tantra_runtime_feed::wire::PriceType::Ask,
+        PriceType::Last => crate::market_feed::wire::PriceType::Last,
+        PriceType::Bid => crate::market_feed::wire::PriceType::Bid,
+        PriceType::Ask => crate::market_feed::wire::PriceType::Ask,
         PriceType::Open | PriceType::High | PriceType::Low => {
-            tantra_runtime_feed::wire::PriceType::Last
+            crate::market_feed::wire::PriceType::Last
         }
     };
     let step = u32::try_from(spec.step()).unwrap_or(u32::MAX);
-    tantra_runtime_feed::wire::BarSpecification::new(step, aggregation, price_type)
+    crate::market_feed::wire::BarSpecification::new(step, aggregation, price_type)
 }
 
 /// Converts an `f64`-valued feed bar (as read off the Parquet catalog) to the exact
 /// `Decimal`-valued [`Bar`] the pure screener evaluator (`tantra_runtime_api::screener`) is written
 /// against.
-fn to_core_bar(bar: &tantra_runtime_feed::wire::Bar) -> Bar {
+fn to_core_bar(bar: &crate::market_feed::wire::Bar) -> Bar {
     let to_decimal = |v: f64| Decimal::from_f64_retain(v).unwrap_or_default();
     Bar {
         instrument: bar.bar_type().instrument_id().clone(),

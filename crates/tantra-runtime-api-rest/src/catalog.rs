@@ -13,17 +13,17 @@
 
 use std::path::{Path, PathBuf};
 
-use async_trait::async_trait;
-use thiserror::Error;
-use tantra_core::{Exchange, InstrumentId};
-use tantra_runtime_api::parse_timeframe;
-use tantra_runtime_api::wire::{BarAggregation, BarSpecification, PriceType};
-use tantra_runtime_feed::ports::{BarReader, BarRequest, PortError, PortResult};
-use tantra_runtime_feed::wire::Bar;
-use tantra_runtime_feed::{
+use crate::market_feed::ports::{BarReader, BarRequest, PortError, PortResult};
+use crate::market_feed::wire::Bar;
+use crate::market_feed::{
     ColumnarSlice, ColumnarSliceBuilder, Dataset, DatasetBuildError, DatasetReader,
     ParquetBarSource, ParquetError,
 };
+use async_trait::async_trait;
+use tantra_core::{Exchange, InstrumentId};
+use tantra_runtime_api::parse_timeframe;
+use tantra_runtime_api::wire::{BarAggregation, BarSpecification, PriceType};
+use thiserror::Error;
 
 /// Converts the REST contract's bar specification (`tantra_runtime_api::wire`, this crate's own
 /// catalog-timeframe vocabulary — see [`load_catalog`]/[`parse_timeframe`]) to
@@ -33,25 +33,25 @@ use tantra_runtime_feed::{
 /// `PriceType::Last`, so the catalog never actually exercises the `Open`/`High`/`Low`
 /// fallback below; `tantra-me-feed`'s bar engine has no price-type for them (only
 /// `Last`/`Bid`/`Ask`/`Mid`).
-pub(crate) fn to_feed_spec(spec: BarSpecification) -> tantra_runtime_feed::wire::BarSpecification {
+pub(crate) fn to_feed_spec(spec: BarSpecification) -> crate::market_feed::wire::BarSpecification {
     let aggregation = match spec.aggregation() {
-        BarAggregation::Second => tantra_runtime_feed::wire::BarAggregation::Second,
-        BarAggregation::Minute => tantra_runtime_feed::wire::BarAggregation::Minute,
-        BarAggregation::Hour => tantra_runtime_feed::wire::BarAggregation::Hour,
-        BarAggregation::Day => tantra_runtime_feed::wire::BarAggregation::Day,
-        BarAggregation::Week => tantra_runtime_feed::wire::BarAggregation::Week,
-        BarAggregation::Month => tantra_runtime_feed::wire::BarAggregation::Month,
+        BarAggregation::Second => crate::market_feed::wire::BarAggregation::Second,
+        BarAggregation::Minute => crate::market_feed::wire::BarAggregation::Minute,
+        BarAggregation::Hour => crate::market_feed::wire::BarAggregation::Hour,
+        BarAggregation::Day => crate::market_feed::wire::BarAggregation::Day,
+        BarAggregation::Week => crate::market_feed::wire::BarAggregation::Week,
+        BarAggregation::Month => crate::market_feed::wire::BarAggregation::Month,
     };
     let price_type = match spec.price_type() {
-        PriceType::Last => tantra_runtime_feed::wire::PriceType::Last,
-        PriceType::Bid => tantra_runtime_feed::wire::PriceType::Bid,
-        PriceType::Ask => tantra_runtime_feed::wire::PriceType::Ask,
+        PriceType::Last => crate::market_feed::wire::PriceType::Last,
+        PriceType::Bid => crate::market_feed::wire::PriceType::Bid,
+        PriceType::Ask => crate::market_feed::wire::PriceType::Ask,
         PriceType::Open | PriceType::High | PriceType::Low => {
-            tantra_runtime_feed::wire::PriceType::Last
+            crate::market_feed::wire::PriceType::Last
         }
     };
     let step = u32::try_from(spec.step()).unwrap_or(u32::MAX);
-    tantra_runtime_feed::wire::BarSpecification::new(step, aggregation, price_type)
+    crate::market_feed::wire::BarSpecification::new(step, aggregation, price_type)
 }
 
 /// The directory under a data root that holds the bar catalog.

@@ -16,9 +16,9 @@
 //! - W3C `TraceContext` distributed propagation headers.
 
 use chrono::Utc;
+use tantra_core::{FillReport, OrderAck, OrderRequest, TraceContext};
 use tracing::{Span, info_span};
 use uuid::Uuid;
-use tantra_core::{FillReport, OrderAck, OrderRequest, TraceContext};
 
 /// Structured span emitted when an actor starts processing an inbound message.
 pub fn span_actor_process_message(

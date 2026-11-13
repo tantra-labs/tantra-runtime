@@ -18,8 +18,8 @@ use axum::response::{IntoResponse, Json, Response};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use tantra_runtime_api::{ErrorCode, ErrorDetail};
+use uuid::Uuid;
 
 use crate::AppState;
 use crate::market::{failure, success};

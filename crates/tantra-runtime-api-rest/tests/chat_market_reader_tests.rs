@@ -13,10 +13,10 @@ use tantra_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
 use tantra_core::{Currency, Exchange, InstrumentId, InstrumentKind, Price, PriceBand};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api_rest::chat_market::{FeedMarketReader, FeedSnapshotSource};
-use tantra_runtime_feed::ports::{
+use tantra_runtime_api_rest::market_feed::ports::{
     BarReader, BarRequest, InstrumentMaster, PortError as FeedPortError, QuoteReader,
 };
-use tantra_runtime_feed::wire::{
+use tantra_runtime_api_rest::market_feed::wire::{
     Bar, BarAggregation, BarSpecification, BarType, Instrument, PriceType, QuoteTick, UnixNanos,
 };
 

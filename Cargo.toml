@@ -1,19 +1,16 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/tantra-runtime",
   "crates/tantra-runtime-actors",
   "crates/tantra-runtime-api",
   "crates/tantra-runtime-api-rest",
   "crates/tantra-runtime-backtest",
   "crates/tantra-runtime-config",
   "crates/tantra-runtime-enhancer",
-  "crates/tantra-runtime-feed",
-  "crates/tantra-indicators",
   "crates/tantra-runtime-jobs",
-  "crates/tantra-runtime-market",
   "crates/tantra-runtime-persistence",
   "crates/tantra-runtime-strategy",
-  "crates/tantra-runtime-test-utils",
   "crates/tantra-runtime-testing",
 ]
 
@@ -28,6 +25,7 @@ repository = "https://github.com/tantra-labs/tantra-runtime"
 # Tantra internal crates
 tantra-core = { path = "../tantra-core" }
 tantra-risk = { path = "../tantra-risk" }
+tantra-runtime = { path = "crates/tantra-runtime" }
 tantra-ledger = { path = "../tantra-ledger/crates/tantra-ledger" }
 tantra-ledger-portfolio = { path = "../tantra-ledger/crates/tantra-ledger-portfolio" }
 tantra-ledger-oms = { path = "../tantra-ledger/crates/tantra-ledger-oms" }
@@ -43,26 +41,12 @@ tantra-runtime-persistence = { path = "crates/tantra-runtime-persistence" }
 tantra-runtime-jobs = { path = "crates/tantra-runtime-jobs" }
 tantra-runtime-strategy = { path = "crates/tantra-runtime-strategy" }
 tantra-runtime-testing = { path = "crates/tantra-runtime-testing" }
-tantra-api-rest = { path = "crates/tantra-runtime-api-rest" }
-tantra-api = { path = "crates/tantra-runtime-api" }
-tantra-backtest = { path = "crates/tantra-runtime-backtest" }
-tantra-actors = { path = "crates/tantra-runtime-actors" }
-tantra-indicators = { path = "crates/tantra-indicators" }
-tantra-runtime-test-utils = { path = "crates/tantra-runtime-test-utils" }
-tantra-runtime-feed = { path = "crates/tantra-runtime-feed" }
-tantra-runtime-market = { path = "crates/tantra-runtime-market" }
-tantra-market-feed = { path = "../tantra-market/crates/tantra-market-feed" }
 tantra-market-store = { path = "../tantra-market/crates/tantra-market-store" }
 tantra-market-core = { path = "../tantra-market/crates/tantra-market-core" }
 tantra-market-normalizer = { path = "../tantra-market/crates/tantra-market-normalizer" }
 tantra-market-indicators = { path = "../tantra-market/crates/tantra-market-indicators" }
 tantra-market-signals = { path = "../tantra-market/crates/tantra-market-signals" }
-tantra-market-loaders = { path = "../tantra-market/crates/tantra-market-loaders" }
 tantra-market-finance = { path = "../tantra-market/crates/tantra-market-finance" }
-tantra-market-zerodha = { path = "../tantra-market/crates/tantra-market-zerodha" }
-tantra-market-upstox = { path = "../tantra-market/crates/tantra-market-upstox" }
-tantra-market-fyers = { path = "../tantra-market/crates/tantra-market-fyers" }
-tantra-market-angelone = { path = "../tantra-market/crates/tantra-market-angelone" }
 tantra-exec-core = { path = "../tantra-exec/crates/tantra-exec-core" }
 tantra-exec-auth = { path = "../tantra-exec/crates/tantra-exec-auth" }
 tantra-exec-router = { path = "../tantra-exec/crates/tantra-exec-router" }

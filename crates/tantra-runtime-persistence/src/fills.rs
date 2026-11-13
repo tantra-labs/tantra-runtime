@@ -7,8 +7,8 @@ use crate::{Database, with_executor};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sqlx::Row;
-use thiserror::Error;
 use tantra_core::{FillReport, OrderSide};
+use thiserror::Error;
 
 /// Fill store errors.
 #[derive(Debug, Error)]

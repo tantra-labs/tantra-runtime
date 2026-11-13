@@ -3,10 +3,10 @@
 //! No external network and no wall clock.
 
 use serde_json::Value;
+use tantra_runtime_api_rest::{AppState, serve};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
-use tantra_runtime_api_rest::{AppState, serve};
 
 async fn http_get(addr: std::net::SocketAddr, path: &str) -> (u16, Value) {
     let mut stream = TcpStream::connect(addr).await.unwrap();
