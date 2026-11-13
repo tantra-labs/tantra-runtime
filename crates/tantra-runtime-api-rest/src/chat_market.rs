@@ -9,7 +9,9 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use crate::market_feed::ports::{BarReader, BarRequest, InstrumentMaster, QuoteReader};
+use crate::market_feed::ports::{
+    BarReader, BarRequest, ChainContract, ChainReader, InstrumentMaster, QuoteReader,
+};
 use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -17,11 +19,12 @@ use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
     BlockDeal, CorporateAction, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory,
-    MarketIndicators, MarketQuote, MarketReader, OptionsChain,
+    MarketIndicators, MarketQuote, MarketReader, OptionContract, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
 use tantra_core::{InstrumentId, Price, PriceBand, Quantity};
+use tantra_market_store::InstrumentChainReader;
 use tantra_risk::RiskEngine;
 
 /// Bar-count cap shared with `tantra_runtime_api::chat_adapters::RuntimeMarketReader`.
@@ -47,22 +50,58 @@ pub struct FeedMarketReader {
     bars: Arc<dyn BarReader>,
     quotes: Arc<dyn QuoteReader>,
     risk_engine: Arc<Mutex<RiskEngine>>,
+    chain: Arc<dyn ChainReader>,
 }
 
 impl FeedMarketReader {
     /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine.
+    ///
+    /// The options-chain reader is built from the same `instruments`/`quotes` ports the
+    /// reader already serves from (closes `tantra-market/docs/gaps/0001-options-chain-reader.md`).
     pub fn new(
         instruments: Arc<dyn InstrumentMaster>,
         bars: Arc<dyn BarReader>,
         quotes: Arc<dyn QuoteReader>,
         risk_engine: Arc<Mutex<RiskEngine>>,
     ) -> Self {
+        let chain: Arc<dyn ChainReader> = Arc::new(InstrumentChainReader::new(
+            instruments.clone(),
+            quotes.clone(),
+        ));
         Self {
             instruments,
             bars,
             quotes,
             risk_engine,
+            chain,
         }
+    }
+}
+
+/// Converts a store `ChainContract` into the chat tool catalog's `OptionContract`,
+/// with the midpoint as the last-traded price when a two-sided quote exists (the same
+/// derivation [`FeedMarketReader::quote`] uses).
+fn to_option_contract(contract: ChainContract) -> OptionContract {
+    let last_price = match (contract.bid, contract.ask) {
+        (Some(bid), Some(ask)) => Some(Price::new((bid.value() + ask.value()) / Decimal::from(2))),
+        (Some(bid), None) => Some(bid),
+        (None, Some(ask)) => Some(ask),
+        (None, None) => contract.last_price,
+    };
+    OptionContract {
+        instrument: contract.instrument,
+        option_type: match contract.option_type {
+            tantra_core::OptionType::Call => "CE",
+            tantra_core::OptionType::Put => "PE",
+        }
+        .to_string(),
+        strike: contract.strike,
+        expiry: contract.expiry.and_hms_opt(0, 0, 0).unwrap().and_utc(),
+        lot_size: contract.lot_size,
+        last_price,
+        bid: contract.bid,
+        ask: contract.ask,
+        open_interest: contract.open_interest,
     }
 }
 
@@ -205,19 +244,28 @@ impl MarketReader for FeedMarketReader {
 
     async fn options_chain(
         &self,
-        _underlying: &InstrumentId,
-        _expiry: Option<DateTime<Utc>>,
-        _limit: Option<usize>,
+        underlying: &InstrumentId,
+        expiry: Option<DateTime<Utc>>,
+        limit: Option<usize>,
     ) -> Result<OptionsChain, PortError> {
-        // Contract-reference columns and Greeks pricing exist in `tantra-market`, but no
-        // chain enumeration/reader is served anywhere yet — see
-        // tantra-market/docs/gaps/0001-options-chain-reader.md. An explicit error, not an
-        // empty success, so the model can't mistake "not wired up" for "this underlying has
-        // no listed options" (same pattern as `indicators`/`macro_series` above, per
-        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md).
-        Err(PortError::unavailable(
-            "options-chain data is not served yet; see tantra-market/docs/gaps/0001-options-chain-reader.md",
-        ))
+        const MAX_CHAIN_CAP: usize = 500;
+        let effective_limit = limit.map(|l| l.min(MAX_CHAIN_CAP)).unwrap_or(MAX_CHAIN_CAP);
+        // Calendar-day match, not exact-instant equality: callers pass an expiry trading
+        // day, contracts carry their own expiry instant (same rule as `block_deals`).
+        let expiry = expiry.map(|e| e.date_naive());
+        let contracts = self
+            .chain
+            .options_chain(underlying, expiry, Some(effective_limit))
+            .await
+            .map_err(feed_port_error)?
+            .into_iter()
+            .map(to_option_contract)
+            .collect();
+        Ok(OptionsChain {
+            underlying: underlying.clone(),
+            as_of: Utc::now(),
+            contracts,
+        })
     }
 
     async fn corporate_actions(

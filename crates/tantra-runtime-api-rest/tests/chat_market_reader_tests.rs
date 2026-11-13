@@ -10,7 +10,7 @@ use tantra_agent_chat_tools::ports::error::PortErrorKind;
 use tantra_agent_chat_tools::ports::market::MarketReader;
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
-use tantra_core::{Currency, Exchange, InstrumentId, InstrumentKind, Price, PriceBand};
+use tantra_core::{Currency, Exchange, InstrumentId, InstrumentKind, OptionType, Price, PriceBand};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api_rest::chat_market::{FeedMarketReader, FeedSnapshotSource};
 use tantra_runtime_api_rest::market_feed::ports::{
@@ -45,6 +45,41 @@ impl InstrumentMaster for FakeFeed {
 
     async fn list_instruments(&self) -> Result<Vec<Instrument>, FeedPortError> {
         Ok(self.instruments.clone())
+    }
+
+    async fn list_chain(
+        &self,
+        underlying: &InstrumentId,
+        _as_of: Option<chrono::NaiveDate>,
+    ) -> Result<Vec<Instrument>, FeedPortError> {
+        let mut chain: Vec<Instrument> = self
+            .instruments
+            .iter()
+            .filter(|i| {
+                i.kind() == InstrumentKind::Option
+                    && i.underlying()
+                        .is_some_and(|u| u.eq_ignore_ascii_case(&underlying.symbol))
+            })
+            .cloned()
+            .collect();
+        chain.sort_by(|a, b| {
+            let expiry = |i: &Instrument| i.expiry().unwrap_or(chrono::NaiveDate::MAX);
+            let strike = |i: &Instrument| i.strike().unwrap_or(f64::INFINITY);
+            let ot = |i: &Instrument| match i.option_type() {
+                Some(OptionType::Call) => 0u8,
+                Some(OptionType::Put) => 1u8,
+                None => 2u8,
+            };
+            expiry(a)
+                .cmp(&expiry(b))
+                .then_with(|| {
+                    strike(a)
+                        .partial_cmp(&strike(b))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| ot(a).cmp(&ot(b)))
+        });
+        Ok(chain)
     }
 }
 
@@ -234,4 +269,130 @@ async fn snapshot_source_reports_no_universe_when_catalog_empty() {
         .await
         .unwrap();
     assert_eq!(snapshot.universe, None);
+}
+
+fn option_instrument(symbol: &str, expiry: &str, strike: f64, ot: OptionType) -> Instrument {
+    Instrument::new(
+        InstrumentId::new(Exchange::Nfo, symbol),
+        InstrumentKind::Option,
+        Currency::Inr,
+        25.0,
+        0.05,
+    )
+    .with_derivative(
+        Some(chrono::NaiveDate::parse_from_str(expiry, "%Y-%m-%d").unwrap()),
+        Some(strike),
+        Some(ot),
+        Some("NIFTY".to_string()),
+    )
+}
+
+#[tokio::test]
+async fn options_chain_serves_catalog_contracts_with_quotes_and_filters() {
+    let inst = InstrumentId::new(Exchange::Nfo, "NIFTY");
+    let contract_id = |symbol: &str| InstrumentId::new(Exchange::Nfo, symbol);
+    let quote = QuoteTick::new(
+        contract_id("NIFTY26NOV24000CE"),
+        235.0,
+        236.0,
+        100.0,
+        150.0,
+        ts(9),
+        ts(9),
+    );
+    let mut banknifty = option_instrument(
+        "BANKNIFTY26NOV24000CE",
+        "2026-11-26",
+        24000.0,
+        OptionType::Call,
+    );
+    banknifty = banknifty.with_derivative(
+        Some(chrono::NaiveDate::from_ymd_opt(2026, 11, 26).unwrap()),
+        Some(24000.0),
+        Some(OptionType::Call),
+        Some("BANKNIFTY".to_string()),
+    );
+    let feed = FakeFeed {
+        instruments: vec![
+            option_instrument("NIFTY26NOV24500CE", "2026-11-26", 24500.0, OptionType::Call),
+            option_instrument("NIFTY26NOV24000CE", "2026-11-26", 24000.0, OptionType::Call),
+            option_instrument("NIFTY26NOV24000PE", "2026-11-26", 24000.0, OptionType::Put),
+            banknifty,
+        ],
+        quote: Some(quote),
+        ..Default::default()
+    };
+    let reader = reader_over(feed, RiskEngine::default());
+
+    let chain = reader.options_chain(&inst, None, None).await.unwrap();
+    assert_eq!(chain.underlying, inst);
+    let symbols: Vec<String> = chain
+        .contracts
+        .iter()
+        .map(|c| c.instrument.symbol.clone())
+        .collect();
+    assert_eq!(
+        symbols,
+        vec![
+            "NIFTY26NOV24000CE",
+            "NIFTY26NOV24000PE",
+            "NIFTY26NOV24500CE"
+        ],
+        "ordered by strike then option type, other underlyings excluded"
+    );
+    assert_eq!(chain.contracts[0].strike.value(), Decimal::from(24000));
+    assert_eq!(chain.contracts[0].option_type, "CE");
+    assert_eq!(chain.contracts[1].option_type, "PE");
+    assert_eq!(chain.contracts[0].lot_size.value(), Decimal::from(25));
+    assert_eq!(chain.contracts[0].bid.unwrap().value(), Decimal::from(235));
+    assert_eq!(chain.contracts[0].ask.unwrap().value(), Decimal::from(236));
+    assert_eq!(
+        chain.contracts[0].last_price.unwrap().value(),
+        Decimal::from(2355) / Decimal::from(10),
+        "last price is the bid/ask midpoint when both sides are quoted"
+    );
+    assert_eq!(chain.contracts[0].open_interest, None);
+
+    // Expiry filter keeps only the requested expiry; a limit caps the result.
+    let expiry = Utc.with_ymd_and_hms(2026, 11, 26, 0, 0, 0).unwrap();
+    let filtered = reader
+        .options_chain(&inst, Some(expiry), None)
+        .await
+        .unwrap();
+    assert_eq!(filtered.contracts.len(), 3);
+    let capped = reader.options_chain(&inst, None, Some(1)).await.unwrap();
+    assert_eq!(capped.contracts.len(), 1);
+}
+
+#[tokio::test]
+async fn options_chain_is_explicitly_unavailable_when_the_master_cannot_enumerate() {
+    struct NoChain;
+    #[async_trait::async_trait]
+    impl InstrumentMaster for NoChain {
+        async fn get_instrument(
+            &self,
+            _id: &InstrumentId,
+        ) -> Result<Option<Instrument>, FeedPortError> {
+            Ok(None)
+        }
+        async fn list_instruments(&self) -> Result<Vec<Instrument>, FeedPortError> {
+            Ok(Vec::new())
+        }
+    }
+    let feed = FakeFeed::default();
+    let reader = FeedMarketReader::new(
+        Arc::new(NoChain),
+        Arc::new(feed.clone()),
+        Arc::new(feed),
+        Arc::new(Mutex::new(RiskEngine::default())),
+    );
+    let err = reader
+        .options_chain(&InstrumentId::new(Exchange::Nfo, "NIFTY"), None, None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message.contains("cannot enumerate options chains"),
+        "stub must say enumeration is unsupported, got: {err}"
+    );
 }
