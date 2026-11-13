@@ -30,14 +30,15 @@ and are either approximated or answered with an explicit error rather than fabri
    anywhere yet — the upstream ingestion decision lives in
    `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`. The tool reports the gap
    explicitly instead of the model fabricating deals.
-7. **`ContentReader::news_search` and `ContentReader::filings_search` always answer
+7. **`ContentReader::news_search` and `ContentReader::filings` always answer
    `PortError::unavailable`.** Added with chat tools `news_search`/`filings_search`
    (`tantra-agent` plan 0006 Phase 3) via the new
    `crates/tantra-runtime-api-rest/src/chat_content.rs::FeedContentReader`: news has no data
    source anywhere yet (`tantra-data/docs/gaps/0006-news-ingestion.md`), and filings are ingested
    in `tantra-data`'s Python service (closed gap 0003) but nothing bridges that lakehouse into
    Rust consumers yet (`tantra-data/docs/gaps/0007-filings-rust-bridge.md`). Both report the gap
-   explicitly instead of the model fabricating headlines or filings.
+   explicitly instead of the model fabricating headlines or filings. (The `ContentReader` port's
+   filings method is named `filings`; the chat tool that calls it is `filings_search`.)
 8. **`MarketReader::options_chain` always answers `PortError::unavailable`.** Added with chat
    tool `options_chain` (`tantra-agent` plan 0006 Phase 4): `tantra-market` holds
    contract-reference columns and Greeks pricing but serves no chain enumeration/reader yet

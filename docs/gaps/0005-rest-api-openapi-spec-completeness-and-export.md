@@ -8,7 +8,7 @@ The REST API layer (`tantra-runtime-api-rest`) exposes OpenAPI 3.1 specification
 
 1. **Missing Route Definitions in OpenAPI Document**:
    Multiple active routes in `crates/tantra-runtime-api-rest/src/v1.rs` are omitted from `openapi.rs`:
-   - All 10 `/reports/*` endpoints (`/reports/ledger`, `/reports/tax`, `/reports/snapshots`, `/reports/audit`, `/reports/concentration`, `/reports/wac`, `/reports/fees`, `/reports/equity-curve`, `/reports/fills/:order_id`).
+   - All 9 `/reports/*` endpoints (`/reports/ledger`, `/reports/tax`, `/reports/snapshots`, `/reports/audit`, `/reports/concentration`, `/reports/wac`, `/reports/fees`, `/reports/equity-curve`, `/reports/fills/:order_id`).
    - Legacy report aliases (`/ledger`, `/tax/report`, `/fees`, `/positions/audit`).
    - `/bars` (`POST` ingest endpoint for tick/bar ingestion).
    - `/trading-state` (`PUT` handler for runtime state transition).

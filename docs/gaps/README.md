@@ -10,8 +10,9 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
 | [0004](0004-profile-schema-missing-watchlists-portfolios-risk-profiles-workspaces.md) | Profile schema has no room for watchlists metadata, portfolios, risk profiles, or workspaces | `tantra-runtime-api::profile`, `tantra-runtime-api-rest::profile_store` | Open |
+| [0005](0005-rest-api-openapi-spec-completeness-and-export.md) | REST API OpenAPI 3.1 spec completeness, schema coverage, and static artifact export | `tantra-runtime-api-rest::openapi` | Open |
 | [0006](0006-chat-agent-session-persistence-and-portfolio-tools.md) | Chat agent session persistence and portfolio-backed tools are stubbed (in-memory session store, `PortError::unavailable` portfolio reader) | `tantra-runtime-api-rest::chat`, `tantra-runtime-api-rest::state` | Open |
-| [0007](0007-chat-market-reader-approximations-and-missing-sources.md) | Chat market/content-reader adapters approximate last price as bid/ask mid, report quote volume as unavailable, and have no indicator/macro-data/instrument-name/news/filings sources | `tantra-runtime-api-rest::chat_market`, `tantra-runtime-api-rest::chat_content` | Open |
+| [0007](0007-chat-market-reader-approximations-and-missing-sources.md) | Chat market/content-reader adapters approximate last price as bid/ask mid, report quote volume as unavailable, and have no indicator/macro-data/instrument-name/news/filings/options-chain/corporate-actions sources | `tantra-runtime-api-rest::chat_market`, `tantra-runtime-api-rest::chat_content` | Open |
 | [0008](0008-broker-adapter-boundary.md) | Dual execution-port boundary (`BrokerAdapter` sync sim port vs `tantra_exec_core::BrokerExecutor` async wire port) — keep-or-lift decision documented | `tantra-runtime-strategy::dispatch` | Open (documented decision) |
 
 ## Closed Gaps

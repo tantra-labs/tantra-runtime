@@ -85,13 +85,21 @@ statutory cost calculators — parity is achieved by delegation, not reimplement
 | Canonical `prod` profile | `make prod` / `cargo test --workspace --profile prod`. |
 | Wire strictness | `deny_unknown_fields` on configs, manifests, envelopes, tick files; monetary values serialized as strings (documented exception: the order wire uses JSON numbers). |
 
-## 5. Open Gaps & Plans (as of 2026-11-12)
+## 5. Open Gaps & Plans (as of 2026-11-13)
 
-- Open gaps: `docs/gaps/0004` (profile schema), `0006` (chat session persistence + portfolio
-  tools stubs), `0007` (chat market/content reader approximations).
-- Active plans: `docs/plans/0003` (trade-journal + market-reference REST endpoints), `0004`
-  (block/bulk deal chat tool; Phases 1–3 implemented, Phase 4 blocked on `tantra-data` gap 0005).
-- Closed: gaps 0001–0003, plans 0001–0002 — see the `docs/{gaps,plans}/README.md` indexes.
+- Open gaps: `docs/gaps/0004` (profile schema — no room for watchlist metadata, portfolios, risk
+  profiles, workspaces), `0005` (REST OpenAPI 3.1 spec completeness/coverage/export), `0006`
+  (chat session persistence + portfolio tools stubs), `0007` (chat market/content reader
+  approximations & missing sources), `0008` (dual execution-port boundary: `BrokerAdapter` sync
+  sim port vs `tantra_exec_core::BrokerExecutor` async wire port).
+- Active plans: `docs/plans/0004` (block/bulk deal chat tool + REST endpoint; Phases 1–3
+  implemented, Phase 4 blocked on `tantra-data` gap 0005, Phase 5 optional).
+- Implemented plans: `0001` (distributed jobs engine, run lifecycle, strategy dispatch), `0002`
+  (statistical gates & microstructure traps), `0003` (trade-journal + market-reference REST
+  endpoints — routes registered in `v1.rs`; market-reference serves sample stores pending the
+  `tantra-data` → Rust FFI bridge).
+- Closed gaps: 0001–0003 — see the `docs/{gaps,plans}/README.md` indexes. Completed milestones
+  and landings are recorded in `implementation-record.md` (the dismantled `docs/roadmap/`).
 
 ## 6. Per-Crate Design Docs
 
@@ -109,3 +117,4 @@ statutory cost calculators — parity is achieved by delegation, not reimplement
 | `code-testing.md` | `tantra-runtime-testing` |
 | `code-feed.md` | `tantra-runtime-feed` (+ placeholders: `tantra-runtime-market`, `tantra-indicators`, `tantra-runtime-test-utils`) |
 | `code-migration-map.md` | Historical honba-ya → tantra-runtime migration record |
+| `implementation-record.md` | Dismantled `docs/roadmap/` — completed milestones & landings |

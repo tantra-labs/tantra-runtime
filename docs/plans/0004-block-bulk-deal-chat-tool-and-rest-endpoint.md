@@ -127,8 +127,9 @@ phase may need to establish that read path for the first time, not just reuse on
 Add `GET /market-data/block-deals` to `tantra-runtime-api-rest` (per this workspace's
 `AGENTS.md` §6.3 canonical-endpoints pattern: `instrument` and `date` query params, same
 `BlockDeal` shape as Phase 1), for consumers that want this data outside the chat flow (e.g. a
-future dedicated panel in `tantra-ui-web`, mirroring how `tantra-data`'s calendar gap feeds both
-a chat path and `tantra-runtime/docs/plans/0003`'s REST path). Only worth doing once Phase 4
+future dedicated panel in `tantra-ui-web`, mirroring how the implemented market-reference routes
+(`/market-data/symbol-profile/:id`, `/market-data/calendar`, per implemented plan 0003) feed
+both a chat path and a REST path). Only worth doing once Phase 4
 lands real data — a REST endpoint that only ever returns `unavailable` has no consumer value.
 
 ## 3. Sequencing

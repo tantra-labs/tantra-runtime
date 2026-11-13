@@ -19,6 +19,17 @@
 
 ## Phase / Slice Status
 
+- **Docs: dismantle `docs/roadmap/` into design/gaps/plans (2026-11-13, docs-only)**: former
+  `docs/roadmap/` (`roadmap.md` + `migration-verification.md`) removed — completed milestones
+  folded into new `docs/design/implementation-record.md` (migration M1–M3 + migration
+  verification + subsequent landings table). `architecture.md` §5 gaps/plans snapshot corrected
+  to source reality: plan 0003 is **implemented** (trade-journal + market-reference routes all
+  registered in `v1.rs`; market-reference handlers serve sample stores pending the
+  `tantra-data` → Rust FFI bridge) — moved to Implemented in `docs/plans/README.md` and its doc
+  removed per gap-tracking rule §4; gaps index gained the previously-missing gap 0005; gap
+  0007's item 7 corrected to the `ContentReader::filings` method name (chat tool
+  `filings_search`); gap 0005's "10 `/reports/*`" corrected to 9. **No Rust code touched** — no
+  `make prod` required by §11.
 - **Execution seam consolidation — implemented 2026-11-12 (exec/runtime boundary)**:
   - `ExecutionActor::with_exec_stack(risk_engine)` composes
     `tantra_exec_core::RiskGatedExecutor<RateLimitedBroker<_>>` over the
