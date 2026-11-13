@@ -553,8 +553,12 @@ pub async fn get_trade_journal_overview(
         Err(r) => return r,
     };
     let store = store.lock().expect("journal store lock poisoned");
+    // The HTTP layer is allowed the wall clock; the metrics engine itself is
+    // domain-pure (tantra-ledger plan 0004 — `MetricsInput::new` takes the
+    // as-of explicitly and never queries the clock).
+    let now = Utc::now();
     let trades = store.closed_trades_in_range(query.from, query.to);
-    let input = MetricsInput::new(trades.into_iter().cloned().collect());
+    let input = MetricsInput::new(trades.into_iter().cloned().collect(), now);
     let metrics = compute_metrics(&input).unwrap_or_else(|_| default_metrics());
     let edge_score = compute_edge_score(&metrics);
 
@@ -579,6 +583,7 @@ pub async fn get_trade_journal_overview(
                 .into_iter()
                 .cloned()
                 .collect(),
+            now,
         ))
         .unwrap_or_else(|_| default_metrics());
         Some(format!("{:?}", compute_edge_score(&prior).score))
@@ -586,7 +591,6 @@ pub async fn get_trade_journal_overview(
         None
     };
 
-    let now = Utc::now();
     let response = OverviewResponse {
         as_of: now.to_rfc3339(),
         time_zone: "UTC".to_string(),
@@ -796,6 +800,7 @@ pub async fn get_trade_journal_compare(
         Err(r) => return r,
     };
     let store = store.lock().expect("journal store lock poisoned");
+    let now = Utc::now();
 
     let (trades_a, trades_b, is_prior_period, id_a, id_b) = if let (Some(a), Some(b)) =
         (&query.account_a, &query.account_b)
@@ -840,10 +845,10 @@ pub async fn get_trade_journal_compare(
     };
 
     let metrics_a =
-        compute_metrics(&MetricsInput::new(trades_a)).unwrap_or_else(|_| default_metrics());
+        compute_metrics(&MetricsInput::new(trades_a, now)).unwrap_or_else(|_| default_metrics());
     let edge_a = compute_edge_score(&metrics_a);
     let metrics_b =
-        compute_metrics(&MetricsInput::new(trades_b)).unwrap_or_else(|_| default_metrics());
+        compute_metrics(&MetricsInput::new(trades_b, now)).unwrap_or_else(|_| default_metrics());
     let edge_b = compute_edge_score(&metrics_b);
 
     success(CompareResponse {
