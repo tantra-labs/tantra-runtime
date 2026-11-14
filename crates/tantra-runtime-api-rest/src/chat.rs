@@ -202,19 +202,21 @@ impl ChatRuntime {
         let calendar: Arc<dyn tantra_agent_chat_tools::ports::calendar::CalendarReader> = Arc::new(
             crate::chat_calendar::FeedCalendarReader::new().with_economic_calendar(data_root),
         );
-        // Fundamentals / mutual-fund / IPO tools (agent plan 0007 Track 3 Phases 6-8): the
-        // fundamentals reader is wired to the `tantra-data` projections
-        // (`{root}/catalog/fundamentals` + `fundamental_ratios`, gap 0020 landed 2026-11-14);
-        // fund/IPO data sources are not ingested yet, so those adapters answer their explicit
-        // gap citations (see `crate::chat_fund` / `crate::chat_ipo`).
+        // Fundamentals / mutual-fund / IPO tools (agent plan 0007 Track 3 Phases 6-8): all
+        // three readers are wired to the `tantra-data` projections landed 2026-11-14 —
+        // fundamentals (`{root}/catalog/fundamentals` + `fundamental_ratios`, gap 0020, item
+        // 14), mutual funds + IPO (`{root}/catalog/mutual_funds` + `mf_nav` + `mf_returns` +
+        // `ipos` + `ipo_subscriptions`, gaps 0021/0022, items 15/16). Fund *holdings* remain
+        // unsourced (no free verified holdings feed), so `fund_holdings` keeps its explicit
+        // gap citation (see `crate::chat_fund`).
         let fundamental: Arc<dyn tantra_agent_chat_tools::ports::fundamental::FundamentalReader> =
             Arc::new(
                 crate::chat_fundamental::FeedFundamentalReader::new().with_fundamentals(data_root),
             );
         let fund: Arc<dyn tantra_agent_chat_tools::ports::fund::FundReader> =
-            Arc::new(crate::chat_fund::FeedFundReader::new());
+            Arc::new(crate::chat_fund::FeedFundReader::new().with_funds(data_root));
         let ipo: Arc<dyn tantra_agent_chat_tools::ports::ipo::IpoReader> =
-            Arc::new(crate::chat_ipo::FeedIpoReader::new());
+            Arc::new(crate::chat_ipo::FeedIpoReader::new().with_ipos(data_root));
         // Tax / ledger-statement tools (plan 0007 Track 5 Phase 14, docs/gaps/0007 item 19):
         // `tantra-ledger-portfolio` matched lots are recorded by the fill flow and exposed
         // through the shared ledger's closed-lot history, so `tax_report`/`ledger_statement`
