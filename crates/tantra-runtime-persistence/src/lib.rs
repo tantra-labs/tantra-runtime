@@ -13,6 +13,7 @@ pub mod domain_stores;
 pub mod fills;
 pub mod messages;
 pub mod migrations;
+pub mod monitor;
 pub mod orders;
 pub mod positions;
 pub mod sessions;
@@ -25,6 +26,9 @@ pub use fills::{FillStore, FillStoreError, PersistedFill};
 pub use messages::RiskBreachEvent;
 pub use migrations::{
     MigrationError, MigrationOutcome, connect_and_migrate, migrate, rollback_last,
+};
+pub use monitor::{
+    MonitorBridgeError, MonitorRun, MonitorRunOutcome, MonitorRunner, MonitorSchedulerBridge,
 };
 pub use orders::{OrderStore, OrderStoreError, PersistedOrder};
 pub use positions::{PersistedPosition, PersistedPositionLot, PositionStore, PositionStoreError};
