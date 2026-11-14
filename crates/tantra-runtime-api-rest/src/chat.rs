@@ -184,12 +184,24 @@ impl ChatRuntime {
         // `crate::chat_calendar`).
         let calendar: Arc<dyn tantra_agent_chat_tools::ports::calendar::CalendarReader> =
             Arc::new(crate::chat_calendar::FeedCalendarReader::new());
+        // Fundamentals / mutual-fund / IPO tools (agent plan 0007 Track 3 Phases 6-8): no
+        // data source exists anywhere yet, so the adapters answer their explicit gap
+        // citations (see `crate::chat_fundamental` / `crate::chat_fund` / `crate::chat_ipo`).
+        let fundamental: Arc<dyn tantra_agent_chat_tools::ports::fundamental::FundamentalReader> =
+            Arc::new(crate::chat_fundamental::FeedFundamentalReader::new());
+        let fund: Arc<dyn tantra_agent_chat_tools::ports::fund::FundReader> =
+            Arc::new(crate::chat_fund::FeedFundReader::new());
+        let ipo: Arc<dyn tantra_agent_chat_tools::ports::ipo::IpoReader> =
+            Arc::new(crate::chat_ipo::FeedIpoReader::new());
         tantra_agent_chat_tools::catalog::register_read_only_tools(
             &mut registry,
             portfolio,
             market,
             content,
             calendar,
+            fundamental,
+            fund,
+            ipo,
             Some(snapshots),
         );
 

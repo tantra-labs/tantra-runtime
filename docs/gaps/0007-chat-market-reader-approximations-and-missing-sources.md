@@ -75,6 +75,18 @@ and are either approximated or answered with an explicit error rather than fabri
     wiring `ParquetOpenInterestStore::open(data_root)` + `BuildupAnalyzer` into
     `FeedMarketReader` is the remaining work. The seedable `RuntimeMarketReader` accepts a
     `set_oi_buildup` store for tests.
+14. **`FundamentalReader` (chat tools `fundamental_ratios`/`financial_statements`) always
+    answers `PortError::unavailable`** via `crate::chat_fundamental::FeedFundamentalReader`.
+    Added with `tantra-agent` plan 0007 Track 3 Phase 6: no fundamentals/financial-statement
+    data source exists anywhere yet (`tantra-data/docs/gaps/0020-fundamentals-ingestion.md`).
+15. **`FundReader` (chat tools `fund_search`/`fund_holdings`) always answers
+    `PortError::unavailable`** via `crate::chat_fund::FeedFundReader`. Added with plan 0007
+    Track 3 Phase 7: no mutual-fund NAV/holdings data source exists anywhere yet
+    (`tantra-data/docs/gaps/0021-mutual-fund-data-ingestion.md`).
+16. **`IpoReader` (chat tools `ipo_calendar`/`ipo_subscription`) always answers
+    `PortError::unavailable`** via `crate::chat_ipo::FeedIpoReader`. Added with plan 0007
+    Track 3 Phase 8: no IPO calendar/subscription data source exists anywhere yet
+    (`tantra-data/docs/gaps/0022-ipo-calendar-and-subscription-ingestion.md`).
 
 ## Why
 
