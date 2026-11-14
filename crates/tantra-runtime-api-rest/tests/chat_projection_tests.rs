@@ -14,11 +14,13 @@ use parquet::arrow::arrow_writer::ArrowWriter;
 use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::content::ContentReader;
 use tantra_agent_chat_tools::ports::error::PortErrorKind;
+use tantra_agent_chat_tools::ports::fundamental::FundamentalReader;
 use tantra_agent_chat_tools::ports::market::MarketReader;
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_core::{Currency, Exchange, InstrumentId, Money, Quantity};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api_rest::chat_content::FeedContentReader;
+use tantra_runtime_api_rest::chat_fundamental::FeedFundamentalReader;
 use tantra_runtime_api_rest::chat_market::FeedMarketReader;
 use tantra_runtime_api_rest::market_feed::ports::{
     BarReader, BarRequest, InstrumentMaster, PortError as FeedPortError, QuoteReader,
@@ -689,5 +691,164 @@ async fn unwired_readers_still_answer_unavailable() {
     assert!(
         err.message.contains("0007 item 3b"),
         "unconfigured macro series must cite the runtime gap item, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn fundamentals_read_through_projection() {
+    let dir = tempdir().unwrap();
+    let reliance = InstrumentId::new(Exchange::Nse, "RELIANCE-EQ");
+    let epoch_days = |y: i32, m: u32, d: u32| -> i32 {
+        (NaiveDate::from_ymd_opt(y, m, d).unwrap() - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+            .num_days() as i32
+    };
+
+    // Fundamental-ratios fixture (one snapshot for RELIANCE).
+    let ratios_dir = dir.path().join("catalog").join("fundamental_ratios");
+    std::fs::create_dir_all(&ratios_dir).unwrap();
+    let ratios_schema = Arc::new(Schema::new(vec![
+        Field::new("as_of_date", DataType::Date32, false),
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("pe", DataType::Decimal128(18, 4), true),
+        Field::new("pb", DataType::Decimal128(18, 4), true),
+        Field::new("ev_to_ebitda", DataType::Decimal128(18, 4), true),
+        Field::new("dividend_yield", DataType::Decimal128(18, 4), true),
+        Field::new("roce", DataType::Decimal128(18, 4), true),
+        Field::new("roe", DataType::Decimal128(18, 4), true),
+        Field::new("debt_to_equity", DataType::Decimal128(18, 4), true),
+        Field::new("interest_coverage", DataType::Decimal128(18, 4), true),
+        Field::new("source", DataType::Utf8, false),
+    ]));
+    let pe = Decimal128Array::from(vec![Some(22_078_114i128)])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let debt_equity = Decimal128Array::from(vec![Some(440_251i128)])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let nulls = Decimal128Array::from(vec![None])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let ratios_batch = RecordBatch::try_new(
+        ratios_schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![epoch_days(2026, 11, 14)])),
+            Arc::new(StringArray::from(vec!["NSE:RELIANCE-EQ"])),
+            Arc::new(pe),
+            Arc::new(nulls.clone()),
+            Arc::new(nulls.clone()),
+            Arc::new(nulls.clone()),
+            Arc::new(nulls.clone()),
+            Arc::new(nulls.clone()),
+            Arc::new(debt_equity),
+            Arc::new(nulls.clone()),
+            Arc::new(StringArray::from(vec!["yfinance"])),
+        ],
+    )
+    .unwrap();
+    let ratios_file = std::fs::File::create(ratios_dir.join("2026-11-14.parquet")).unwrap();
+    let mut ratios_writer = ArrowWriter::try_new(ratios_file, ratios_schema, None).unwrap();
+    ratios_writer.write(&ratios_batch).unwrap();
+    ratios_writer.close().unwrap();
+
+    // Financial-statement fixture: three line items of the annual FY2026 income statement.
+    let statements_dir = dir.path().join("catalog").join("fundamentals");
+    std::fs::create_dir_all(&statements_dir).unwrap();
+    let statements_schema = Arc::new(Schema::new(vec![
+        Field::new("filing_date", DataType::Date32, false),
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("statement_type", DataType::Utf8, false),
+        Field::new("period_type", DataType::Utf8, false),
+        Field::new("period_end_date", DataType::Date32, false),
+        Field::new("line_item", DataType::Utf8, false),
+        Field::new("value", DataType::Decimal128(18, 4), false),
+        Field::new("currency", DataType::Utf8, false),
+    ]));
+    let values = Decimal128Array::from(vec![
+        1_057_219_000_000_000i128,
+        80_775_000_000_000i128,
+        425_000i128,
+    ])
+    .with_precision_and_scale(18, 4)
+    .unwrap();
+    let statements_batch = RecordBatch::try_new(
+        statements_schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![epoch_days(2026, 11, 14); 3])),
+            Arc::new(StringArray::from(vec![
+                "NSE:RELIANCE-EQ",
+                "NSE:RELIANCE-EQ",
+                "NSE:RELIANCE-EQ",
+            ])),
+            Arc::new(StringArray::from(vec![
+                "income_statement",
+                "income_statement",
+                "income_statement",
+            ])),
+            Arc::new(StringArray::from(vec!["annual", "annual", "annual"])),
+            Arc::new(Date32Array::from(vec![epoch_days(2026, 3, 31); 3])),
+            Arc::new(StringArray::from(vec![
+                "total_revenue",
+                "net_income",
+                "diluted_eps",
+            ])),
+            Arc::new(values),
+            Arc::new(StringArray::from(vec!["INR", "INR", "INR"])),
+        ],
+    )
+    .unwrap();
+    let statements_file = std::fs::File::create(statements_dir.join("2026-11-14.parquet")).unwrap();
+    let mut statements_writer =
+        ArrowWriter::try_new(statements_file, statements_schema, None).unwrap();
+    statements_writer.write(&statements_batch).unwrap();
+    statements_writer.close().unwrap();
+
+    let reader = FeedFundamentalReader::new().with_fundamentals(dir.path());
+
+    let ratios = reader.fundamental_ratios(&reliance).await.unwrap();
+    assert_eq!(
+        ratios.pe_ratio,
+        Some(Decimal::try_from_i128_with_scale(22_078_114, 4).unwrap())
+    );
+    assert_eq!(
+        ratios.debt_equity,
+        Some(Decimal::try_from_i128_with_scale(440_251, 4).unwrap())
+    );
+    assert_eq!(ratios.pb_ratio, None);
+    assert_eq!(
+        ratios.as_of,
+        Utc.with_ymd_and_hms(2026, 11, 14, 0, 0, 0).unwrap()
+    );
+
+    let statements = reader
+        .financial_statements(&reliance, Some("income_statement"), None)
+        .await
+        .unwrap();
+    assert_eq!(statements.len(), 1);
+    assert_eq!(statements[0].statement_type, "income_statement");
+    assert_eq!(statements[0].fiscal_quarter, "FY2026");
+    assert_eq!(
+        statements[0].revenue,
+        Some(Money::new(
+            Decimal::try_from_i128_with_scale(1_057_219_000_000_000, 4).unwrap(),
+            Currency::Inr
+        ))
+    );
+    assert_eq!(
+        statements[0].net_income,
+        Some(Money::new(
+            Decimal::try_from_i128_with_scale(80_775_000_000_000, 4).unwrap(),
+            Currency::Inr
+        ))
+    );
+    assert_eq!(
+        statements[0].eps,
+        Some(Decimal::try_from_i128_with_scale(425_000, 4).unwrap())
+    );
+
+    // A different instrument with no projections answers not-found, never a fabricated empty.
+    let tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    assert_eq!(
+        reader.fundamental_ratios(&tcs).await.unwrap_err().kind,
+        PortErrorKind::NotFound
     );
 }

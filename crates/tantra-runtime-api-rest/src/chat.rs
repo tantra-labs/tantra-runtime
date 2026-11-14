@@ -202,11 +202,15 @@ impl ChatRuntime {
         let calendar: Arc<dyn tantra_agent_chat_tools::ports::calendar::CalendarReader> = Arc::new(
             crate::chat_calendar::FeedCalendarReader::new().with_economic_calendar(data_root),
         );
-        // Fundamentals / mutual-fund / IPO tools (agent plan 0007 Track 3 Phases 6-8): no
-        // data source exists anywhere yet, so the adapters answer their explicit gap
-        // citations (see `crate::chat_fundamental` / `crate::chat_fund` / `crate::chat_ipo`).
+        // Fundamentals / mutual-fund / IPO tools (agent plan 0007 Track 3 Phases 6-8): the
+        // fundamentals reader is wired to the `tantra-data` projections
+        // (`{root}/catalog/fundamentals` + `fundamental_ratios`, gap 0020 landed 2026-11-14);
+        // fund/IPO data sources are not ingested yet, so those adapters answer their explicit
+        // gap citations (see `crate::chat_fund` / `crate::chat_ipo`).
         let fundamental: Arc<dyn tantra_agent_chat_tools::ports::fundamental::FundamentalReader> =
-            Arc::new(crate::chat_fundamental::FeedFundamentalReader::new());
+            Arc::new(
+                crate::chat_fundamental::FeedFundamentalReader::new().with_fundamentals(data_root),
+            );
         let fund: Arc<dyn tantra_agent_chat_tools::ports::fund::FundReader> =
             Arc::new(crate::chat_fund::FeedFundReader::new());
         let ipo: Arc<dyn tantra_agent_chat_tools::ports::ipo::IpoReader> =
