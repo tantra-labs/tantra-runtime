@@ -5,8 +5,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tantra_agent_chat_tools::ports::error::PortErrorKind;
 use tantra_agent_chat_tools::ports::market::{
-    BlockDeal, CorporateAction, InstrumentSearchResult, MacroSeries, MarketBar, MarketQuote,
-    MarketReader, OptionContract, OptionsChain,
+    BlockDeal, CorporateAction, InstitutionalFlow, InstrumentSearchResult, MacroSeries, MarketBar,
+    MarketDepth, MarketDepthLevel, MarketQuote, MarketReader, OptionContract, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::{DateRange, OrderFilter, PortfolioReader};
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
@@ -399,6 +399,62 @@ async fn test_runtime_market_reader() {
 
     let capped_actions = reader.corporate_actions(None, None, Some(1)).await.unwrap();
     assert_eq!(capped_actions.len(), 1);
+
+    // 10. Market depth — explicitly unavailable until seeded, then served from the map.
+    let depth_err = reader.market_depth(&inst, None).await.unwrap_err();
+    assert_eq!(depth_err.kind, PortErrorKind::Unavailable);
+
+    let depth = MarketDepth {
+        instrument: inst.clone(),
+        as_of: now,
+        bids: vec![
+            MarketDepthLevel {
+                price: Price::new(dec!(1849.0)),
+                quantity: Quantity::new(dec!(700)),
+            },
+            MarketDepthLevel {
+                price: Price::new(dec!(1848.0)),
+                quantity: Quantity::new(dec!(500)),
+            },
+        ],
+        asks: vec![
+            MarketDepthLevel {
+                price: Price::new(dec!(1851.0)),
+                quantity: Quantity::new(dec!(500)),
+            },
+            MarketDepthLevel {
+                price: Price::new(dec!(1852.0)),
+                quantity: Quantity::new(dec!(300)),
+            },
+        ],
+        liquidity_imbalance_pct: dec!(20.0),
+    };
+    reader.set_market_depth(inst.clone(), depth.clone());
+
+    let fetched_depth = reader.market_depth(&inst, None).await.unwrap();
+    assert_eq!(fetched_depth, depth);
+
+    let missing_depth = reader
+        .market_depth(&InstrumentId::new(Exchange::Nse, "TCS"), None)
+        .await
+        .unwrap_err();
+    assert_eq!(missing_depth.kind, PortErrorKind::NotFound);
+
+    // 11. Institutional flows — explicitly unavailable until seeded.
+    let flows_err = reader.institutional_flows(None).await.unwrap_err();
+    assert_eq!(flows_err.kind, PortErrorKind::Unavailable);
+
+    let flow = InstitutionalFlow {
+        category: "fii".to_string(),
+        buy_value: Money::new(dec!(12000.0), Currency::Inr),
+        sell_value: Money::new(dec!(8000.0), Currency::Inr),
+        net_value: Money::new(dec!(4000.0), Currency::Inr),
+        trade_date: now,
+    };
+    reader.set_institutional_flows(vec![flow.clone()]);
+    let fetched_flows = reader.institutional_flows(None).await.unwrap();
+    assert_eq!(fetched_flows.len(), 1);
+    assert_eq!(fetched_flows[0], flow);
 }
 
 #[tokio::test]

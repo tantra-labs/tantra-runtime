@@ -396,3 +396,26 @@ async fn options_chain_is_explicitly_unavailable_when_the_master_cannot_enumerat
         "stub must say enumeration is unsupported, got: {err}"
     );
 }
+
+#[tokio::test]
+async fn market_depth_is_explicitly_unavailable_with_gap_citation() {
+    let reader = reader_over(FakeFeed::default(), RiskEngine::default());
+    let err = reader.market_depth(&reliance(), None).await.unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message.contains("0006-l2-order-book-depth.md"),
+        "stub must cite the upstream gap, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn institutional_flows_are_explicitly_unavailable_with_gap_citation() {
+    let reader = reader_over(FakeFeed::default(), RiskEngine::default());
+    let err = reader.institutional_flows(None).await.unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message
+            .contains("0017-institutional-flow-rust-bridge.md"),
+        "stub must cite the upstream gap, got: {err}"
+    );
+}

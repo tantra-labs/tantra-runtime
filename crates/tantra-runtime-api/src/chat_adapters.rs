@@ -13,8 +13,8 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
-    BlockDeal, CorporateAction, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory,
-    MarketIndicators, MarketQuote, MarketReader, OptionsChain,
+    BlockDeal, CorporateAction, InstitutionalFlow, InstrumentSearchResult, MacroSeries, MarketBar,
+    MarketDepth, MarketHistory, MarketIndicators, MarketQuote, MarketReader, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::{
     AccountSummary, DateRange, OrderFilter, PortfolioReader,
@@ -203,6 +203,8 @@ pub struct RuntimeMarketReader {
     block_deals: RwLock<Vec<BlockDeal>>,
     options_chains: RwLock<HashMap<InstrumentId, OptionsChain>>,
     corporate_actions: RwLock<Vec<CorporateAction>>,
+    depth: RwLock<HashMap<InstrumentId, MarketDepth>>,
+    institutional_flows: RwLock<Vec<InstitutionalFlow>>,
 }
 
 impl RuntimeMarketReader {
@@ -263,6 +265,17 @@ impl RuntimeMarketReader {
     pub fn set_price_band(&self, instrument: InstrumentId, band: PriceBand) {
         let mut map = self.price_bands.write().unwrap();
         map.insert(instrument, band);
+    }
+
+    /// Set or update the L2 order-book depth snapshot for an instrument.
+    pub fn set_market_depth(&self, instrument: InstrumentId, depth: MarketDepth) {
+        let mut map = self.depth.write().unwrap();
+        map.insert(instrument, depth);
+    }
+
+    /// Set or replace the daily FII/DII institutional-flow list.
+    pub fn set_institutional_flows(&self, flows: Vec<InstitutionalFlow>) {
+        *self.institutional_flows.write().unwrap() = flows;
     }
 }
 
@@ -468,6 +481,43 @@ impl MarketReader for RuntimeMarketReader {
             .unwrap_or(MAX_ACTIONS_CAP);
         hits.truncate(effective_limit);
         Ok(hits)
+    }
+
+    async fn market_depth(
+        &self,
+        instrument: &InstrumentId,
+        _levels: Option<usize>,
+    ) -> Result<MarketDepth, PortError> {
+        let map = self.depth.read().unwrap();
+        if map.is_empty() {
+            // Nothing seeded and no L2 depth source is served anywhere yet — see
+            // tantra-market/docs/gaps/0006-l2-order-book-depth.md. An explicit error,
+            // not an empty success, so callers can't mistake "not wired up" for "this
+            // instrument really has an empty book."
+            return Err(PortError::unavailable(
+                "L2 order-book depth source not wired; see tantra-market/docs/gaps/0006-l2-order-book-depth.md",
+            ));
+        }
+        map.get(instrument)
+            .cloned()
+            .ok_or_else(|| PortError::not_found(format!("Market depth not found for {instrument}")))
+    }
+
+    async fn institutional_flows(
+        &self,
+        _date: Option<DateTime<Utc>>,
+    ) -> Result<Vec<InstitutionalFlow>, PortError> {
+        let flows = self.institutional_flows.read().unwrap();
+        if flows.is_empty() {
+            // Nothing seeded and the FII/DII series is Python-side only (no Rust consumer
+            // bridge) — see tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md.
+            // An explicit error, not an empty success, so callers can't mistake "not wired
+            // up" for "no flows happened that day."
+            return Err(PortError::unavailable(
+                "FII/DII institutional-flow Rust bridge not wired; see tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md",
+            ));
+        }
+        Ok(flows.clone())
     }
 }
 

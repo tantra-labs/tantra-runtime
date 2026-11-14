@@ -179,11 +179,17 @@ impl ChatRuntime {
         let content: Arc<dyn tantra_agent_chat_tools::ports::content::ContentReader> = Arc::new(
             crate::chat_content::FeedContentReader::with_filings(data_root),
         );
+        // Economic-calendar tool (agent plan 0007 Track 2 Phase 5): the calendar is
+        // Python-side only, so the adapter answers its explicit gap citation (see
+        // `crate::chat_calendar`).
+        let calendar: Arc<dyn tantra_agent_chat_tools::ports::calendar::CalendarReader> =
+            Arc::new(crate::chat_calendar::FeedCalendarReader::new());
         tantra_agent_chat_tools::catalog::register_read_only_tools(
             &mut registry,
             portfolio,
             market,
             content,
+            calendar,
             Some(snapshots),
         );
 

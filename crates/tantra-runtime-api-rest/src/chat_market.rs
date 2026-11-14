@@ -18,8 +18,9 @@ use chrono::{DateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
-    BlockDeal, CorporateAction, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory,
-    MarketIndicators, MarketQuote, MarketReader, OptionContract, OptionsChain,
+    BlockDeal, CorporateAction, InstitutionalFlow, InstrumentSearchResult, MacroSeries, MarketBar,
+    MarketDepth, MarketHistory, MarketIndicators, MarketQuote, MarketReader, OptionContract,
+    OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
@@ -317,6 +318,35 @@ impl MarketReader for FeedMarketReader {
         actions.sort_by_key(|a| a.ex_date);
         actions.truncate(limit.unwrap_or(usize::MAX));
         Ok(actions)
+    }
+
+    async fn market_depth(
+        &self,
+        _instrument: &InstrumentId,
+        _levels: Option<usize>,
+    ) -> Result<MarketDepth, PortError> {
+        // No L2 order-book depth source is wired into this runtime yet — the feed ports
+        // serve top-of-book quotes only — see
+        // tantra-market/docs/gaps/0006-l2-order-book-depth.md. An explicit error, not an
+        // empty success, so the model can't mistake "not wired up" for "this instrument
+        // really has an empty book" (same pattern as `indicators`/`macro_series` above).
+        Err(PortError::unavailable(
+            "L2 order-book depth source not wired; see tantra-market/docs/gaps/0006-l2-order-book-depth.md",
+        ))
+    }
+
+    async fn institutional_flows(
+        &self,
+        _date: Option<DateTime<Utc>>,
+    ) -> Result<Vec<InstitutionalFlow>, PortError> {
+        // FII/DII daily flows are ingested Python-side (`tantra-data` gap 0013 closed) but
+        // have no Rust-consumer bridge yet — see
+        // tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md. An explicit error,
+        // not an empty success, so the model can't mistake "not wired up" for "no flows
+        // happened that day" (same pattern as `indicators`/`macro_series` above).
+        Err(PortError::unavailable(
+            "FII/DII institutional-flow Rust bridge not wired; see tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md",
+        ))
     }
 }
 
