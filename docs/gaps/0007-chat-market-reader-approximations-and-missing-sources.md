@@ -25,20 +25,16 @@ and are either approximated or answered with an explicit error rather than fabri
 5. **`SnapshotData::regime` and `SnapshotData::risk_metrics` are always `None`/empty.**
    `FeedSnapshotSource` only populates `universe` (from `InstrumentMaster::list_instruments`); no
    market-regime classifier or curated risk-metrics feed exists yet to back the other two fields.
-6. **`MarketReader::block_deals` always answers `PortError::unavailable`.** Added with chat tool
-   `block_deals` (plan 0004 Phases 1–3): no block/bulk deal disclosure data source is ingested
-   anywhere yet — the upstream ingestion decision lives in
-   `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`. The tool reports the gap
-   explicitly instead of the model fabricating deals.
-7. **`ContentReader::news_search` and `ContentReader::filings` always answer
-   `PortError::unavailable`.** Added with chat tools `news_search`/`filings_search`
-   (`tantra-agent` plan 0006 Phase 3) via the new
-   `crates/tantra-runtime-api-rest/src/chat_content.rs::FeedContentReader`: news has no data
-   source anywhere yet (`tantra-data/docs/gaps/0006-news-ingestion.md`), and filings are ingested
-   in `tantra-data`'s Python service (closed gap 0003) but nothing bridges that lakehouse into
-   Rust consumers yet (`tantra-data/docs/gaps/0007-filings-rust-bridge.md`). Both report the gap
-   explicitly instead of the model fabricating headlines or filings. (The `ContentReader` port's
-   filings method is named `filings`; the chat tool that calls it is `filings_search`.)
+6. **`MarketReader::block_deals` — CLOSED** (`b561e12`, T7.2): `FeedMarketReader::block_deals`
+   now reads the `tantra-data` block/bulk-deal projections (`{root}/catalog/block_deals`) through
+   `tantra-market-store::BlockDealsProjectionReader` (`with_block_deals`), filtering by instrument
+   and calendar-day date; `GET /market-data/block-deals` serves the same data (T7.3). The
+   unconfigured fallback answers `PortError::unavailable`.
+7. **`ContentReader::news_search` — CLOSED** (`776d145`, T7.7 item 7): news is ingested
+   Python-side (`tantra-data` gap 0006 closed) and exported to `{root}/catalog/news` projections;
+   `FeedContentReader::with_news` reads them through `tantra-market-store::NewsProjectionReader`,
+   filtering by query/instrument and sorting newest first. `ContentReader::filings` (method name;
+   chat tool `filings_search`) reads the filings projections as before.
 8. **`MarketReader::options_chain` always answers `PortError::unavailable`.** Added with chat
    tool `options_chain` (`tantra-agent` plan 0006 Phase 4): `tantra-market` holds
    contract-reference columns and Greeks pricing but serves no chain enumeration/reader yet
@@ -68,13 +64,11 @@ and are either approximated or answered with an explicit error rather than fabri
     Phase 2): delivery % is ingested Python-side (`tantra-data` gap 0014 closed) but has no
     Rust-consumer bridge (`tantra-data/docs/gaps/0019-delivery-rust-bridge.md`). The seedable
     `RuntimeMarketReader` accepts a `set_delivery_stats` store for tests.
-13. **`MarketReader::oi_buildup` always answers `PortError::unavailable`** in
-    `FeedMarketReader`. Added with chat tool `oi_buildup` (plan 0010 Phase 3): the OI
-    time-series store + four-quadrant classifier live in `tantra-market-store`
-    (`tantra-market/docs/gaps/0002` closed) but this runtime holds no OI store instance —
-    wiring `ParquetOpenInterestStore::open(data_root)` + `BuildupAnalyzer` into
-    `FeedMarketReader` is the remaining work. The seedable `RuntimeMarketReader` accepts a
-    `set_oi_buildup` store for tests.
+13. **`MarketReader::oi_buildup` — CLOSED** (`776d145`, T7.7 item 13): `FeedMarketReader::with_oi_store`
+    opens `ParquetOpenInterestStore::open(root)` and wires a `BuildupAnalyzer` over it and the
+    daily-bar source; `oi_buildup` computes the four-quadrant classification plus absolute OI and
+    percentage changes from the raw series. The seedable `RuntimeMarketReader` `set_oi_buildup`
+    store remains for tests.
 14. **`FundamentalReader` (chat tools `fundamental_ratios`/`financial_statements`) always
     answers `PortError::unavailable`** via `crate::chat_fundamental::FeedFundamentalReader`.
     Added with `tantra-agent` plan 0007 Track 3 Phase 6: no fundamentals/financial-statement

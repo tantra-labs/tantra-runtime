@@ -1,6 +1,6 @@
 # 0006 — Chat agent session persistence and portfolio-backed tools are stubbed
 
-**Status**: open
+**Status**: open — session-persistence half closed (`933c53a`, T7.6); portfolio-backed tools remain.
 
 ## What's stubbed or hardcoded
 
@@ -44,11 +44,15 @@ the run/order flow for the portfolio tools).
 
 ## How to close it
 
-- Session persistence: give `AppState` a `Database` handle (or an `Option<Arc<Database>>` set at
-  boot the way `journals`/`profiles`/`portfolios` dirs are), and have `ChatRuntime::from_env` (or
-  a new `ChatRuntime::with_persistence`) use `tantra-runtime-persistence::SqlxSessionStore`
-  instead of `InMemorySessionStore` when it's present.
-- Portfolio tools: decide which `tantra-ledger` repository implementation (or a thin
+- Session persistence — **CLOSED** (`933c53a`, T7.6): `AppState` gained
+  `database: Option<Arc<Database>>` + `with_database`; `prepare_server` is async and, when
+  `TANTRA_DATABASE_URL` is set, connects and runs the embedded migrations
+  (`tantra-runtime-persistence::connect`/`migrate`, creating the `agent_chat_*` tables);
+  `ChatRuntime::from_env` takes the `database` and uses
+  `tantra-runtime-persistence::SqlxSessionStore` when present, falling back to
+  `InMemorySessionStore`. Tests: `tests/session_persistence_tests.rs` (file-backed sqlite
+  persistence proof) + `tests/bootstrap.rs` updated for the async `prepare_server`.
+- Portfolio tools (remaining): decide which `tantra-ledger` repository implementation (or a thin
   `AppState`-side adapter over `OrderLedger`/`PortfolioStore`) should back
   `AccountRepository + PositionRepository + OrderRepository + LedgerRepository`, construct it in
   `AppState`, and replace `StubPortfolioReader` with

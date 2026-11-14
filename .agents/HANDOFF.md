@@ -1,33 +1,56 @@
 # HANDOFF — tantra-runtime
 
-**Date**: 2026-11-12 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
+**Date**: 2026-11-14 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
-## Gate status — ✅ GREEN (2026-11-14, T7.5 openapi conformance batch)
+## Latest Batch — T7 track (2026-11-14)
+
+- **T7.2 + T7.3 (plan 0004 Phases 4–5, Implemented)** — block/bulk deals real data:
+  `tantra-data` `export_block_deals` + `--dataset block-deals` CLI (`ce7c392`);
+  `tantra-market-store::BlockDealsProjectionReader` (`02fc20e`/`84d1e99`);
+  `FeedMarketReader::with_block_deals` + real `block_deals` read, `AppState.block_deals` +
+  `with_block_deals`, `GET /market-data/block-deals` route + openapi entry + tests (`b561e12`).
+  Gap 0007 item 6 closed.
+- **T7.4 (gap 0004 closed)** — `Profile.watchlists` values → `Watchlist { name,
+  instrument_ids }` (legacy bare-array deserializer preserves stored profiles via
+  `WatchlistWire` untagged helper), new opaque `portfolios`/`risk_profiles`/`workspaces`
+  fields, `MAX_PORTFOLIOS`/`MAX_RISK_PROFILES`/`MAX_WORKSPACES = 50` limits + round-trip and
+  count-limit tests (`53e917a`; stack-overflow fix `ad84499`; fmt `7a45a14`).
+- **T7.5 (gap 0005 closed)** — OpenAPI 3.1 spec completed: all 68 v1 route paths (86
+  method/path pairs) registered in `OpenApiDocument::generate()`, 21 wire/profile component
+  schemas, `OpenApiDocument::v2_json()` + checked-in `schema/openapi.v2.json`,
+  `tests/openapi_conformance.rs` (route coverage, schema registration, artifact currency);
+  `openapi` module made `pub` (`021f965`, `967fd15`, `085461b`).
+- **T7.6 session-persistence half (gap 0006 half-closed)** — `AppState.database` +
+  `with_database`; `prepare_server` now `async` (runs `TANTRA_DATABASE_URL` connect + embedded
+  migrations), `run_server_blocking` + `tests/bootstrap.rs` callers updated;
+  `ChatRuntime::from_env` uses `SqlxSessionStore` when a DB is present, in-memory fallback
+  otherwise; `tests/session_persistence_tests.rs` (`933c53a`). **Portfolio-backed tools
+  remain** (need a ledger-repository handle in AppState — tracked in gap 0006).
+- **T7.7 items 7 + 13** — news bridge (`tantra-data` `export_news` `4bb1c75`,
+  `tantra-market-store::NewsProjectionReader` `c88db45`, `FeedContentReader::with_news` +
+  real `news_search`) and oi_buildup (`FeedMarketReader::with_oi_store` +
+  `ParquetOpenInterestStore` + `BuildupAnalyzer`, real `oi_buildup`) — `776d145`. Gap 0007
+  items 6/7/13 closed; remaining 0007 items upstream-blocked (see gap doc).
+- **T7.8 (gap 0008, documented decision)** — option 1 "keep `BrokerAdapter` as the sim port"
+  recorded in gap 0008 + `docs/design/code-strategy.md` §8.2; closes when option 2 lands.
+- **Docs/cleanup** — gaps 0004/0005 closed (index → Closed), plan 0004 → Implemented (doc
+  removed), gap 0006/0007/0008 statuses updated.
+
+## Gate status — ✅ GREEN (2026-11-14, T7 track)
 
 - `cargo fmt --check`: ✅
 - `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
-- `cargo test --profile prod -p tantra-runtime-api-rest --test openapi_conformance`: ✅
-  3/3 (route-vs-spec, schema registration, static artifact).
-  Also ran `--test capabilities` 5/5 green — the api-rest test binaries linked
-  and ran without the OOM noted in earlier batches.
+- `cargo check --workspace --profile prod`: ✅
+- `cargo test --profile prod` for touched binaries: ✅ (profile 17, chat_projection 6,
+  chat_market_reader 16, block_deals 4, openapi_conformance 3, capabilities 5,
+  session_persistence 2, bootstrap 8 + e2e 16; market-store projection 5).
+  ⚠ Known env limit: a blanket `cargo test -p tantra-runtime-api-rest` (all ~45 binaries)
+  hits the pre-existing prod-LTO link SIGKILL on unrelated heavy binaries; targeted binaries
+  link and pass.
 - `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
 
 ## Phase / Slice Status
-
-- **T7.5 — OpenAPI 3.1 route/schema completeness (2026-11-14)**: `docs/gaps/0005`
-  closed in `021f965` + `967fd15` (index/cleanup). All 68 v1 route paths (86
-  method/path pairs) registered in `openapi.rs::generate()` with the `operation`
-  helper; 21 wire/profile component schemas added (`ResponseEnvelope<Value>`,
-  `ErrorCode`, `ErrorDetail`, `QuoteTick`, `Trade`, `Position`,
-  `PortfolioAccount/Position/Holding`, `Instrument`, `InstrumentKind`,
-  `BarAggregation`, `PriceType`, `TradingState`, `Profile`, `Module`, `Source`,
-  `LayoutDocument`, `LayoutsResponse`, `ModulesResponse`, `ProfileRevision`);
-  `OpenApiDocument::v2_json()` export + checked-in `schema/openapi.v2.json`;
-  `tests/openapi_conformance.rs` (route conformance, schema registration,
-  artifact currency). `openapi` module made `pub` so the integration test can
-  read the document; `ApiResponse`/`BarSpecification` deliberately NOT
-  registered (no `JsonSchema` derive, per orchestrator decision).
 
 - **Docs: dismantle `docs/roadmap/` into design/gaps/plans (2026-11-13, docs-only)**: former
   `docs/roadmap/` (`roadmap.md` + `migration-verification.md`) removed — completed milestones
@@ -129,13 +152,20 @@
 
 ## Immediate Next Step
 
-Agent plan 0006 is fully implemented (Phases 1–4). Remaining chat-tool data blockers are all
-upstream gaps, tracked in `docs/gaps/0007-*.md`: `tantra-market/docs/gaps/0001` (options-chain
-reader) for `options_chain`; `tantra-data/docs/gaps/0008`+`0009` (Rust bridge + ingestion) for
-`corporate_actions` (its runtime bridge lives in the same projection reader the block-deal
-tools use; only the `with_corporate_actions` wiring is pending); `tantra-data/docs/gaps/0006`+`0007`
-for the content tools. When chat sessions gain bearer identity (`docs/gaps/0006`), switch
-`ProfileAlertStore::for_user` to the connection's `token_id`.
+T7 track shipped 2026-11-14: block/bulk deals (plan 0004 Ph 4–5), news + oi_buildup chat
+adapters (0007 items 6/7/13), profile schema (0004), OpenAPI (0005), session persistence
+(0006 half), broker boundary decision (0008). Remaining T7:
+- **Gap 0006 portfolio-backed tools**: decide which `tantra-ledger` repository implementation
+  (or a thin `AppState` adapter over `OrderLedger`/`PortfolioStore`) backs
+  `AccountRepository + PositionRepository + OrderRepository + LedgerRepository`, construct it in
+  `AppState`, replace `StubPortfolioReader` with `LedgerPortfolioReader::from_combined(..)`.
+- **Gap 0007 remaining items** (1–5, 8–12, 14–19) are upstream-blocked: last-price/volume feed,
+  indicator engine, macro source, instrument display-name field, regime classifier, L2 depth
+  (`tantra-market` 0006), institutional-flow/delivery Rust bridges (`tantra-data` 0017/0019),
+  trade-intent/strategy-store/tax wiring (0007 items 17–19).
+- **Gap 0008** closes when option 2 (lift `BrokerAdapter` into `tantra-exec-core`) lands.
+- When chat sessions gain bearer identity, switch `ProfileAlertStore::for_user` to the
+  connection's `token_id`.
 
 ## Do not regress
 

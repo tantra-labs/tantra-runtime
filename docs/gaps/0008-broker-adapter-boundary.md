@@ -38,3 +38,13 @@ byte-identical fills, while real wire transports delegate to `tantra-exec`
 - The runtime's `ExecutionActor` composes exec's wrappers (done — see
   `execution.rs::with_exec_stack`) rather than re-implementing risk/rate logic.
 - This gap is removed and recorded as Closed when option 2 lands.
+
+## Decision (2026-11-14, T7.8)
+
+**Option 1 chosen — keep `BrokerAdapter` as the runtime's deterministic sim port.**
+Recorded in `docs/design/code-strategy.md` §8.2 and this gap: `BrokerAdapter` is the
+sync/`now`-stamped simulation + paper-broker boundary; `tantra_exec_core::BrokerExecutor`
+is the live wire port (with `ZerodhaKiteAdapter` delegating to `tantra-exec-zerodha`); the
+`ExecutionActor` composes exec's `RiskGatedExecutor`/`RateLimitedBroker` wrappers via
+`with_exec_stack`. Option 2 (lift into `tantra-exec-core`) remains tracked as the close
+event for this gap; option 3 is rejected (breaks research-live parity).
