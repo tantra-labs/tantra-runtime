@@ -87,6 +87,20 @@ and are either approximated or answered with an explicit error rather than fabri
     `PortError::unavailable`** via `crate::chat_ipo::FeedIpoReader`. Added with plan 0007
     Track 3 Phase 8: no IPO calendar/subscription data source exists anywhere yet
     (`tantra-data/docs/gaps/0022-ipo-calendar-and-subscription-ingestion.md`).
+17. **`TradeIntentSink` (chat tool `propose_trade`) always answers `PortError::unavailable`**
+    via `crate::chat_trade::FeedTradeIntentSink`. Added with plan 0007 Track 5 Phase 12
+    (NoFX approval-queue pattern): the runtime has no `FileJobRegistry`-backed approval
+    queue or paper-trading sandbox wired into the chat agent, so a proposed trade intent is
+    never enqueued or executed.
+18. **`StrategyStore` (chat tool `strategy_manage`) always answers `PortError::unavailable`**
+    via `crate::chat_strategy_store::FeedStrategyStore`. Added with plan 0007 Track 5 Phase 13
+    (Jesse-MCP strategy CRUD): the runtime has no strategy-manifest store wired into the
+    chat agent.
+19. **`TaxReportReader` (chat tools `tax_report`/`ledger_statement`) always answers
+    `PortError::unavailable`** via `crate::chat_tax::FeedTaxReportReader`. Added with plan
+    0007 Track 5 Phase 14: `tantra-ledger-portfolio` computes matched lots (`MatchedLot`) but
+    no runtime bridge exposes them to the chat agent — the tax math itself is implemented and
+    unit-tested in `tantra-agent-chat-tools`.
 
 ## Why
 
@@ -127,3 +141,10 @@ scope for a read-through wiring pass.
 - Item 13: wire `ParquetOpenInterestStore::open(data_root)` + `BuildupAnalyzer` (both in
   `tantra-market-store`, gap 0002 closed) into `FeedMarketReader`, then replace its
   `oi_buildup` stub with a real read through `BuildupReader`.
+- Item 17: wire a `FileJobRegistry`-backed `TradeIntentSink` (enqueue as
+  `JobStatus::PendingApproval`; `x-papertrading` bypasses the human gate into the
+  sandbox ledger) in `ChatRuntime::from_env`.
+- Item 18: wire a strategy-manifest `StrategyStore` (persisted or in-memory) in
+  `ChatRuntime::from_env`.
+- Item 19: expose `tantra-ledger-portfolio`'s matched lots through a `TaxReportReader`
+  implementor (per account/date range) in `ChatRuntime::from_env`.

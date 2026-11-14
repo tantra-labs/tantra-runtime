@@ -193,6 +193,11 @@ impl ChatRuntime {
             Arc::new(crate::chat_fund::FeedFundReader::new());
         let ipo: Arc<dyn tantra_agent_chat_tools::ports::ipo::IpoReader> =
             Arc::new(crate::chat_ipo::FeedIpoReader::new());
+        // Tax / ledger-statement tools (plan 0007 Track 5 Phase 14): `tantra-ledger` has the
+        // matched lots but no runtime bridge exposes them, so the adapter answers its gap
+        // citation (see `crate::chat_tax`).
+        let tax: Arc<dyn tantra_agent_chat_tools::ports::tax::TaxReportReader> =
+            Arc::new(crate::chat_tax::FeedTaxReportReader::new());
         tantra_agent_chat_tools::catalog::register_read_only_tools(
             &mut registry,
             portfolio,
@@ -202,7 +207,20 @@ impl ChatRuntime {
             fundamental,
             fund,
             ipo,
+            tax,
             Some(snapshots),
+        );
+        // Safe trade tools (plan 0007 Track 5 Phases 12-13): no approval-queue sink or
+        // strategy store is wired, so both adapters answer their gap citations (see
+        // `crate::chat_trade` / `crate::chat_strategy_store`).
+        let trade_sink: Arc<dyn tantra_agent_chat_tools::ports::trade_intent::TradeIntentSink> =
+            Arc::new(crate::chat_trade::FeedTradeIntentSink::new());
+        let strategy_store: Arc<dyn tantra_agent_chat_tools::ports::strategy_store::StrategyStore> =
+            Arc::new(crate::chat_strategy_store::FeedStrategyStore::new());
+        tantra_agent_chat_tools::catalog::register_trade_tools(
+            &mut registry,
+            trade_sink,
+            strategy_store,
         );
 
         // Price alerts write the user's profile document (`ToolRisk::LocalWrite`; agent plan
