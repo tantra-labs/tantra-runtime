@@ -14,6 +14,7 @@ use crate::market_feed::{DatasetReader, LiveQuoteStore, ReaderError};
 use tantra_core::Currency;
 use tantra_core::rust_decimal::Decimal;
 use tantra_ledger_performance::store::JournalStore;
+use tantra_market_store::BlockDealsProjectionReader;
 use tantra_risk::RiskEngine;
 use tantra_runtime_api::{ErrorDetail, StrategyCatalog, TradingState};
 
@@ -48,6 +49,10 @@ pub struct AppState {
     /// The per-user portfolio store behind `/portfolio`; `None` until a portfolios directory is
     /// configured ([`AppState::with_portfolios_dir`]).
     pub portfolios: Option<Arc<PortfolioStore>>,
+    /// Reader over the `tantra-data` block/bulk-deal projections (`{root}/catalog/block_deals`)
+    /// behind `GET /market-data/block-deals`; `None` until configured
+    /// ([`AppState::with_block_deals`]).
+    pub block_deals: Option<BlockDealsProjectionReader>,
     /// NDJSON file `PUT /trading-state` appends one record per change to; `None` until
     /// configured ([`AppState::with_operator_journal`]). The state is never restored from it.
     pub operator_journal: Option<PathBuf>,
@@ -119,6 +124,7 @@ impl AppState {
             runs: None,
             profiles: None,
             portfolios: None,
+            block_deals: None,
             operator_journal: None,
             account_currency: Currency::Inr,
             // `tantra_runtime_api::TradingState` has no `Default` (ADR 0018 enumerates three
@@ -325,6 +331,13 @@ impl AppState {
     /// (ADR 0032 §5).
     pub fn with_portfolios_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.portfolios = Some(Arc::new(PortfolioStore::new(dir)));
+        self
+    }
+
+    /// Serves `/market-data/block-deals` from the `tantra-data` block/bulk-deal projections
+    /// under `{root}/catalog/block_deals` (closes `tantra-data/docs/gaps/0005`).
+    pub fn with_block_deals(mut self, root: &std::path::Path) -> Self {
+        self.block_deals = Some(BlockDealsProjectionReader::new(root));
         self
     }
 

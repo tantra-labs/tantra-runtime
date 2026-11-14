@@ -16,9 +16,11 @@ use axum::{
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Json, Response},
 };
+use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::sync::OnceLock;
 use tantra_core::rust_decimal::Decimal;
+use tantra_core::{Exchange, InstrumentId, Price, Quantity};
 use tantra_runtime_api::{
     ApiResponse, BarsQuery, BarsResponse, DepthLevel, DepthQuery, DepthResponse, ErrorCode,
     ErrorDetail, InstrumentsQuery, InstrumentsResponse, QuotesQuery, QuotesResponse,
@@ -585,4 +587,106 @@ pub struct MarketCalendarQuery {
     pub to: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+}
+
+/// `GET /market-data/block-deals` response: every matching block/bulk deal.
+#[derive(Debug, Clone, Serialize)]
+pub struct BlockDealsResponse {
+    pub deals: Vec<tantra_agent_chat_tools::ports::market::BlockDeal>,
+}
+
+/// `GET /market-data/block-deals` query parameters.
+#[derive(Debug, Deserialize)]
+pub struct BlockDealsQuery {
+    #[serde(default)]
+    pub instrument: Option<String>,
+    #[serde(default)]
+    pub date: Option<String>,
+}
+
+/// Parses a canonical `EXCHANGE:SYMBOL` instrument string (the form the `tantra-data`
+/// projections store, e.g. `NSE:RELIANCE-EQ`) into an [`InstrumentId`]; rows with an
+/// unknown exchange or no symbol are rejected and skipped. The `?instrument` query filter,
+/// by contrast, uses the `SYMBOL.EXCHANGE` convention of the other market routes
+/// ([`parse_instrument_id`]).
+fn parse_projection_instrument(s: &str) -> Option<InstrumentId> {
+    let (exchange, symbol) = s.split_once(':')?;
+    if symbol.is_empty() {
+        return None;
+    }
+    let exchange = exchange.parse::<Exchange>().ok()?;
+    Some(InstrumentId::new(exchange, symbol))
+}
+
+/// `GET /market-data/block-deals` — block/bulk deal disclosures read through the
+/// `tantra-data` projections (`{root}/catalog/block_deals`, gap 0005 closed). Calendar-day
+/// equality, the same convention the chat adapter's `block_deals` tool uses.
+pub(crate) async fn get_block_deals(
+    State(state): State<Arc<AppState>>,
+    ApiQuery(query): ApiQuery<BlockDealsQuery>,
+) -> Response {
+    let Some(reader) = &state.block_deals else {
+        return failure(
+            StatusCode::NOT_IMPLEMENTED,
+            ErrorDetail::new(
+                ErrorCode::NotImplemented,
+                "no block-deal projections configured",
+            ),
+        );
+    };
+    let instrument = match &query.instrument {
+        Some(raw) => match parse_instrument_id(raw) {
+            Ok(id) => Some(id),
+            Err(detail) => return unprocessable(detail),
+        },
+        None => None,
+    };
+    let date = match &query.date {
+        Some(raw) => match chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+            Ok(d) => Some(d),
+            Err(_) => {
+                return unprocessable(ErrorDetail::new(
+                    ErrorCode::ValidationInvalidRequest,
+                    format!("invalid date {raw:?}; expected YYYY-MM-DD"),
+                ));
+            }
+        },
+        None => None,
+    };
+    match reader.read() {
+        Ok(projections) => {
+            let deals: Vec<_> = projections
+                .into_iter()
+                .filter_map(|p| {
+                    Some(tantra_agent_chat_tools::ports::market::BlockDeal {
+                        instrument: match parse_projection_instrument(&p.instrument) {
+                            Some(id) => id,
+                            None => return None,
+                        },
+                        exchange: p.exchange,
+                        client_name: p.client_name,
+                        side: p.side.to_lowercase(),
+                        category: p.category,
+                        quantity: Quantity::new(p.quantity),
+                        price: Price::new(p.price),
+                        trade_date: Utc.from_utc_datetime(
+                            &p.trade_date
+                                .and_hms_opt(0, 0, 0)
+                                .expect("midnight is always valid"),
+                        ),
+                    })
+                })
+                .filter(|d| instrument.as_ref().is_none_or(|i| d.instrument == *i))
+                .filter(|d| date.is_none_or(|day| d.trade_date.date_naive() == day))
+                .collect();
+            success(BlockDealsResponse { deals })
+        }
+        Err(e) => failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorDetail::new(
+                ErrorCode::InternalError,
+                format!("failed to read block-deal projections: {e}"),
+            ),
+        ),
+    }
 }

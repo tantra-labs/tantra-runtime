@@ -428,9 +428,12 @@ pub fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         state = state.with_tick_reader(reader);
     }
 
-    let mut state = state
+    let state = state
         .with_profiles_dir(&config.runs.profiles_dir)
         .with_portfolios_dir(&config.runs.portfolios_dir);
+    // Block/bulk-deal projections back `GET /market-data/block-deals` and the chat
+    // adapter's `block_deals` tool from `{data_dir}/catalog/block_deals` (T7.2/T7.3).
+    let mut state = state.with_block_deals(&config.data_dir);
     if let Some(journal) = &config.runs.operator_journal {
         state = state.with_operator_journal(journal);
     }

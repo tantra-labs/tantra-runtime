@@ -241,8 +241,8 @@ async fn block_deals_are_explicitly_unavailable() {
     assert_eq!(err.kind, PortErrorKind::Unavailable);
     assert!(
         err.message
-            .contains("0005-block-bulk-deal-disclosure-ingestion.md"),
-        "stub must cite the upstream gap, got: {err}"
+            .contains("no block/bulk-deal projections configured"),
+        "unconfigured block deals must cite the missing projections, got: {err}"
     );
 }
 

@@ -615,6 +615,23 @@ impl OpenApiDocument {
                 delete: None,
             },
         );
+        paths.insert(
+            "/market-data/block-deals".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "market-reference",
+                    "Block / bulk deal disclosures",
+                    "getBlockDeals",
+                    vec![query_param("instrument"), query_param("date")],
+                    None,
+                    "Block deals",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
 
         let mut schemas = BTreeMap::new();
         schemas.insert(

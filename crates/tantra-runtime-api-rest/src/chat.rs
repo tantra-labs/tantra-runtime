@@ -143,10 +143,11 @@ impl ChatRuntime {
     /// `profiles` is the same store `/profile` routes serve: the price-alert tools read and
     /// write the caller's `Profile.alerts` document through it (see
     /// [`crate::chat_alerts::ProfileAlertStore`]). `data_root` points at the data directory
-    /// whose `catalog/filings` and `catalog/corporate_actions` projections `tantra-data`
-    /// maintains — they back the filings and corporate-actions chat tools (closes
-    /// `tantra-data/docs/gaps/0007-filings-rust-bridge.md` and
-    /// `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`).
+    /// whose `catalog/filings`, `catalog/corporate_actions` and `catalog/block_deals`
+    /// projections `tantra-data` maintains — they back the filings, corporate-actions and
+    /// block/bulk-deal chat tools (closes `tantra-data/docs/gaps/0007-filings-rust-bridge.md`,
+    /// `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md` and
+    /// `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`).
     pub fn from_env(
         instruments: Arc<dyn InstrumentMaster>,
         bars: Arc<dyn BarReader>,
@@ -164,7 +165,7 @@ impl ChatRuntime {
         // stand-in for docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md:
         // AppState has no ledger-repository handle for LedgerPortfolioReader::from_combined.
         let portfolio: Arc<dyn PortfolioReader> = Arc::new(StubPortfolioReader);
-        let market: Arc<dyn MarketReader> = Arc::new(FeedMarketReader::with_corporate_actions(
+        let market: Arc<dyn MarketReader> = Arc::new(FeedMarketReader::with_block_deals(
             data_root,
             instruments.clone(),
             bars,

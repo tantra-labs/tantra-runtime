@@ -176,6 +176,7 @@ pub fn router() -> Router<Arc<AppState>> {
             get(market::get_symbol_profile),
         )
         .route("/market-data/calendar", get(market::get_market_calendar))
+        .route("/market-data/block-deals", get(market::get_block_deals))
         .route("/bars", post(ingest::post_bars))
         .route(
             "/trading-state",

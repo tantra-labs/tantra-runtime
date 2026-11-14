@@ -202,6 +202,88 @@ async fn corporate_actions_read_through_projection() {
 }
 
 #[tokio::test]
+async fn block_deals_read_through_projection() {
+    let dir = tempdir().unwrap();
+    let block_deals_dir = dir.path().join("catalog").join("block_deals");
+    std::fs::create_dir_all(&block_deals_dir).unwrap();
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("trade_date", DataType::Date32, false),
+        Field::new("exchange", DataType::Utf8, false),
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("security_name", DataType::Utf8, false),
+        Field::new("client_name", DataType::Utf8, false),
+        Field::new("side", DataType::Utf8, false),
+        Field::new("category", DataType::Utf8, false),
+        Field::new("quantity", DataType::Decimal128(18, 4), false),
+        Field::new("price", DataType::Decimal128(18, 4), false),
+        Field::new("remarks", DataType::Utf8, true),
+    ]));
+    let quantities = Decimal128Array::from(vec![Some(2_500_000_000_i128), Some(100_000_000_i128)])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let prices = Decimal128Array::from(vec![Some(25_005_000_i128), Some(40_000_000_i128)])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![0i32, 1])),
+            Arc::new(StringArray::from(vec!["NSE", "NSE"])),
+            Arc::new(StringArray::from(vec!["NSE:RELIANCE-EQ", "NSE:TCS-EQ"])),
+            Arc::new(StringArray::from(vec!["RELIANCE", "TCS"])),
+            Arc::new(StringArray::from(vec!["CLIENT A", "CLIENT B"])),
+            Arc::new(StringArray::from(vec!["BUY", "SELL"])),
+            Arc::new(StringArray::from(vec!["block", "bulk"])),
+            Arc::new(quantities),
+            Arc::new(prices),
+            Arc::new(StringArray::from(vec![Some("Block deal window"), None])),
+        ],
+    )
+    .unwrap();
+
+    let path = block_deals_dir.join("2026-11-06.parquet");
+    let file = std::fs::File::create(&path).unwrap();
+    let mut writer = ArrowWriter::try_new(file, schema, None).unwrap();
+    writer.write(&batch).unwrap();
+    writer.close().unwrap();
+
+    let feed = Arc::new(FakeFeed);
+    let reader = FeedMarketReader::with_block_deals(
+        dir.path(),
+        feed.clone(),
+        feed.clone(),
+        feed.clone(),
+        Arc::new(Mutex::new(RiskEngine::default())),
+    );
+
+    let deals = reader.block_deals(None, None).await.unwrap();
+    assert_eq!(deals.len(), 2);
+    assert_eq!(
+        deals[0].instrument,
+        InstrumentId::new(Exchange::Nse, "RELIANCE-EQ")
+    );
+    assert_eq!(deals[0].side, "buy");
+    assert_eq!(deals[0].category, "block");
+    assert_eq!(
+        deals[0].quantity,
+        tantra_core::Quantity::new(Decimal::try_from_i128_with_scale(2_500_000_000, 4).unwrap())
+    );
+    assert_eq!(
+        deals[0].price,
+        tantra_core::Price::new(Decimal::try_from_i128_with_scale(25_005_000, 4).unwrap())
+    );
+
+    let tcs = reader
+        .block_deals(Some(&InstrumentId::new(Exchange::Nse, "TCS-EQ")), None)
+        .await
+        .unwrap();
+    assert_eq!(tcs.len(), 1);
+    assert_eq!(tcs[0].side, "sell");
+    assert_eq!(tcs[0].category, "bulk");
+}
+
+#[tokio::test]
 async fn filings_unavailable_without_projection() {
     let reader = FeedContentReader::new();
     let err = reader.filings(None, None, None).await.unwrap_err();

@@ -26,7 +26,8 @@ use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
 use tantra_core::{Currency, Exchange, InstrumentId, Money, Price, PriceBand, Quantity};
 use tantra_market_store::{
-    CorporateActionProjection, CorporateActionsProjectionReader, InstrumentChainReader,
+    BlockDealProjection, BlockDealsProjectionReader, CorporateActionProjection,
+    CorporateActionsProjectionReader, InstrumentChainReader,
 };
 use tantra_risk::RiskEngine;
 
@@ -55,6 +56,7 @@ pub struct FeedMarketReader {
     risk_engine: Arc<Mutex<RiskEngine>>,
     chain: Arc<dyn ChainReader>,
     corporate_actions: Option<CorporateActionsProjectionReader>,
+    block_deals: Option<BlockDealsProjectionReader>,
 }
 
 impl FeedMarketReader {
@@ -79,6 +81,7 @@ impl FeedMarketReader {
             risk_engine,
             chain,
             corporate_actions: None,
+            block_deals: None,
         }
     }
 
@@ -95,6 +98,23 @@ impl FeedMarketReader {
     ) -> Self {
         Self {
             corporate_actions: Some(CorporateActionsProjectionReader::new(root)),
+            ..Self::new(instruments, bars, quotes, risk_engine)
+        }
+    }
+
+    /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
+    /// additionally wiring the `tantra-data` block/bulk-deal projections
+    /// (`{root}/catalog/block_deals`) through `tantra-market-store`'s projection reader
+    /// (closes `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`).
+    pub fn with_block_deals(
+        root: &std::path::Path,
+        instruments: Arc<dyn InstrumentMaster>,
+        bars: Arc<dyn BarReader>,
+        quotes: Arc<dyn QuoteReader>,
+        risk_engine: Arc<Mutex<RiskEngine>>,
+    ) -> Self {
+        Self {
+            block_deals: Some(BlockDealsProjectionReader::new(root)),
             ..Self::new(instruments, bars, quotes, risk_engine)
         }
     }
@@ -239,17 +259,28 @@ impl MarketReader for FeedMarketReader {
 
     async fn block_deals(
         &self,
-        _instrument: Option<&InstrumentId>,
-        _date: Option<DateTime<Utc>>,
+        instrument: Option<&InstrumentId>,
+        date: Option<DateTime<Utc>>,
     ) -> Result<Vec<BlockDeal>, PortError> {
-        // No block/bulk deal disclosure data source is ingested anywhere yet — see
-        // tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md. An explicit
-        // error, not an empty success, so the model can't mistake "not wired up" for "no
-        // deals happened today" (same pattern as `indicators`/`macro_series` above, per
-        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md).
-        Err(PortError::unavailable(
-            "block/bulk deal disclosures are not yet ingested; see tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md",
-        ))
+        let Some(reader) = &self.block_deals else {
+            // No block-deal projections configured — the reader is only wired by
+            // [`FeedMarketReader::with_block_deals`]. An explicit error, not an empty
+            // success, so the model can't mistake "not wired up" for "no deals happened
+            // today" (same pattern as `indicators`/`macro_series` above).
+            return Err(PortError::unavailable(
+                "no block/bulk-deal projections configured; see tantra-runtime/docs/gaps/0007 item 6",
+            ));
+        };
+        let projections = reader.read().map_err(|e| {
+            PortError::internal(format!("failed to read block-deal projections: {e}"))
+        })?;
+        let deals: Vec<BlockDeal> = projections
+            .into_iter()
+            .filter_map(to_block_deal)
+            .filter(|d| instrument.is_none_or(|inst| d.instrument == *inst))
+            .filter(|d| date.is_none_or(|ts| d.trade_date.date_naive() == ts.date_naive()))
+            .collect();
+        Ok(deals)
     }
 
     async fn price_band(&self, instrument: &InstrumentId) -> Result<PriceBand, PortError> {
@@ -431,6 +462,27 @@ fn to_corporate_action(projection: CorporateActionProjection) -> Option<Corporat
         ratio_to: projection
             .new_shares
             .map(|new| Quantity::new(Decimal::from(new))),
+    })
+}
+
+/// Maps one lakehouse block/bulk-deal projection row onto the chat tool catalog's record.
+/// Rows whose instrument string does not parse as a canonical [`InstrumentId`] are skipped.
+fn to_block_deal(projection: BlockDealProjection) -> Option<BlockDeal> {
+    let instrument = parse_instrument(&projection.instrument)?;
+    Some(BlockDeal {
+        instrument,
+        exchange: projection.exchange,
+        client_name: projection.client_name,
+        side: projection.side.to_lowercase(), // "BUY"/"SELL" → "buy"/"sell"
+        category: projection.category,
+        quantity: Quantity::new(projection.quantity),
+        price: Price::new(projection.price),
+        trade_date: Utc.from_utc_datetime(
+            &projection
+                .trade_date
+                .and_hms_opt(0, 0, 0)
+                .expect("midnight is always a valid time of day"),
+        ),
     })
 }
 
