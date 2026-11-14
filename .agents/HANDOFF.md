@@ -3,21 +3,31 @@
 **Date**: 2026-11-12 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
-## Gate status — ✅ GREEN (2026-11-12, exec seam batch)
+## Gate status — ✅ GREEN (2026-11-14, T7.5 openapi conformance batch)
 
 - `cargo fmt --check`: ✅
 - `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
-- `cargo test --workspace --profile prod`: ✅ for touched crates
-  (`tantra-runtime-actors`, `tantra-runtime-testing`, `tantra-runtime-api`,
-  `tantra-runtime-strategy` — incl. new `test_execution_actor_composes_exec_stack`).
-  ⚠ `tantra-runtime-api-rest` test *binaries* could not be linked in this
-  environment: the prod profile (`lto`, `codegen-units=1`) OOMs at parallel
-  link (`SIGKILL`) and the serialized run exceeded the 30 min budget. All
-  api-rest test *targets* type-check clean under `clippy --all-targets` and the
-  workspace `cargo check --workspace --profile prod` is green.
+- `cargo test --profile prod -p tantra-runtime-api-rest --test openapi_conformance`: ✅
+  3/3 (route-vs-spec, schema registration, static artifact).
+  Also ran `--test capabilities` 5/5 green — the api-rest test binaries linked
+  and ran without the OOM noted in earlier batches.
 - `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
 
 ## Phase / Slice Status
+
+- **T7.5 — OpenAPI 3.1 route/schema completeness (2026-11-14)**: `docs/gaps/0005`
+  closed in `021f965` + `967fd15` (index/cleanup). All 68 v1 route paths (86
+  method/path pairs) registered in `openapi.rs::generate()` with the `operation`
+  helper; 21 wire/profile component schemas added (`ResponseEnvelope<Value>`,
+  `ErrorCode`, `ErrorDetail`, `QuoteTick`, `Trade`, `Position`,
+  `PortfolioAccount/Position/Holding`, `Instrument`, `InstrumentKind`,
+  `BarAggregation`, `PriceType`, `TradingState`, `Profile`, `Module`, `Source`,
+  `LayoutDocument`, `LayoutsResponse`, `ModulesResponse`, `ProfileRevision`);
+  `OpenApiDocument::v2_json()` export + checked-in `schema/openapi.v2.json`;
+  `tests/openapi_conformance.rs` (route conformance, schema registration,
+  artifact currency). `openapi` module made `pub` so the integration test can
+  read the document; `ApiResponse`/`BarSpecification` deliberately NOT
+  registered (no `JsonSchema` derive, per orchestrator decision).
 
 - **Docs: dismantle `docs/roadmap/` into design/gaps/plans (2026-11-13, docs-only)**: former
   `docs/roadmap/` (`roadmap.md` + `migration-verification.md`) removed — completed milestones
