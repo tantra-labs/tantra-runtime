@@ -15,6 +15,7 @@ tantra-core.workspace = true
 tantra-risk.workspace = true
 tantra-runtime-api.workspace = true
 tantra-market-store.workspace = true
+tantra-market-indicators.workspace = true
 tantra-market-finance.workspace = true
 tantra-runtime-strategy.workspace = true
 tantra-agent-analytics.workspace = true

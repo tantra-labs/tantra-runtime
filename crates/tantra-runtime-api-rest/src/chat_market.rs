@@ -3,19 +3,28 @@
 //! stand-in of docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md).
 //!
 //! Every call reads straight through to the live port each time — no cache, so quotes and bars
-//! are never stale and nothing needs a background refresh task. A few fields have no backing
-//! data source anywhere in this runtime yet and are reported as explicit gaps rather than
-//! fabricated values; see docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md.
+//! are never stale and nothing needs a background refresh task. Items 1-5, 11 and 12 of
+//! docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md are now closed:
+//! institutional flows and delivery % read the `tantra-data` projections through
+//! `tantra-market-store`, `macro_series` reads the economic-calendar projections, `indicators`
+//! runs `tantra-market-indicators` over the daily-bar feed, search results prefer the catalog
+//! display name, and the snapshot source reports the shared risk engine's OTR/price-band
+//! metrics plus a 20-SMA regime classification. `market_depth` remains an explicit gap
+//! (`tantra-market/docs/gaps/0006-l2-order-book-depth.md`), and the live trade print/volume
+//! are only reported when a [`TradeReader`] is attached — real broker feeds remain
+//! `tantra-market` gaps 0001/0002, so an unwired reader honestly falls back to the midpoint.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::market_feed::ports::{
-    BarReader, BarRequest, ChainContract, ChainReader, InstrumentMaster, QuoteReader,
+    BarReader, BarRequest, ChainContract, ChainReader, InstrumentMaster, QuoteReader, TradeReader,
 };
 use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
     BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
@@ -24,10 +33,15 @@ use tantra_agent_chat_tools::ports::market::{
 };
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
-use tantra_core::{Currency, Exchange, InstrumentId, Money, Price, PriceBand, Quantity};
+use tantra_core::{Bar, Currency, Exchange, InstrumentId, Money, Price, PriceBand, Quantity};
+use tantra_market_indicators::adx::Adx;
+use tantra_market_indicators::{
+    Atr, BollingerBands, Cmo, Ema, Indicator, Macd, Mfi, Obv, Roc, Rsi, Sma, Vwap,
+};
 use tantra_market_store::{
     BlockDealProjection, BlockDealsProjectionReader, BuildupAnalyzer, BuildupReader,
-    CorporateActionProjection, CorporateActionsProjectionReader, InstrumentChainReader,
+    CorporateActionProjection, CorporateActionsProjectionReader, DeliveryProjectionReader,
+    EconomicCalendarProjectionReader, InstitutionalFlowsProjectionReader, InstrumentChainReader,
     OpenInterestStore, ParquetOpenInterestStore,
 };
 use tantra_risk::RiskEngine;
@@ -60,6 +74,10 @@ pub struct FeedMarketReader {
     block_deals: Option<BlockDealsProjectionReader>,
     oi_store: Option<Arc<dyn OpenInterestStore>>,
     buildup: Option<Arc<dyn BuildupReader>>,
+    institutional_flows: Option<InstitutionalFlowsProjectionReader>,
+    delivery: Option<DeliveryProjectionReader>,
+    economic_calendar: Option<EconomicCalendarProjectionReader>,
+    trades: Option<Arc<dyn TradeReader>>,
 }
 
 impl FeedMarketReader {
@@ -87,6 +105,10 @@ impl FeedMarketReader {
             block_deals: None,
             oi_store: None,
             buildup: None,
+            institutional_flows: None,
+            delivery: None,
+            economic_calendar: None,
+            trades: None,
         }
     }
 
@@ -125,6 +147,43 @@ impl FeedMarketReader {
                 tracing::warn!("open-interest store not wired: {e}");
             }
         }
+        self
+    }
+
+    /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
+    /// additionally wiring the `tantra-data` institutional-flows projections
+    /// (`{root}/catalog/institutional_flows`) through `tantra-market-store`'s projection
+    /// reader (closes `tantra-data` gap 0017 and `tantra-runtime/docs/gaps/0007` item 11).
+    pub fn with_institutional_flows(mut self, root: &std::path::Path) -> Self {
+        self.institutional_flows = Some(InstitutionalFlowsProjectionReader::new(root));
+        self
+    }
+
+    /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
+    /// additionally wiring the `tantra-data` delivery-percentage projections
+    /// (`{root}/catalog/delivery`) through `tantra-market-store`'s projection reader
+    /// (closes `tantra-data` gap 0019 and `tantra-runtime/docs/gaps/0007` item 12).
+    pub fn with_delivery(mut self, root: &std::path::Path) -> Self {
+        self.delivery = Some(DeliveryProjectionReader::new(root));
+        self
+    }
+
+    /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
+    /// additionally wiring the `tantra-data` economic-calendar projections
+    /// (`{root}/catalog/economic_calendar`) through `tantra-market-store`'s projection
+    /// reader (closes `tantra-data` gap 0018 and `tantra-runtime/docs/gaps/0007` item 3b).
+    pub fn with_economic_calendar(mut self, root: &std::path::Path) -> Self {
+        self.economic_calendar = Some(EconomicCalendarProjectionReader::new(root));
+        self
+    }
+
+    /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
+    /// additionally attaching a live [`TradeReader`] so `quote` reports the latest print
+    /// and session-day volume instead of the bid/ask midpoint. The port stays
+    /// unconfigured by default — real broker trade feeds remain `tantra-market` gaps
+    /// 0001/0002 — and an unwired reader keeps answering the honest midpoint fallback.
+    pub fn with_trade_reader(mut self, reader: Arc<dyn TradeReader>) -> Self {
+        self.trades = Some(reader);
         self
     }
 }
@@ -167,15 +226,27 @@ impl MarketReader for FeedMarketReader {
             .ok_or_else(|| PortError::not_found(format!("Quote not found for {instrument}")))?;
         let bid = to_decimal(tick.bid_price());
         let ask = to_decimal(tick.ask_price());
-        // No last-trade print or traded-volume field is wired into `QuoteReader` (top-of-book
-        // only) — see docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md.
         let mid = (bid + ask) / Decimal::from(2);
+        // The last-trade print and day volume are live only when a trade reader is attached
+        // ([`FeedMarketReader::with_trade_reader`]); real broker feeds remain
+        // `tantra-market` gaps 0001/0002, so an unwired reader honestly falls back to the
+        // bid/ask midpoint rather than fabricating a print.
+        let (last_price, volume) = match &self.trades {
+            Some(reader) => match reader.read_trade_snapshot(instrument).await {
+                Ok(Some(snapshot)) => (
+                    Price::new(to_decimal(snapshot.last.price())),
+                    Quantity::new(to_decimal(snapshot.day_volume)),
+                ),
+                _ => (Price::new(mid), Quantity::new(Decimal::ZERO)),
+            },
+            None => (Price::new(mid), Quantity::new(Decimal::ZERO)),
+        };
         Ok(MarketQuote {
             instrument: instrument.clone(),
-            last_price: Price::new(mid),
+            last_price,
             bid: Some(Price::new(bid)),
             ask: Some(Price::new(ask)),
-            volume: Quantity::new(Decimal::ZERO),
+            volume,
             as_of: tick.ts_event().to_datetime(),
         })
     }
@@ -221,16 +292,160 @@ impl MarketReader for FeedMarketReader {
 
     async fn indicators(
         &self,
-        _instrument: &InstrumentId,
-        _names: &[String],
+        instrument: &InstrumentId,
+        names: &[String],
     ) -> Result<MarketIndicators, PortError> {
-        // No indicator engine is wired into this runtime's chat tools yet — see
-        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md. An explicit
-        // error, not an empty success, so the model can't mistake "not wired up" for "this
-        // instrument really has no indicator values."
-        Err(PortError::unavailable(
-            "indicator engine not wired up; see docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md",
-        ))
+        let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
+        let request =
+            BarRequest::new(instrument.clone(), spec, None, None).map_err(feed_port_error)?;
+        let wire_bars = self
+            .bars
+            .read_bars(&request)
+            .await
+            .map_err(feed_port_error)?;
+        let core_bars: Vec<Bar> = wire_bars
+            .iter()
+            .map(|b| Bar {
+                instrument: instrument.clone(),
+                open: Price::new(to_decimal(b.open())),
+                high: Price::new(to_decimal(b.high())),
+                low: Price::new(to_decimal(b.low())),
+                close: Price::new(to_decimal(b.close())),
+                volume: Quantity::new(to_decimal(b.volume())),
+                timestamp: b.ts_event().to_datetime(),
+            })
+            .collect();
+        let closes: Vec<f64> = core_bars
+            .iter()
+            .map(|b| b.close.value().to_f64().unwrap_or(0.0))
+            .collect();
+
+        let mut values = HashMap::new();
+        for name in names {
+            let Some((kind, params)) = parse_indicator_name(name) else {
+                // Unsupported indicator names are skipped, not errors by themselves: a mix
+                // of supported and unknown names returns the supported set.
+                continue;
+            };
+            // Indicator constructors panic on zero/inverted periods, so skip names that
+            // would panic rather than propagate a panic from a model-supplied string.
+            let valid = match kind {
+                IndicatorKind::Macd => {
+                    let fast = params.first().copied().unwrap_or(12);
+                    let slow = params.get(1).copied().unwrap_or(26);
+                    let signal = params.get(2).copied().unwrap_or(9);
+                    fast > 0 && slow > 0 && signal > 0 && fast < slow
+                }
+                IndicatorKind::Obv | IndicatorKind::Vwap => true,
+                _ => params[0] > 0,
+            };
+            if !valid {
+                continue;
+            }
+            let value = match kind {
+                IndicatorKind::Sma => {
+                    let mut ind = Sma::new(params[0]);
+                    for c in &closes {
+                        let _ = ind.update(*c);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Ema => {
+                    let mut ind = Ema::new(params[0]);
+                    for c in &closes {
+                        let _ = ind.update(*c);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Rsi => {
+                    let mut ind = Rsi::new(params[0]);
+                    for c in &closes {
+                        let _ = ind.update(*c);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Roc => {
+                    let mut ind = Roc::new(params[0]);
+                    for c in &closes {
+                        let _ = ind.update(*c);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Cmo => {
+                    let mut ind = Cmo::new(params[0]);
+                    for c in &closes {
+                        let _ = ind.update(*c);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Macd => {
+                    let mut ind = Macd::new(
+                        params.first().copied().unwrap_or(12),
+                        params.get(1).copied().unwrap_or(26),
+                        params.get(2).copied().unwrap_or(9),
+                    );
+                    for c in &closes {
+                        let _ = ind.update(*c);
+                    }
+                    ind.value().map(|v| v.macd)
+                }
+                IndicatorKind::Bb => {
+                    let mut ind = BollingerBands::new(params[0], 2.0);
+                    for c in &closes {
+                        let _ = ind.update(*c);
+                    }
+                    ind.value().map(|v| v.middle)
+                }
+                IndicatorKind::Atr => {
+                    let mut ind = Atr::new(params[0]);
+                    for b in &core_bars {
+                        let _ = ind.update(b);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Adx => {
+                    let mut ind = Adx::new(params[0]);
+                    for b in &core_bars {
+                        let _ = ind.update(b);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Mfi => {
+                    let mut ind = Mfi::new(params[0]);
+                    for b in &core_bars {
+                        let _ = ind.update(b);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Obv => {
+                    let mut ind = Obv::new();
+                    for b in &core_bars {
+                        let _ = ind.update(b);
+                    }
+                    ind.value()
+                }
+                IndicatorKind::Vwap => {
+                    let mut ind = Vwap::new();
+                    for b in &core_bars {
+                        let _ = ind.update(b);
+                    }
+                    ind.value()
+                }
+            };
+            if let Some(v) = value {
+                values.insert(name.clone(), to_decimal(v));
+            }
+        }
+        if values.is_empty() {
+            return Err(PortError::unavailable(format!(
+                "no indicator values could be computed for {instrument}; see docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md"
+            )));
+        }
+        Ok(MarketIndicators {
+            instrument: instrument.clone(),
+            values,
+            as_of: Utc::now(),
+        })
     }
 
     async fn search_instruments(
@@ -248,9 +463,11 @@ impl MarketReader for FeedMarketReader {
             .filter(|inst| inst.id().symbol.to_lowercase().contains(&q))
             .map(|inst| InstrumentSearchResult {
                 instrument: inst.id().clone(),
-                // No instrument display-name master-data field exists yet — see
-                // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md.
-                name: inst.id().symbol.clone(),
+                name: inst
+                    .display_name()
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| inst.id().symbol.clone()),
                 exchange: inst.id().exchange.as_str().to_string(),
                 lot_size: Some(inst.lot_size().round() as u64),
             })
@@ -258,12 +475,33 @@ impl MarketReader for FeedMarketReader {
         Ok(hits)
     }
 
-    async fn macro_series(&self, _series: &str) -> Result<MacroSeries, PortError> {
-        // No macro-economic data source is wired into this runtime yet — see
-        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md.
-        Err(PortError::unavailable(
-            "macro data source not wired up; see docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md",
-        ))
+    async fn macro_series(&self, series: &str) -> Result<MacroSeries, PortError> {
+        let Some(reader) = &self.economic_calendar else {
+            return Err(PortError::unavailable(
+                "economic-calendar reader not wired; see tantra-runtime/docs/gaps/0007 item 3b",
+            ));
+        };
+        let projections = reader.read().map_err(|e| {
+            PortError::internal(format!("failed to read economic-calendar projections: {e}"))
+        })?;
+        let needle = series.to_lowercase();
+        let mut points: Vec<(DateTime<Utc>, Decimal)> = projections
+            .into_iter()
+            .filter(|row| {
+                row.event_name.to_lowercase().contains(&needle)
+                    || row.category.to_lowercase().contains(&needle)
+            })
+            .filter_map(|row| {
+                let ts = chrono::DateTime::parse_from_rfc3339(&row.scheduled_at).ok()?;
+                let value = row.actual.or(row.forecast).or(row.prior)?;
+                Some((ts.with_timezone(&Utc), value))
+            })
+            .collect();
+        points.sort_by_key(|(ts, _)| *ts);
+        Ok(MacroSeries {
+            series: series.to_string(),
+            points,
+        })
     }
 
     async fn block_deals(
@@ -377,32 +615,81 @@ impl MarketReader for FeedMarketReader {
 
     async fn institutional_flows(
         &self,
-        _date: Option<DateTime<Utc>>,
+        date: Option<DateTime<Utc>>,
     ) -> Result<Vec<InstitutionalFlow>, PortError> {
-        // FII/DII daily flows are ingested Python-side (`tantra-data` gap 0013 closed) but
-        // have no Rust-consumer bridge yet — see
-        // tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md. An explicit error,
-        // not an empty success, so the model can't mistake "not wired up" for "no flows
-        // happened that day" (same pattern as `indicators`/`macro_series` above).
-        Err(PortError::unavailable(
-            "FII/DII institutional-flow Rust bridge not wired; see tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md",
-        ))
+        let Some(reader) = &self.institutional_flows else {
+            // No institutional-flows projections configured — the reader is only wired by
+            // [`FeedMarketReader::with_institutional_flows`]. An explicit error, not an
+            // empty success, so the model can't mistake "not wired up" for "no flows
+            // happened that day" (same pattern as `indicators`/`macro_series`).
+            return Err(PortError::unavailable(
+                "institutional-flow reader not wired; see tantra-runtime/docs/gaps/0007 item 11",
+            ));
+        };
+        let projections = reader.read().map_err(|e| {
+            PortError::internal(format!(
+                "failed to read institutional-flow projections: {e}"
+            ))
+        })?;
+        let flows: Vec<InstitutionalFlow> = projections
+            .into_iter()
+            .filter(|r| r.segment == "cash")
+            .filter(|r| date.is_none_or(|d| r.trade_date == d.date_naive()))
+            .map(|r| InstitutionalFlow {
+                category: r.participant.to_lowercase(),
+                buy_value: Money::new(r.gross_buy, Currency::Inr),
+                sell_value: Money::new(r.gross_sell, Currency::Inr),
+                net_value: Money::new(r.net, Currency::Inr),
+                trade_date: Utc.from_utc_datetime(
+                    &r.trade_date
+                        .and_hms_opt(0, 0, 0)
+                        .expect("midnight is always a valid time of day"),
+                ),
+            })
+            .collect();
+        Ok(flows)
     }
 
     async fn delivery_stats(
         &self,
-        _instrument: &InstrumentId,
-        _range: DateRange,
-        _limit: Option<usize>,
+        instrument: &InstrumentId,
+        range: DateRange,
+        limit: Option<usize>,
     ) -> Result<Vec<DeliveryBar>, PortError> {
-        // Delivery % is ingested Python-side (`tantra-data` gap 0014 closed) but has no
-        // Rust-consumer bridge yet — see
-        // tantra-data/docs/gaps/0019-delivery-rust-bridge.md. An explicit error, not an
-        // empty success, so the model can't mistake "not wired up" for "no delivery
-        // prints" (same pattern as `indicators`/`macro_series` above).
-        Err(PortError::unavailable(
-            "delivery % Rust bridge not wired; see tantra-data/docs/gaps/0019-delivery-rust-bridge.md",
-        ))
+        let Some(reader) = &self.delivery else {
+            // No delivery projections configured — the reader is only wired by
+            // [`FeedMarketReader::with_delivery`]. An explicit error, not an empty success,
+            // so the model can't mistake "not wired up" for "no delivery prints" (same
+            // pattern as `indicators`/`macro_series`).
+            return Err(PortError::unavailable(
+                "delivery reader not wired; see tantra-runtime/docs/gaps/0007 item 12",
+            ));
+        };
+        let projections = reader.read().map_err(|e| {
+            PortError::internal(format!("failed to read delivery projections: {e}"))
+        })?;
+        let mut bars: Vec<DeliveryBar> = projections
+            .into_iter()
+            .filter(|r| r.instrument.eq_ignore_ascii_case(&instrument.to_string()))
+            .filter(|r| {
+                range.start.is_none_or(|s| r.trade_date >= s.date_naive())
+                    && range.end.is_none_or(|e| r.trade_date <= e.date_naive())
+            })
+            .map(|r| DeliveryBar {
+                instrument: instrument.clone(),
+                date: Utc.from_utc_datetime(
+                    &r.trade_date
+                        .and_hms_opt(0, 0, 0)
+                        .expect("midnight is always a valid time of day"),
+                ),
+                traded_qty: Quantity::new(Decimal::from(r.traded_quantity)),
+                delivered_qty: Quantity::new(Decimal::from(r.deliverable_quantity)),
+                delivery_pct: r.delivery_pct,
+            })
+            .collect();
+        bars.sort_by_key(|b| b.date);
+        bars.truncate(limit.unwrap_or(usize::MAX));
+        Ok(bars)
     }
 
     async fn oi_buildup(
@@ -517,13 +804,72 @@ fn oi_window(lookback_days: Option<u32>) -> (chrono::NaiveDate, chrono::NaiveDat
 /// `NSE:RELIANCE-EQ`) into an [`InstrumentId`]. `InstrumentId` has no `FromStr` impl in
 /// `tantra-core` (its `Exchange` component does), so the canonical projection form is split
 /// here; rows with an unknown exchange or no symbol are rejected and skipped by the caller.
-fn parse_instrument(s: &str) -> Option<InstrumentId> {
+/// `pub(crate)` so the chat runtime can resolve the `TANTRA_REGIME_INSTRUMENT` env var the
+/// same way the projection rows are parsed.
+pub(crate) fn parse_instrument(s: &str) -> Option<InstrumentId> {
     let (exchange, symbol) = s.split_once(':')?;
     if symbol.is_empty() {
         return None;
     }
     let exchange = exchange.parse::<Exchange>().ok()?;
     Some(InstrumentId::new(exchange, symbol))
+}
+
+/// The indicator families [`FeedMarketReader::indicators`] recognizes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IndicatorKind {
+    Sma,
+    Ema,
+    Rsi,
+    Roc,
+    Cmo,
+    Atr,
+    Adx,
+    Mfi,
+    Bb,
+    Obv,
+    Vwap,
+    Macd,
+}
+
+/// Parses an indicator name (`sma_20`, `macd_12_26_9`, `obv`, ...) into its kind and
+/// numeric parameters. The base name is the first `_`-separated token; the rest must be
+/// `usize` parameters. `macd` defaults to 12/26/9 and `bb` to 20 when no parameters are
+/// given; the other parameterized indicators require theirs, and unknown base names are
+/// rejected so the caller can skip them.
+fn parse_indicator_name(name: &str) -> Option<(IndicatorKind, Vec<usize>)> {
+    let mut parts = name.split('_');
+    let base = parts.next()?;
+    let params: Vec<usize> = parts.filter_map(|p| p.parse().ok()).collect();
+    let kind = match base {
+        "sma" => IndicatorKind::Sma,
+        "ema" => IndicatorKind::Ema,
+        "rsi" => IndicatorKind::Rsi,
+        "roc" => IndicatorKind::Roc,
+        "cmo" => IndicatorKind::Cmo,
+        "atr" => IndicatorKind::Atr,
+        "adx" => IndicatorKind::Adx,
+        "mfi" => IndicatorKind::Mfi,
+        "bb" => IndicatorKind::Bb,
+        "obv" => IndicatorKind::Obv,
+        "vwap" => IndicatorKind::Vwap,
+        "macd" => IndicatorKind::Macd,
+        _ => return None,
+    };
+    match kind {
+        IndicatorKind::Macd => Some((
+            kind,
+            if params.is_empty() {
+                vec![12, 26, 9]
+            } else {
+                params
+            },
+        )),
+        IndicatorKind::Bb => Some((kind, if params.is_empty() { vec![20] } else { params })),
+        IndicatorKind::Obv | IndicatorKind::Vwap => Some((kind, params)),
+        _ if params.is_empty() => None,
+        _ => Some((kind, params)),
+    }
 }
 
 /// Maps one lakehouse corporate-action projection row onto the chat tool catalog's
@@ -588,15 +934,66 @@ fn to_block_deal(projection: BlockDealProjection) -> Option<BlockDeal> {
 }
 
 /// Read-through `SnapshotSource` grounding screener/universe tools in the live instrument
-/// catalog `AppState` already holds.
+/// catalog `AppState` already holds, optionally enriched with the shared risk engine's
+/// OTR/price-band metrics and a daily-bar regime classification.
 pub struct FeedSnapshotSource {
     instruments: Arc<dyn InstrumentMaster>,
+    risk_engine: Option<Arc<Mutex<RiskEngine>>>,
+    bars: Option<Arc<dyn BarReader>>,
+    regime_instrument: Option<InstrumentId>,
 }
 
 impl FeedSnapshotSource {
     /// Builds a [`FeedSnapshotSource`] over the given instrument catalog port.
     pub fn new(instruments: Arc<dyn InstrumentMaster>) -> Self {
-        Self { instruments }
+        Self {
+            instruments,
+            risk_engine: None,
+            bars: None,
+            regime_instrument: None,
+        }
+    }
+
+    /// Attaches the shared risk engine so `snapshot` reports its OTR limits and
+    /// price-band count (closes `tantra-runtime/docs/gaps/0007` item 5b).
+    pub fn with_risk_engine(mut self, risk_engine: Arc<Mutex<RiskEngine>>) -> Self {
+        self.risk_engine = Some(risk_engine);
+        self
+    }
+
+    /// Attaches a daily-bar source and the instrument whose closes classify the snapshot's
+    /// market regime (closes `tantra-runtime/docs/gaps/0007` item 5a).
+    pub fn with_regime(mut self, bars: Arc<dyn BarReader>, instrument: InstrumentId) -> Self {
+        self.bars = Some(bars);
+        self.regime_instrument = Some(instrument);
+        self
+    }
+}
+
+/// Classifies the market regime from daily closes: `trending_bull` when the last close sits
+/// above its 20-SMA and that SMA is rising, `trending_bear` below a falling SMA, otherwise
+/// `range_bound`. Needs at least 30 closes so the SMA-trend comparison has depth; a shorter
+/// series classifies `None`.
+fn classify_regime(closes: &[f64]) -> Option<String> {
+    if closes.len() < 30 {
+        return None;
+    }
+    let mut sma = Sma::new(20);
+    let mut values = Vec::with_capacity(closes.len());
+    for close in closes {
+        if let Some(v) = sma.update(*close) {
+            values.push(v);
+        }
+    }
+    let last = closes[closes.len() - 1];
+    let sma_now = values[values.len() - 1];
+    let sma_prev = values[values.len() - 2];
+    if last > sma_now && sma_now > sma_prev {
+        Some("trending_bull".to_string())
+    } else if last < sma_now && sma_now < sma_prev {
+        Some("trending_bear".to_string())
+    } else {
+        Some("range_bound".to_string())
     }
 }
 
@@ -612,6 +1009,36 @@ impl SnapshotSource for FeedSnapshotSource {
             .into_iter()
             .map(|i| i.id().symbol.clone())
             .collect();
+
+        let mut risk_metrics = HashMap::new();
+        if let Some(engine) = &self.risk_engine {
+            let engine = engine.lock().unwrap_or_else(PoisonError::into_inner);
+            risk_metrics.insert(
+                "otr_max_ratio".to_string(),
+                serde_json::json!(engine.otr_config.max_otr.to_string()),
+            );
+            risk_metrics.insert(
+                "otr_warning_threshold".to_string(),
+                serde_json::json!(engine.otr_config.warning_threshold.to_string()),
+            );
+            risk_metrics.insert(
+                "price_band_count".to_string(),
+                serde_json::json!(engine.price_bands.len()),
+            );
+        }
+
+        let regime = match (&self.bars, &self.regime_instrument) {
+            (Some(bars), Some(instrument)) => {
+                let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
+                let request = BarRequest::new(instrument.clone(), spec, None, None)
+                    .map_err(feed_port_error)?;
+                let wire_bars = bars.read_bars(&request).await.map_err(feed_port_error)?;
+                let closes: Vec<f64> = wire_bars.iter().map(|b| b.close()).collect();
+                classify_regime(&closes)
+            }
+            _ => None,
+        };
+
         Ok(SnapshotData {
             as_of: Utc::now(),
             universe: if universe.is_empty() {
@@ -619,10 +1046,8 @@ impl SnapshotSource for FeedSnapshotSource {
             } else {
                 Some(universe)
             },
-            // No regime classifier or risk-metrics feed is wired into chat tools yet — see
-            // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md.
-            regime: None,
-            risk_metrics: std::collections::HashMap::new(),
+            regime,
+            risk_metrics,
         })
     }
 }

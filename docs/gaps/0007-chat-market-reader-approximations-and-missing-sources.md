@@ -1,6 +1,6 @@
 # 0007 — Chat market/content-reader adapters have approximated fields and missing data sources
 
-**Status**: open — items 6/7/8/9/13/17/18/19 closed; items 1–5, 10–12, 14–16 remain (upstream-blocked).
+**Status**: open — items 1–5, 6/7/8/9/11/12/13/17/18/19 closed; items 10 and 14–16 remain (upstream-blocked).
 
 ## What's stubbed or hardcoded
 
@@ -12,19 +12,42 @@ same `InstrumentMaster`/`BarReader`/`QuoteReader`/`RiskEngine` ports `AppState` 
 and are either approximated or answered with an explicit error rather than fabricated data:
 
 1. **`MarketQuote::last_price` is the bid/ask midpoint, not a real last-trade print.**
-   `QuoteReader::read_quote` returns only a top-of-book `QuoteTick` (bid/ask price and size); there
-   is no last-traded-price feed wired into it.
-2. **`MarketQuote::volume` is always `Decimal::ZERO`.** `QuoteTick` carries no traded-volume field
-   either, so there is nothing real to report; zero is a placeholder, not an observed value.
+   **CLOSED (plumbing)** (this batch): `FeedMarketReader` gained an optional `TradeReader`
+   port (`with_trade_reader`) backed by `tantra-market-store::LiveQuoteStore::put_trade` +
+   `ports::TradeReader`/`TradeSnapshot`; `quote` reports the latest print's price and the
+   session-day volume (sum of trade sizes) when a reader is attached. The live broker trade
+   feed itself is not implemented anywhere (real feeds remain `tantra-market` gaps
+   0001/0002), so `ChatRuntime::from_env` wires no reader and an unwired reader honestly
+   falls back to the bid/ask midpoint rather than fabricating a print.
+2. **`MarketQuote::volume` is always `Decimal::ZERO`.** **CLOSED (plumbing)** (this batch):
+   the same `TradeReader` path reports the accumulated session-day volume (`TradeSnapshot::day_volume`),
+   so a wired live trade feed yields real volume; an unwired reader keeps the honest `ZERO`
+   placeholder until broker trade feeds land.
 3. **`MarketReader::indicators` and `MarketReader::macro_series` always answer
-   `PortError::unavailable`.** No indicator engine or macro-economic data source exists anywhere
-   in `tantra-runtime` yet for the chat tools to read from.
-4. **`InstrumentSearchResult::name` falls back to the raw symbol.** `tantra_market_store::wire::Instrument`
-   has no human-readable display-name field, only `id()` (the `InstrumentId`), `kind()`,
-   `currency()`, `lot_size()`, `tick_size()`.
+   `PortError::unavailable`.** **CLOSED** (this batch):
+   - `indicators` now reads daily bars through `BarReader` and computes the requested named
+     indicators (`sma_*`, `ema_*`, `rsi_*`, `roc_*`, `cmo_*`, `atr_*`, `adx_*`, `mfi_*`,
+     `bb_*`, `obv`, `vwap`, `macd_*`) with `tantra-market-indicators`, converting each
+     `f64` output to exact `Decimal` at the boundary. Unsupported/never-primed names yield an
+     explicit `PortError::unavailable`, never an empty success.
+   - `macro_series` reads the `tantra-data` economic-calendar projections
+     (`{root}/catalog/economic_calendar`, `with_economic_calendar`) through
+     `EconomicCalendarProjectionReader`, matching events by name/category and returning
+     `(scheduled_at, actual|forecast|prior)` points (closes `tantra-data` gap 0018). The
+     `economic_calendar` chat tool (`FeedCalendarReader::with_economic_calendar`) reads the
+     same projections.
+4. **`InstrumentSearchResult::name` falls back to the raw symbol.** **CLOSED** (this batch):
+   `tantra_market_store::wire::Instrument` gained an optional `display_name` column
+   (`snapshot_schema()`, tolerant read — catalogs without the column still load, name is
+   `None`), and `search_instruments` returns the display name when present, falling back to
+   the symbol otherwise. Producer-side population of the column from broker master data is a
+   follow-on.
 5. **`SnapshotData::regime` and `SnapshotData::risk_metrics` are always `None`/empty.**
-   `FeedSnapshotSource` only populates `universe` (from `InstrumentMaster::list_instruments`); no
-   market-regime classifier or curated risk-metrics feed exists yet to back the other two fields.
+   **CLOSED** (this batch): `FeedSnapshotSource` gained `with_risk_engine` — `risk_metrics`
+   now surfaces the live `RiskEngine` OTR limits (`otr_max_ratio`, `otr_warning_threshold`)
+   and `price_band_count` — and `with_regime(bars, instrument)`: a 20-SMA-slope classifier
+   over the instrument's daily bars labels `trending_bull`/`trending_bear`/`range_bound`
+   (configured via `TANTRA_REGIME_INSTRUMENT`; unset ⇒ `regime` stays `None`).
 6. **`MarketReader::block_deals` — CLOSED** (`b561e12`, T7.2): `FeedMarketReader::block_deals`
    now reads the `tantra-data` block/bulk-deal projections (`{root}/catalog/block_deals`) through
    `tantra-market-store::BlockDealsProjectionReader` (`with_block_deals`), filtering by instrument
@@ -52,16 +75,23 @@ and are either approximated or answered with an explicit error rather than fabri
     Phase 4): the feed ports serve top-of-book quotes only; no L2 depth source exists
     (`tantra-market/docs/gaps/0006-l2-order-book-depth.md`). The seedable
     `RuntimeMarketReader` accepts a `set_market_depth` store for tests.
-11. **`MarketReader::institutional_flows` always answers `PortError::unavailable`** in
-    `FeedMarketReader`. Added with chat tool `institutional_flows` (plan 0007 Track 2 Phase 4):
-    FII/DII daily flows are ingested Python-side (`tantra-data` gap 0013 closed) but have no
-    Rust-consumer bridge (`tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md`). The
-    seedable `RuntimeMarketReader` accepts a `set_institutional_flows` store for tests.
-12. **`MarketReader::delivery_stats` always answers `PortError::unavailable`** in
-    `FeedMarketReader`. Added with chat tool `delivery_analysis` (`tantra-agent` plan 0010
-    Phase 2): delivery % is ingested Python-side (`tantra-data` gap 0014 closed) but has no
-    Rust-consumer bridge (`tantra-data/docs/gaps/0019-delivery-rust-bridge.md`). The seedable
-    `RuntimeMarketReader` accepts a `set_delivery_stats` store for tests.
+11. **`MarketReader::institutional_flows` — CLOSED** (this batch): the `tantra-data`
+    institutional-flow projections (`{root}/catalog/institutional_flows`, exported by
+    `LakehouseBridgeExporter::export_institutional_flows`) are read through
+    `tantra-market-store::InstitutionalFlowsProjectionReader` (`with_institutional_flows`),
+    filtered to the cash segment and optionally a date, and mapped to the chat
+    `InstitutionalFlow` DTO (participant → `fii`/`dii`, exact `Money` values) — closes
+    `tantra-data` gap 0017. The unconfigured fallback
+    answers `PortError::unavailable`. The seedable `RuntimeMarketReader` `set_institutional_flows`
+    store remains for tests.
+12. **`MarketReader::delivery_stats` — CLOSED** (this batch): the `tantra-data` delivery
+    projections (`{root}/catalog/delivery`, exported by
+    `LakehouseBridgeExporter::export_delivery`) are read through
+    `tantra-market-store::DeliveryProjectionReader` (`with_delivery`), filtered by instrument
+    and date range, and mapped to the chat `DeliveryBar` DTO (exact `Quantity`/`Decimal`) —
+    closes `tantra-data` gap 0019. The unconfigured fallback
+    answers `PortError::unavailable`. The seedable `RuntimeMarketReader` `set_delivery_stats`
+    store remains for tests.
 13. **`MarketReader::oi_buildup` — CLOSED** (`776d145`, T7.7 item 13): `FeedMarketReader::with_oi_store`
     opens `ParquetOpenInterestStore::open(root)` and wires a `BuildupAnalyzer` over it and the
     daily-bar source; `oi_buildup` computes the four-quadrant classification plus absolute OI and
@@ -100,29 +130,26 @@ and are either approximated or answered with an explicit error rather than fabri
 
 Closing docs/gaps/0006's market/screener stand-in only required wiring the tool catalog to data
 AppState already has live access to (instrument reference data, quotes, bars, risk-engine price
-bands). The fields above need either a new data source this runtime doesn't have yet (a
-last-trade/volume feed, an indicator engine, a macro-economic data integration, a regime
-classifier) or a product decision (which risk metrics to surface to the chat agent) — both out of
-scope for a read-through wiring pass. The trade/strategy/tax tools were runtime-side-only: they
-needed an approval-queue handle, a strategy store, and the shared ledger — all wired this batch.
+bands). The fields above need either a new data source this runtime doesn't have yet (a live
+broker last-trade/volume feed, an L2 depth source, fundamentals/mutual-fund/IPO ingestion) or a
+product decision (which risk metrics to surface to the chat agent). The 2026-11-14 batch closed
+every item whose data already existed somewhere: the indicator library and daily bars (item 3a),
+the `tantra-data` institutional-flow/delivery/economic-calendar projections and their Rust
+readers (items 3b/11/12), the instrument display-name column (item 4), the risk-engine metrics +
+a SMA-based regime classifier (item 5), and the last-price/volume read-through plumbing (items
+1–2). The trade/strategy/tax tools were runtime-side-only: they needed an approval-queue handle,
+a strategy store, and the shared ledger — all wired earlier.
 
-## How to close it
+## How to close it (remaining)
 
-- Items 1–2: wire a last-trade/volume feed into `QuoteReader` (or a sibling port) and read it from
-  `FeedMarketReader::quote`.
-- Item 3: stand up an indicator engine (or reuse one from `tantra-market`'s 100+ indicator
-  library) and a macro-economic data source, and implement `FeedMarketReader::indicators`/
-  `macro_series` against them instead of returning `PortError::unavailable`.
-- Item 4: add a display-name field to `Instrument` (`tantra-market-store`'s `wire.rs`) sourced
-  from instrument reference data, and read it in `FeedMarketReader::search_instruments`.
-- Item 5: decide which risk metrics (OTR counters, halt status, kill-switch state) the chat agent
-  should see, and either build or find a market-regime classifier; wire both into
-  `FeedSnapshotSource::snapshot`.
-- Item 10: close `tantra-market/docs/gaps/0006` (L2 depth source), then replace
-  `FeedMarketReader::market_depth`'s stub with a real read.
-- Item 11: close `tantra-data/docs/gaps/0017` (institutional-flow → Rust bridge), then
-  replace `FeedMarketReader::institutional_flows`'s stub with a real read through the bridge.
-- Item 12: close `tantra-data/docs/gaps/0019` (delivery % → Rust bridge), then replace
-  `FeedMarketReader::delivery_stats`'s stub with a real read through the bridge.
+- Item 10: close `tantra-market/docs/gaps/0006` (L2 depth source — the `DepthReader` port and
+  `DepthSnapshot` shape already exist in `tantra-market-store`; only a data source implementing
+  it is missing), then replace `FeedMarketReader::market_depth`'s stub with a real read and
+  compute `liquidity_imbalance_pct`.
 - Items 14–16: close `tantra-data/docs/gaps/0020`–`0022` (fundamentals / mutual-fund / IPO
-  ingestion), then wire `FeedFundamentalReader`/`FeedFundReader`/`FeedIpoReader` to real reads.
+  ingestion — vendor selection + ingestion first, then the bridge-exporter → projection-reader →
+  runtime wiring chain), then wire `FeedFundamentalReader`/`FeedFundReader`/`FeedIpoReader` to
+  real reads.
+- Follow-on (no stub): wire a live broker trade feed (`tantra-market` gaps 0001/0002) into a
+  `TradeReader` so `quote` reports real last prints/day volume instead of the honest midpoint
+  fallback.

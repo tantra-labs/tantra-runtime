@@ -525,12 +525,13 @@ impl MarketReader for RuntimeMarketReader {
     ) -> Result<Vec<InstitutionalFlow>, PortError> {
         let flows = self.institutional_flows.read().unwrap();
         if flows.is_empty() {
-            // Nothing seeded and the FII/DII series is Python-side only (no Rust consumer
-            // bridge) — see tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md.
-            // An explicit error, not an empty success, so callers can't mistake "not wired
-            // up" for "no flows happened that day."
+            // Nothing seeded and no projection reader is wired in this adapter — the
+            // live-data path lives in `FeedMarketReader::with_institutional_flows`
+            // (tantra-runtime/docs/gaps/0007 item 11). An explicit error, not an empty
+            // success, so callers can't mistake "not wired up" for "no flows happened
+            // that day."
             return Err(PortError::unavailable(
-                "FII/DII institutional-flow Rust bridge not wired; see tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md",
+                "institutional-flow reader not wired; see tantra-runtime/docs/gaps/0007 item 11",
             ));
         }
         Ok(flows.clone())
@@ -544,13 +545,13 @@ impl MarketReader for RuntimeMarketReader {
     ) -> Result<Vec<DeliveryBar>, PortError> {
         let bars = self.delivery_stats.read().unwrap();
         if bars.is_empty() {
-            // Nothing seeded and the delivery-% series is Python-side only (no Rust
-            // consumer bridge) — see
-            // tantra-data/docs/gaps/0019-delivery-rust-bridge.md. An explicit error,
-            // not an empty success, so callers can't mistake "not wired up" for "this
-            // instrument had no delivery prints."
+            // Nothing seeded and no projection reader is wired in this adapter — the
+            // live-data path lives in `FeedMarketReader::with_delivery`
+            // (tantra-runtime/docs/gaps/0007 item 12). An explicit error, not an empty
+            // success, so callers can't mistake "not wired up" for "this instrument had
+            // no delivery prints."
             return Err(PortError::unavailable(
-                "delivery % data is Python-side only; see tantra-data/docs/gaps/0019-delivery-rust-bridge.md",
+                "delivery reader not wired; see tantra-runtime/docs/gaps/0007 item 12",
             ));
         }
         let mut hits: Vec<DeliveryBar> = bars

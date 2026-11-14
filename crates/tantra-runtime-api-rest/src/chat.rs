@@ -23,9 +23,11 @@
 //!   answer genuinely means "no trading activity in this process", never fabricated data.
 //!
 //! Market/screener tools read through live data via [`crate::chat_market::FeedMarketReader`]/
-//! [`crate::chat_market::FeedSnapshotSource`]; a few of their fields still approximate or report
-//! unavailable (see `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md`).
-//! The price-alert tools write the caller's `Profile.alerts` document through the profiles
+//! [`crate::chat_market::FeedSnapshotSource`]; items 1-5, 11-12 of
+//! `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md` are now closed
+//! (projection bridges, indicators, display names, regime/risk metrics), leaving `market_depth`
+//! as the remaining explicit gap (see that document). The price-alert tools write the caller's
+//! `Profile.alerts` document through the profiles
 //! store ([`crate::chat_alerts::ProfileAlertStore`], agent plan 0006 Phase 2). The news/filings
 //! content tools (agent plan 0006 Phase 3) read filings and news through the `tantra-data`
 //! projections via [`crate::chat_content::FeedContentReader`] (see
@@ -123,13 +125,15 @@ impl ChatRuntime {
     /// [`tantra_runtime_persistence::SqlxSessionStore`] (the embedded migrations that create
     /// `agent_chat_session`/`agent_chat_message` run at boot) instead of keeping them
     /// in-memory (docs/gaps/0006). `data_root` points at the data directory
-    /// whose `catalog/filings`, `catalog/corporate_actions`, `catalog/block_deals` and
-    /// `catalog/news` projections plus `open_interest` lakehouse `tantra-data` maintains —
-    /// they back the filings, corporate-actions, block/bulk-deal, news and OI-buildup chat
-    /// tools (closes `tantra-data/docs/gaps/0007-filings-rust-bridge.md`,
-    /// `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`,
-    /// `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md` and
-    /// `tantra-data/docs/gaps/0006-news-ingestion.md`).
+    /// whose `catalog/filings`, `catalog/corporate_actions`, `catalog/block_deals`,
+    /// `catalog/news`, `catalog/institutional_flows`, `catalog/delivery` and
+    /// `catalog/economic_calendar` projections plus `open_interest` lakehouse `tantra-data`
+    /// maintains — they back the filings, corporate-actions, block/bulk-deal, news,
+    /// OI-buildup, institutional-flow, delivery, economic-calendar and macro-series chat
+    /// tools (the institutional-flow/delivery/economic-calendar bridges close
+    /// `tantra-data` gaps 0017/0019/0018 and `docs/gaps/0007` items 3b/11/12; see the
+    /// `with_*` builders on [`crate::chat_market::FeedMarketReader`] and
+    /// [`crate::chat_calendar::FeedCalendarReader`]).
     #[allow(clippy::too_many_arguments)]
     pub fn from_env(
         instruments: Arc<dyn InstrumentMaster>,
@@ -158,24 +162,44 @@ impl ChatRuntime {
             shared_ledger.clone(),
         ));
         let market: Arc<dyn MarketReader> = Arc::new(
-            FeedMarketReader::new(instruments.clone(), bars, quotes, risk_engine)
-                .with_block_deals(data_root)
-                .with_corporate_actions(data_root)
-                .with_oi_store(data_root),
+            FeedMarketReader::new(
+                instruments.clone(),
+                bars.clone(),
+                quotes,
+                risk_engine.clone(),
+            )
+            .with_block_deals(data_root)
+            .with_corporate_actions(data_root)
+            .with_oi_store(data_root)
+            .with_institutional_flows(data_root)
+            .with_delivery(data_root)
+            .with_economic_calendar(data_root),
         );
+        // The market reader deliberately wires no live `TradeReader`: no broker trade feed
+        // exists in this runtime yet (real feeds remain `tantra-market` gaps 0001/0002), so
+        // `quote` honestly falls back to the bid/ask midpoint until one is attached.
+        let mut snapshot = FeedSnapshotSource::new(instruments).with_risk_engine(risk_engine);
+        if let Some(regime_instrument) = std::env::var("TANTRA_REGIME_INSTRUMENT")
+            .ok()
+            .and_then(|raw| crate::chat_market::parse_instrument(&raw))
+        {
+            snapshot = snapshot.with_regime(bars.clone(), regime_instrument);
+        }
         let snapshots: Arc<dyn tantra_agent_chat_tools::ports::snapshot::SnapshotSource> =
-            Arc::new(FeedSnapshotSource::new(instruments));
+            Arc::new(snapshot);
         // News/filings content tools (agent plan 0006 Phase 3): filings and news read
         // through the `tantra-data` projections (`{data_root}/catalog/filings` and
         // `{data_root}/catalog/news`).
         let content: Arc<dyn tantra_agent_chat_tools::ports::content::ContentReader> = Arc::new(
             crate::chat_content::FeedContentReader::with_filings(data_root).with_news(data_root),
         );
-        // Economic-calendar tool (agent plan 0007 Track 2 Phase 5): the calendar is
-        // Python-side only, so the adapter answers its explicit gap citation (see
+        // Economic-calendar tool (agent plan 0007 Track 2 Phase 5, docs/gaps/0007 item 3b):
+        // the calendar is exported Python-side to `{root}/catalog/economic_calendar` and read
+        // through `EconomicCalendarProjectionReader` (closes `tantra-data` gap 0018; see
         // `crate::chat_calendar`).
-        let calendar: Arc<dyn tantra_agent_chat_tools::ports::calendar::CalendarReader> =
-            Arc::new(crate::chat_calendar::FeedCalendarReader::new());
+        let calendar: Arc<dyn tantra_agent_chat_tools::ports::calendar::CalendarReader> = Arc::new(
+            crate::chat_calendar::FeedCalendarReader::new().with_economic_calendar(data_root),
+        );
         // Fundamentals / mutual-fund / IPO tools (agent plan 0007 Track 3 Phases 6-8): no
         // data source exists anywhere yet, so the adapters answer their explicit gap
         // citations (see `crate::chat_fundamental` / `crate::chat_fund` / `crate::chat_ipo`).

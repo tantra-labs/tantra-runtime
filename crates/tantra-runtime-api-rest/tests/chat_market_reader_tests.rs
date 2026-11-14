@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{TimeZone, Utc};
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use tantra_agent_chat_tools::ports::error::PortErrorKind;
 use tantra_agent_chat_tools::ports::market::MarketReader;
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
@@ -13,14 +14,17 @@ use tantra_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
 use tantra_core::{
     Currency, Exchange, InstrumentId, InstrumentKind, OptionType, Price, PriceBand, Quantity,
 };
-use tantra_market_store::{OpenInterestSnapshot, write_oi_file};
+use tantra_market_store::{
+    Dataset, DatasetReader, LiveQuoteStore, OpenInterestSnapshot, write_oi_file,
+};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api_rest::chat_market::{FeedMarketReader, FeedSnapshotSource};
 use tantra_runtime_api_rest::market_feed::ports::{
     BarReader, BarRequest, InstrumentMaster, PortError as FeedPortError, QuoteReader,
 };
 use tantra_runtime_api_rest::market_feed::wire::{
-    Bar, BarAggregation, BarSpecification, BarType, Instrument, PriceType, QuoteTick, UnixNanos,
+    AggressorSide, Bar, BarAggregation, BarSpecification, BarType, Instrument, PriceType,
+    QuoteTick, TradeId, TradeTick, UnixNanos,
 };
 use tempfile::tempdir;
 
@@ -128,6 +132,36 @@ fn daily_bar(hour: u32, close: f64, volume: f64) -> Bar {
         ts(hour),
         ts(hour),
     )
+}
+
+/// `n` synthetic daily bars on consecutive days starting 2026-01-01 with strictly rising
+/// closes (`close = start_close + i`, `high = close + 1`, `low = close - 1`), so a 20-SMA
+/// trend over them classifies `trending_bull`.
+fn rising_bars(n: usize, start_close: f64) -> Vec<Bar> {
+    let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
+    let first = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+    (0..n)
+        .map(|i| {
+            let ts = UnixNanos::from_datetime(
+                Utc.from_utc_datetime(
+                    &(first + chrono::Days::new(i as u64))
+                        .and_hms_opt(10, 0, 0)
+                        .unwrap(),
+                ),
+            );
+            let close = start_close + i as f64;
+            Bar::new(
+                BarType::new(reliance(), spec),
+                close,
+                close + 1.0,
+                close - 1.0,
+                close,
+                1_000.0,
+                ts,
+                ts,
+            )
+        })
+        .collect()
 }
 
 #[tokio::test]
@@ -503,8 +537,140 @@ async fn institutional_flows_are_explicitly_unavailable_with_gap_citation() {
     let err = reader.institutional_flows(None).await.unwrap_err();
     assert_eq!(err.kind, PortErrorKind::Unavailable);
     assert!(
-        err.message
-            .contains("0017-institutional-flow-rust-bridge.md"),
-        "stub must cite the upstream gap, got: {err}"
+        err.message.contains("0007 item 11"),
+        "stub must cite the runtime gap item, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn quote_prefers_live_trade_print_when_wired() {
+    let instrument = reliance();
+    let store = Arc::new(LiveQuoteStore::new(Arc::new(DatasetReader::from_dataset(
+        Dataset::default(),
+    ))));
+    store.put_quote(QuoteTick::new(
+        instrument.clone(),
+        100.0,
+        101.0,
+        1.0,
+        1.0,
+        ts(9),
+        ts(9),
+    ));
+    store.put_trade(TradeTick::new(
+        instrument.clone(),
+        100.5,
+        10.0,
+        AggressorSide::Buyer,
+        TradeId::new("t1"),
+        ts(9),
+        ts(9),
+    ));
+
+    let reader = FeedMarketReader::new(
+        Arc::new(FakeFeed::default()),
+        Arc::new(FakeFeed::default()),
+        store.clone(),
+        Arc::new(Mutex::new(RiskEngine::default())),
+    )
+    .with_trade_reader(store.clone());
+
+    let quote = reader.quote(&instrument).await.unwrap();
+    assert_eq!(quote.last_price, Price::new(dec!(100.5)));
+    assert_eq!(quote.volume, Quantity::new(dec!(10.0)));
+}
+
+#[tokio::test]
+async fn search_instruments_uses_display_name() {
+    let named = Instrument::new(reliance(), InstrumentKind::Equity, Currency::Inr, 1.0, 0.05)
+        .with_display_name("RELIANCE INDUSTRIES");
+    let unnamed = Instrument::new(
+        InstrumentId::new(Exchange::Nse, "TATAMOTORS"),
+        InstrumentKind::Equity,
+        Currency::Inr,
+        1.0,
+        0.05,
+    );
+    let reader = reader_over(
+        FakeFeed {
+            instruments: vec![named, unnamed],
+            ..Default::default()
+        },
+        RiskEngine::default(),
+    );
+
+    let hits = reader.search_instruments("rel").await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].name, "RELIANCE INDUSTRIES");
+
+    let hits = reader.search_instruments("tatamotors").await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(
+        hits[0].name, "TATAMOTORS",
+        "no display name falls back to the symbol"
+    );
+}
+
+#[tokio::test]
+async fn indicators_computes_sma_and_rsi() {
+    let reader = reader_over(
+        FakeFeed {
+            bars: rising_bars(40, 100.0),
+            ..Default::default()
+        },
+        RiskEngine::default(),
+    );
+
+    let result = reader
+        .indicators(
+            &reliance(),
+            &[
+                "sma_20".to_string(),
+                "rsi_14".to_string(),
+                "unknown_9".to_string(),
+            ],
+        )
+        .await
+        .unwrap();
+    // SMA(20) over closes 120..=139 = 129.5 exactly (integer closes).
+    let expected_sma = Decimal::from_f64_retain(129.5).unwrap();
+    assert!(
+        (result.values["sma_20"] - expected_sma).abs() < dec!(0.01),
+        "sma_20 was {}",
+        result.values["sma_20"]
+    );
+    assert!(result.values.contains_key("rsi_14"));
+    assert!(
+        !result.values.contains_key("unknown_9"),
+        "unsupported names are skipped"
+    );
+}
+
+#[tokio::test]
+async fn snapshot_source_reports_risk_metrics_and_regime() {
+    let instrument = reliance();
+    let band = PriceBand::new(
+        Price::new(Decimal::from(2000)),
+        Price::new(Decimal::from(3000)),
+        Price::new(Decimal::from(2500)),
+    );
+    let mut engine = RiskEngine::default();
+    engine.set_price_band(instrument.clone(), band);
+
+    let bars = Arc::new(FakeFeed {
+        bars: rising_bars(40, 100.0),
+        ..Default::default()
+    });
+    let source = FeedSnapshotSource::new(Arc::new(FakeFeed::default()))
+        .with_risk_engine(Arc::new(Mutex::new(engine)))
+        .with_regime(bars, instrument);
+
+    let snapshot = source.snapshot(&SnapshotNeeds::default()).await.unwrap();
+    assert_eq!(snapshot.risk_metrics["price_band_count"], 1);
+    assert_eq!(snapshot.risk_metrics["otr_max_ratio"], "50");
+    assert_eq!(
+        snapshot.regime,
+        Some("trending_bull".to_string()),
+        "rising closes above a rising 20-SMA classify trending_bull"
     );
 }

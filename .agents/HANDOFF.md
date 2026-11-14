@@ -3,6 +3,33 @@
 **Date**: 2026-11-14 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
+## Latest Batch — gap 0007 items 1–5, 11, 12 closed (upstream bridges landed)
+
+Date: 2026-11-14. Closed the non-depth/non-vendor gap 0007 items by landing the upstream bridges
+in parallel waves (2 subagents max):
+- **`tantra-data` exports (gaps 0017/0018/0019 closed)** — `LakehouseBridgeExporter` gained
+  `export_institutional_flows` / `export_delivery` / `export_economic_calendar`
+  (`{root}/catalog/institutional_flows|delivery|economic_calendar/<date>.parquet`, exact
+  Decimal128/int64) + CLI `--dataset institutional-flows|delivery|economic-calendar`; 14 exporter
+  tests, full `pytest` 144 green, ruff clean.
+- **`tantra-market-store`** — 3 projection readers
+  (`InstitutionalFlowsProjectionReader`, `DeliveryProjectionReader`,
+  `EconomicCalendarProjectionReader`, mirror of `BlockDealsProjectionReader`); live trade store
+  (`LiveQuoteStore::put_trade` + `ports::TradeReader`/`TradeSnapshot` with session-day volume);
+  `wire::Instrument.display_name` + `snapshot_schema()` column (tolerant read, backward-compat);
+  `tests/live_trades.rs` + reader/display-name tests (59 store tests green on prod).
+- **`tantra-runtime`** — `FeedMarketReader` gained `with_institutional_flows`/`with_delivery`/
+  `with_economic_calendar`/`with_trade_reader`; real `institutional_flows` (cash segment),
+  `delivery_stats` (instrument/range filtered), `macro_series` (economic-calendar projections),
+  `indicators` (daily bars → `tantra-market-indicators` sma/ema/rsi/roc/cmo/atr/adx/mfi/bb/obv/
+  vwap/macd → exact `Decimal`), `quote` (last print + day volume when a `TradeReader` is wired,
+  honest midpoint fallback otherwise), `search_instruments` (display-name first); `FeedSnapshotSource`
+  gained `with_risk_engine` (`otr_max_ratio`/`otr_warning_threshold`/`price_band_count`) +
+  `with_regime` (20-SMA-slope classifier, `TANTRA_REGIME_INSTRUMENT`); `ChatRuntime::from_env`
+  wires the three projection builders. 8 new runtime tests (30 in the two touched binaries).
+- **Still blocked**: item 10 (L2 depth — `tantra-market` 0006), items 14–16 (fundamentals/MF/IPO
+  vendors — `tantra-data` 0020–0022). Live trade feed stays unwired (`tantra-market` 0001/0002).
+
 ## Latest Batch — T7 remaining (gap 0006 closed; 0007 items 8/9/17/18/19 closed)
 
 Date: 2026-11-14. Implemented the runtime-side T7 items that were not upstream-blocked:
@@ -70,13 +97,13 @@ Date: 2026-11-14. Implemented the runtime-side T7 items that were not upstream-b
 - `cargo fmt --check`: ✅
 - `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
 - `cargo check --workspace --profile prod`: ✅
-- `cargo test --profile prod` for touched binaries: ✅ (shared_ledger 6, chat_remaining_t7 3,
-  orders_exec 8, orders_gateway 2, trading_state 18, chat_projection 6, chat_market_reader 16,
-  session_persistence 2 + full `tantra-runtime-api` suite).
+- `cargo test --profile prod` for touched binaries: ✅ (chat_projection 30 incl. 4 new, full
+  `tantra-runtime-api` suite; prior batch counts: shared_ledger 6, chat_remaining_t7 3,
+  orders_exec 8, orders_gateway 2, trading_state 18, session_persistence 2).
   ⚠ Known env limit: a blanket `cargo test -p tantra-runtime-api-rest` (all ~45 binaries)
   hits the pre-existing prod-LTO link SIGKILL on unrelated heavy binaries; targeted binaries
   link and pass.
-- `make prod` (§11 end-of-turn rebuild): pending before commit
+- `make prod` (§11 end-of-turn rebuild): ✅ (run at batch close)
 
 ## Phase / Slice Status
 
@@ -183,11 +210,14 @@ Date: 2026-11-14. Implemented the runtime-side T7 items that were not upstream-b
 T7 track + the runtime-side T7-remaining items shipped 2026-11-14 (block/bulk deals, news,
 oi_buildup, options_chain, corporate-actions-in-chat, profile schema, OpenAPI, session
 persistence, **portfolio-backed tools (gap 0006 closed)**, trade-intent / strategy-store / tax
-wiring (0007 items 17–19 closed), broker boundary decision). Remaining T7:
-- **Gap 0007 remaining items** (1–5, 10–12, 14–16) are upstream-blocked: last-price/volume feed,
-  indicator engine, macro source, instrument display-name field (`tantra-market-store::wire::Instrument`),
-  regime classifier, L2 depth (`tantra-market` 0006), institutional-flow/delivery Rust bridges
-  (`tantra-data` 0017/0019), fundamentals/MF/IPO ingestion (`tantra-data` 0020–0022).
+wiring (0007 items 17–19 closed), broker boundary decision). The 2026-11-14 batch closed gap 0007
+items 1–5, 11, 12 (last-price/volume plumbing, indicators, macro_series, display-name, regime +
+risk metrics, institutional flows, delivery). Remaining T7:
+- **Gap 0007 items 10 and 14–16** are upstream-blocked: L2 depth (`tantra-market` 0006), and
+  fundamentals / mutual-fund / IPO ingestion (`tantra-data` 0020–0022 — vendor selection first).
+- Follow-on (no stub): wire a live broker trade feed (`tantra-market` 0001/0002) into a
+  `TradeReader` so `quote` reports real last prints/day volume instead of the midpoint fallback;
+  populate the `display_name` catalog column from broker master data.
 - **Gap 0008** closes when option 2 (lift `BrokerAdapter` into `tantra-exec-core`) lands.
 - Strategy-store persistence across restarts is a follow-on (the in-memory store is
   session-scoped; not a gap — nothing stubbed).
