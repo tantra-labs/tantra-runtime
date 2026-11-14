@@ -7,7 +7,9 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 ## Open Gaps
 
-*(none)*
+| # | Title | Target Scope | Status |
+|---|-------|--------------|--------|
+| [0009](0009-chat-ws-model-override-and-multimodal-attachments.md) | `/ws/chat` WebSocket lacks native `model` override and multimodal image attachments (`ChatClientMessage` accepts only `{ text }`) | `tantra-runtime-api-rest::chat`, `tantra-agent-llm` | Open |
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |
