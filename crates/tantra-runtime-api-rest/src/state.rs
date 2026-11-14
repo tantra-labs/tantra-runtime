@@ -103,6 +103,9 @@ pub struct AppState {
     /// ([`crate::chat::ChatRuntime::from_env`]). The route answers a clear error rather than
     /// panicking when this is `None`.
     pub chat: Option<Arc<crate::chat::ChatRuntime>>,
+    /// The database backing `SqlxSessionStore` for chat session persistence; `None` until
+    /// `with_database` (docs/gaps/0006).
+    pub database: Option<Arc<tantra_runtime_persistence::Database>>,
 }
 
 impl AppState {
@@ -141,6 +144,7 @@ impl AppState {
             bar_ingest: Arc::default(),
             market_data_broadcast_tx: None,
             chat: None,
+            database: None,
         }
     }
 
@@ -182,6 +186,14 @@ impl AppState {
     /// "not configured" error instead of a working chat agent.
     pub fn with_chat_agent(mut self, chat: crate::chat::ChatRuntime) -> Self {
         self.chat = Some(Arc::new(chat));
+        self
+    }
+
+    /// Attaches the database the chat agent persists sessions to
+    /// (docs/gaps/0006): when set, `ChatRuntime::from_env` uses
+    /// `SqlxSessionStore` instead of the in-memory store.
+    pub fn with_database(mut self, database: tantra_runtime_persistence::Database) -> Self {
+        self.database = Some(Arc::new(database));
         self
     }
 

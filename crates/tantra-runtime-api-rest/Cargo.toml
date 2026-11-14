@@ -28,6 +28,7 @@ tantra-runtime-backtest.workspace = true
 tantra-ledger-journal.workspace = true
 tantra-ledger-portfolio.workspace = true
 tantra-ledger-performance.workspace = true
+tantra-runtime-persistence.workspace = true
 tantra-runtime-testing.workspace = true
 serde.workspace = true
 serde_json.workspace = true

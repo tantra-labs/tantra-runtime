@@ -12,7 +12,10 @@
 //! WebSocket text frame per event.
 //!
 //! v1 scope (see `docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md`):
-//! - Sessions are in-memory only (`InMemorySessionStore`); a server restart loses them.
+//! - Sessions persist to the configured database via
+//!   [`tantra_runtime_persistence::SqlxSessionStore`] (embedded migrations run at boot) when a
+//!   database is attached ([`AppState::with_database`]); without one they fall back to
+//!   in-memory (`InMemorySessionStore`) and a server restart loses them.
 //! - Portfolio-backed tools are stubbed via [`StubPortfolioReader`]: `AppState` holds no
 //!   ledger-repository handle to build `LedgerPortfolioReader::from_combined` from, so every
 //!   portfolio-backed tool call returns `PortError::unavailable` rather than a real position or
@@ -142,7 +145,11 @@ impl ChatRuntime {
     /// stand-in of docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md).
     /// `profiles` is the same store `/profile` routes serve: the price-alert tools read and
     /// write the caller's `Profile.alerts` document through it (see
-    /// [`crate::chat_alerts::ProfileAlertStore`]). `data_root` points at the data directory
+    /// [`crate::chat_alerts::ProfileAlertStore`]). `database` is the attached database from
+    /// [`AppState::with_database`]: when set, the agent persists sessions to it via
+    /// [`tantra_runtime_persistence::SqlxSessionStore`] (the embedded migrations that create
+    /// `agent_chat_session`/`agent_chat_message` run at boot) instead of keeping them
+    /// in-memory (docs/gaps/0006). `data_root` points at the data directory
     /// whose `catalog/filings`, `catalog/corporate_actions`, `catalog/block_deals` and
     /// `catalog/news` projections plus `open_interest` lakehouse `tantra-data` maintains —
     /// they back the filings, corporate-actions, block/bulk-deal, news and OI-buildup chat
@@ -156,6 +163,7 @@ impl ChatRuntime {
         quotes: Arc<dyn QuoteReader>,
         risk_engine: Arc<Mutex<RiskEngine>>,
         profiles: Arc<crate::profile_store::ProfileStore>,
+        database: Option<Arc<tantra_runtime_persistence::Database>>,
         data_root: &std::path::Path,
     ) -> anyhow::Result<Option<Self>> {
         if !llm_configured() {
@@ -241,9 +249,15 @@ impl ChatRuntime {
             alert_writer,
         );
 
-        // stand-in for docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md:
-        // in-memory only; SqlxSessionStore needs a &Database AppState doesn't wire up yet.
-        let session_store: Arc<dyn SessionStore> = Arc::new(InMemorySessionStore::new());
+        // Sessions persist to the configured database via `SqlxSessionStore` (the embedded
+        // migrations creating `agent_chat_session`/`agent_chat_message` run at boot); with no
+        // database attached they fall back to in-memory (docs/gaps/0006).
+        let session_store: Arc<dyn SessionStore> = match database {
+            Some(db) => Arc::new(tantra_runtime_persistence::SqlxSessionStore::new(
+                db.as_ref(),
+            )),
+            None => Arc::new(InMemorySessionStore::new()),
+        };
 
         let agent = ChatAgent::builder(provider, registry, session_store).build()?;
         Ok(Some(Self {

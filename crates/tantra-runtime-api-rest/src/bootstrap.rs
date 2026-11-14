@@ -366,7 +366,7 @@ pub struct PreparedServer {
 
 /// Validates `config` and loads market data, risk limits, ticks, and run stores before any
 /// network socket is bound.
-pub fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
+pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
     config.runs.validate()?;
     config.ingest.validate()?;
     let (execution, ticks) = config.fill.resolve()?;
@@ -447,6 +447,29 @@ pub fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
             )
         })?;
 
+    // Chat session persistence (docs/gaps/0006): when `TANTRA_DATABASE_URL`
+    // is set, connect, run embedded migrations (agent_chat tables), and attach
+    // the handle so `ChatRuntime::from_env` uses `SqlxSessionStore`. A database
+    // that cannot connect or migrate fails boot loudly rather than silently
+    // falling back to the in-memory store. (`connect_and_migrate` returns only
+    // the applied/rolled-back version list, so connect and `migrate` are driven
+    // separately to keep the `Database` handle itself.)
+    match std::env::var("TANTRA_DATABASE_URL") {
+        Ok(url) => {
+            let db = tantra_runtime_persistence::Database::connect(&url)
+                .await
+                .context("connecting to TANTRA_DATABASE_URL")?;
+            tantra_runtime_persistence::migrate(&db)
+                .await
+                .context("migrating TANTRA_DATABASE_URL")?;
+            state = state.with_database(db);
+        }
+        Err(std::env::VarError::NotPresent) => {}
+        Err(std::env::VarError::NotUnicode(_)) => {
+            bail!("TANTRA_DATABASE_URL is not valid Unicode")
+        }
+    }
+
     // `GET /ws/chat` only comes up when a local GGUF model (`TANTRA_GGUF_PATH`) or an
     // OpenAI-compatible endpoint (`TANTRA_LLM_BASE_URL`) is configured; otherwise `AppState.chat`
     // stays `None` and the route answers a clear "not configured" error instead of panicking.
@@ -462,6 +485,7 @@ pub fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         state.quotes.clone(),
         state.risk_engine.clone(),
         profiles,
+        state.database.clone(),
         &config.data_dir,
     )
     .context("configuring chat agent")?
@@ -537,22 +561,25 @@ impl PreparedServer {
 /// Tokio runtime, prints `listening on http://<addr>` to stdout, and shuts down cleanly on
 /// `SIGINT` (`Ctrl-C`) or `SIGTERM`.
 pub fn run_server_blocking(config: &ServeConfig) -> Result<()> {
-    let prepared = prepare_server(config)?;
-    let PreparedServer {
-        addr,
-        auth_enabled,
-        bar_ingest,
-        bar_ingest_capacity,
-        api_config,
-        state,
-    } = prepared;
-
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .context("starting the async runtime")?;
 
-    let served = runtime.block_on(async {
+    // `prepare_server` is async (it awaits the `TANTRA_DATABASE_URL` connect and
+    // embedded migrations), so the whole prepare-and-serve lifecycle runs inside
+    // the runtime; `state` is returned so shutdown can drain the run service.
+    let (served, state) = runtime.block_on(async {
+        let prepared = prepare_server(config).await?;
+        let PreparedServer {
+            addr,
+            auth_enabled,
+            bar_ingest,
+            bar_ingest_capacity,
+            api_config,
+            state,
+        } = prepared;
+
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .with_context(|| format!("binding {addr}"))?;
@@ -574,8 +601,8 @@ pub fn run_server_blocking(config: &ServeConfig) -> Result<()> {
                 Err(e) => eprintln!("bar ingest: pump task failed: {e}"),
             }
         }
-        served
-    });
+        Ok::<_, anyhow::Error>((served, state))
+    })?;
 
     if let Some(report) = state.shutdown_runs()
         && report.cancelled_pending + report.cancelled_running > 0

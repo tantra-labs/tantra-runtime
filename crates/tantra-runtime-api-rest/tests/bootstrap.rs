@@ -60,7 +60,16 @@ impl RunningServer {
         if cfg.runs.portfolios_dir == Path::new("data/portfolios") {
             cfg.runs.portfolios_dir = cfg.data_dir.join("_portfolios");
         }
-        let prepared = prepare_server(&cfg).expect("server preparation must succeed");
+        let prepared = {
+            // `prepare_server` is async. Tests never set `TANTRA_DATABASE_URL`,
+            // so no sqlx pool outlives this short-lived current-thread runtime.
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("starting the async runtime");
+            rt.block_on(prepare_server(&cfg))
+                .expect("server preparation must succeed")
+        };
         let (bound_tx, bound_rx) = std::sync::mpsc::channel::<(SocketAddr, Option<String>)>();
         let (stop_tx, stop_rx) = oneshot::channel::<()>();
 
@@ -191,10 +200,10 @@ fn serve_answers_health_and_instruments_then_exits_cleanly() {
     assert_eq!(outcome.bound_addr.ip().to_string(), "127.0.0.1");
 }
 
-#[test]
-fn a_missing_data_dir_fails_before_listening() {
+#[tokio::test]
+async fn a_missing_data_dir_fails_before_listening() {
     let cfg = base_config(Path::new("/nonexistent/tantra-bars"));
-    let err = format!("{:#}", prepare_server(&cfg).err().expect("must fail"));
+    let err = format!("{:#}", prepare_server(&cfg).await.err().expect("must fail"));
     assert!(err.contains("data directory"), "{err}");
 }
 
@@ -221,13 +230,13 @@ fn cors_is_off_by_default_and_opt_in_per_origin() {
     srv.shutdown();
 }
 
-#[test]
-fn an_invalid_cors_origin_fails_before_listening() {
+#[tokio::test]
+async fn an_invalid_cors_origin_fails_before_listening() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = data_dir(tmp.path(), "badcors");
     let mut cfg = base_config(&dir);
     cfg.cors_origins = vec!["bad\norigin".to_string()];
-    let err = format!("{:#}", prepare_server(&cfg).err().expect("must fail"));
+    let err = format!("{:#}", prepare_server(&cfg).await.err().expect("must fail"));
     assert!(err.contains("cors"), "{err}");
 }
 
@@ -439,15 +448,15 @@ fn risk_config_sets_the_rest_limits_and_defaults_are_unchanged_without_it() {
     srv.shutdown();
 }
 
-#[test]
-fn an_invalid_risk_config_fails_before_listening_and_names_the_field() {
+#[tokio::test]
+async fn an_invalid_risk_config_fails_before_listening_and_names_the_field() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = data_dir(tmp.path(), "risk-config-bad");
     let risk_path = tmp.path().join("risk-bad.toml");
     std::fs::write(&risk_path, "[risk]\nprice_collar_bps = 0\n").unwrap();
     let mut cfg = base_config(&dir);
     cfg.risk.risk_config = Some(risk_path);
-    let err = format!("{:#}", prepare_server(&cfg).err().expect("must fail"));
+    let err = format!("{:#}", prepare_server(&cfg).await.err().expect("must fail"));
     assert!(err.contains("price_collar_bps"), "{err}");
 }
 
@@ -521,21 +530,21 @@ fn fill_model_l2_with_a_parquet_tick_store_runs_a_backtest_end_to_end() {
     assert_eq!(done["data"]["assumptions"]["fill_model"], "l2", "{done}");
 }
 
-#[test]
-fn fill_model_l2_without_ticks_fails_at_startup() {
+#[tokio::test]
+async fn fill_model_l2_without_ticks_fails_at_startup() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = data_dir(tmp.path(), "l2-no-ticks");
     let mut cfg = base_config(&dir);
     cfg.fill.fill_model = Some(FillModel::L2);
-    let err = format!("{:#}", prepare_server(&cfg).err().expect("must fail"));
+    let err = format!("{:#}", prepare_server(&cfg).await.err().expect("must fail"));
     assert!(
         err.contains("--fill-model l2") && err.contains("--ticks"),
         "{err}"
     );
 }
 
-#[test]
-fn a_bad_ticks_file_fails_at_startup_naming_the_line() {
+#[tokio::test]
+async fn a_bad_ticks_file_fails_at_startup_naming_the_line() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = data_dir(tmp.path(), "bad-ticks");
     let ticks = tmp.path().join("bad-ticks.ticks.ndjson");
@@ -543,7 +552,7 @@ fn a_bad_ticks_file_fails_at_startup_naming_the_line() {
     let mut cfg = base_config(&dir);
     cfg.fill.fill_model = Some(FillModel::L2);
     cfg.fill.ticks = Some(ticks);
-    let err = format!("{:#}", prepare_server(&cfg).err().expect("must fail"));
+    let err = format!("{:#}", prepare_server(&cfg).await.err().expect("must fail"));
     assert!(err.contains("--ticks") && err.contains("line 5"), "{err}");
 }
 
