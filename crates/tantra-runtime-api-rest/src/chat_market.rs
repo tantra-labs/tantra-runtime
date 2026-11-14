@@ -94,34 +94,18 @@ impl FeedMarketReader {
     /// additionally wiring the `tantra-data` corporate-actions projections
     /// (`{root}/catalog/corporate_actions`) through `tantra-market-store`'s projection
     /// reader (closes `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`).
-    pub fn with_corporate_actions(
-        root: &std::path::Path,
-        instruments: Arc<dyn InstrumentMaster>,
-        bars: Arc<dyn BarReader>,
-        quotes: Arc<dyn QuoteReader>,
-        risk_engine: Arc<Mutex<RiskEngine>>,
-    ) -> Self {
-        Self {
-            corporate_actions: Some(CorporateActionsProjectionReader::new(root)),
-            ..Self::new(instruments, bars, quotes, risk_engine)
-        }
+    pub fn with_corporate_actions(mut self, root: &std::path::Path) -> Self {
+        self.corporate_actions = Some(CorporateActionsProjectionReader::new(root));
+        self
     }
 
     /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
     /// additionally wiring the `tantra-data` block/bulk-deal projections
     /// (`{root}/catalog/block_deals`) through `tantra-market-store`'s projection reader
     /// (closes `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`).
-    pub fn with_block_deals(
-        root: &std::path::Path,
-        instruments: Arc<dyn InstrumentMaster>,
-        bars: Arc<dyn BarReader>,
-        quotes: Arc<dyn QuoteReader>,
-        risk_engine: Arc<Mutex<RiskEngine>>,
-    ) -> Self {
-        Self {
-            block_deals: Some(BlockDealsProjectionReader::new(root)),
-            ..Self::new(instruments, bars, quotes, risk_engine)
-        }
+    pub fn with_block_deals(mut self, root: &std::path::Path) -> Self {
+        self.block_deals = Some(BlockDealsProjectionReader::new(root));
+        self
     }
 
     /// Opens the `tantra-data` OI lakehouse (`{root}/open_interest`) and wires a

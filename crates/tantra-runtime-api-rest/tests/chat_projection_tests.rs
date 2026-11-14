@@ -174,13 +174,13 @@ async fn corporate_actions_read_through_projection() {
     writer.close().unwrap();
 
     let feed = Arc::new(FakeFeed);
-    let reader = FeedMarketReader::with_corporate_actions(
-        dir.path(),
+    let reader = FeedMarketReader::new(
         feed.clone(),
         feed.clone(),
         feed.clone(),
         Arc::new(Mutex::new(RiskEngine::default())),
-    );
+    )
+    .with_corporate_actions(dir.path());
 
     let actions = reader.corporate_actions(None, None, None).await.unwrap();
     assert_eq!(actions.len(), 1);
@@ -249,13 +249,13 @@ async fn block_deals_read_through_projection() {
     writer.close().unwrap();
 
     let feed = Arc::new(FakeFeed);
-    let reader = FeedMarketReader::with_block_deals(
-        dir.path(),
+    let reader = FeedMarketReader::new(
         feed.clone(),
         feed.clone(),
         feed.clone(),
         Arc::new(Mutex::new(RiskEngine::default())),
-    );
+    )
+    .with_block_deals(dir.path());
 
     let deals = reader.block_deals(None, None).await.unwrap();
     assert_eq!(deals.len(), 2);

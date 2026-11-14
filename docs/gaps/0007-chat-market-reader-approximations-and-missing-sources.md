@@ -1,6 +1,6 @@
 # 0007 — Chat market/content-reader adapters have approximated fields and missing data sources
 
-**Status**: open
+**Status**: open — items 6/7/8/9/13/17/18/19 closed; items 1–5, 10–12, 14–16 remain (upstream-blocked).
 
 ## What's stubbed or hardcoded
 
@@ -35,20 +35,18 @@ and are either approximated or answered with an explicit error rather than fabri
    `FeedContentReader::with_news` reads them through `tantra-market-store::NewsProjectionReader`,
    filtering by query/instrument and sorting newest first. `ContentReader::filings` (method name;
    chat tool `filings_search`) reads the filings projections as before.
-8. **`MarketReader::options_chain` always answers `PortError::unavailable`.** Added with chat
-   tool `options_chain` (`tantra-agent` plan 0006 Phase 4): `tantra-market` holds
-   contract-reference columns and Greeks pricing but serves no chain enumeration/reader yet
-   (`tantra-market/docs/gaps/0001-options-chain-reader.md`, that repo's first filed gap). The
-   seedable `RuntimeMarketReader` (runtime-api) accepts a `set_options_chain` store for tests,
-   but `FeedMarketReader` has nothing real to read.
-9. **`MarketReader::corporate_actions` always answers `PortError::unavailable`** in
-   `FeedMarketReader`. Added with chat tool `corporate_actions` (`tantra-agent` plan 0006
-   Phase 4): the historical corporate-actions reader exists Python-side (`tantra_data`'s
-   `CorporateActionsRepository`/`DuckDbCorporateActionsStore`) but has no Rust-consumer bridge
-   (`tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`), and its real-world
-   population additionally waits on
-   `tantra-data/docs/gaps/0009-corporate-actions-ingestion.md`. The seedable
-   `RuntimeMarketReader` accepts a `set_corporate_actions` store for tests.
+8. **`MarketReader::options_chain` — CLOSED** (T3.1, `b1b085e`): `FeedMarketReader` builds an
+   `InstrumentChainReader` over the same `instruments`/`quotes` ports and `options_chain` serves
+   the enumerated chain (midpoint last-price, calendar-day expiry filter, 500 cap), with the
+   unenumerable-master case mapped to `PortError::unavailable` (closes
+   `tantra-market/docs/gaps/0001-options-chain-reader.md`).
+9. **`MarketReader::corporate_actions` — CLOSED** (this batch, T7-remaining): the `tantra-data`
+   corporate-actions projections (`{root}/catalog/corporate_actions`) were already readable
+   through `tantra-market-store::CorporateActionsProjectionReader` (`with_corporate_actions`);
+   `ChatRuntime::from_env` now wires it into the chat market reader, so the chat
+   `corporate_actions` tool reads the real projections (closes
+   `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`). The unconfigured fallback
+   answers `PortError::unavailable`.
 10. **`MarketReader::market_depth` always answers `PortError::unavailable`** in
     `FeedMarketReader`. Added with chat tool `market_depth` (`tantra-agent` plan 0007 Track 2
     Phase 4): the feed ports serve top-of-book quotes only; no L2 depth source exists
@@ -81,20 +79,22 @@ and are either approximated or answered with an explicit error rather than fabri
     `PortError::unavailable`** via `crate::chat_ipo::FeedIpoReader`. Added with plan 0007
     Track 3 Phase 8: no IPO calendar/subscription data source exists anywhere yet
     (`tantra-data/docs/gaps/0022-ipo-calendar-and-subscription-ingestion.md`).
-17. **`TradeIntentSink` (chat tool `propose_trade`) always answers `PortError::unavailable`**
-    via `crate::chat_trade::FeedTradeIntentSink`. Added with plan 0007 Track 5 Phase 12
-    (NoFX approval-queue pattern): the runtime has no `FileJobRegistry`-backed approval
-    queue or paper-trading sandbox wired into the chat agent, so a proposed trade intent is
-    never enqueued or executed.
-18. **`StrategyStore` (chat tool `strategy_manage`) always answers `PortError::unavailable`**
-    via `crate::chat_strategy_store::FeedStrategyStore`. Added with plan 0007 Track 5 Phase 13
-    (Jesse-MCP strategy CRUD): the runtime has no strategy-manifest store wired into the
-    chat agent.
-19. **`TaxReportReader` (chat tools `tax_report`/`ledger_statement`) always answers
-    `PortError::unavailable`** via `crate::chat_tax::FeedTaxReportReader`. Added with plan
-    0007 Track 5 Phase 14: `tantra-ledger-portfolio` computes matched lots (`MatchedLot`) but
-    no runtime bridge exposes them to the chat agent — the tax math itself is implemented and
-    unit-tested in `tantra-agent-chat-tools`.
+17. **`TradeIntentSink` (chat tool `propose_trade`) — CLOSED** (this batch, T7-remaining):
+    `FeedTradeIntentSink` enqueues validated intents into the `FileJobRegistry`-backed approval
+    queue (`{TANTRA_JOBS_PATH}` or `~/.tantra/jobs.json`) as `JobStatus::PendingApproval` jobs
+    with `approval_policy = Manual` and a `x-papertrading` metadata flag on paper intents — the
+    NoFX human gate, never an autonomous live dispatch. `ChatRuntime::from_env` wires the
+    registry handle; a registry that cannot open leaves the sink answering its gap citation.
+18. **`StrategyStore` (chat tool `strategy_manage`) — CLOSED** (this batch, T7-remaining):
+    `FeedStrategyStore` is an in-memory `StrategySpec` CRUD store (`save`/`list`/`get`/`delete`,
+    `created_at` preserved on update) wired into `ChatRuntime::from_env`. Persistence across
+    restarts is a follow-up.
+19. **`TaxReportReader` (chat tools `tax_report`/`ledger_statement`) — CLOSED** (this batch,
+    T7-remaining): `SharedLedger::record_fill` accumulates `tantra-ledger-portfolio`'s matched
+    lots (`MatchedLot`) into the shared ledger's closed-lot history, and
+    `FeedTaxReportReader` exposes them per account over a date range (docs/gaps/0006 design
+    decision + `docs/design/code-shared-ledger.md`). The STCG/LTCG math itself is implemented
+    and unit-tested in `tantra-agent-chat-tools`.
 
 ## Why
 
@@ -103,7 +103,8 @@ AppState already has live access to (instrument reference data, quotes, bars, ri
 bands). The fields above need either a new data source this runtime doesn't have yet (a
 last-trade/volume feed, an indicator engine, a macro-economic data integration, a regime
 classifier) or a product decision (which risk metrics to surface to the chat agent) — both out of
-scope for a read-through wiring pass.
+scope for a read-through wiring pass. The trade/strategy/tax tools were runtime-side-only: they
+needed an approval-queue handle, a strategy store, and the shared ledger — all wired this batch.
 
 ## How to close it
 
@@ -117,28 +118,11 @@ scope for a read-through wiring pass.
 - Item 5: decide which risk metrics (OTR counters, halt status, kill-switch state) the chat agent
   should see, and either build or find a market-regime classifier; wire both into
   `FeedSnapshotSource::snapshot`.
-- Item 6: close `tantra-data` gap 0005 (disclosure ingestion), then replace
-  `FeedMarketReader::block_deals`'s stub with a real read (plan 0004 Phase 4).
-- Item 7: close `tantra-data` gaps 0006 (news ingestion) and 0007 (filings → Rust bridge),
-  then replace `FeedContentReader`'s stubs with real reads through the bridge.
-- Item 8: close `tantra-market/docs/gaps/0001` (chain enumeration/reader), then replace
-  `FeedMarketReader::options_chain`'s stub with a real read.
-- Item 9: close `tantra-data` gaps 0008 (corporate-actions → Rust bridge) and 0009
-  (historical ingestion), then replace `FeedMarketReader::corporate_actions`'s stub with a
-  real read through the bridge.
 - Item 10: close `tantra-market/docs/gaps/0006` (L2 depth source), then replace
   `FeedMarketReader::market_depth`'s stub with a real read.
 - Item 11: close `tantra-data/docs/gaps/0017` (institutional-flow → Rust bridge), then
   replace `FeedMarketReader::institutional_flows`'s stub with a real read through the bridge.
 - Item 12: close `tantra-data/docs/gaps/0019` (delivery % → Rust bridge), then replace
   `FeedMarketReader::delivery_stats`'s stub with a real read through the bridge.
-- Item 13: wire `ParquetOpenInterestStore::open(data_root)` + `BuildupAnalyzer` (both in
-  `tantra-market-store`, gap 0002 closed) into `FeedMarketReader`, then replace its
-  `oi_buildup` stub with a real read through `BuildupReader`.
-- Item 17: wire a `FileJobRegistry`-backed `TradeIntentSink` (enqueue as
-  `JobStatus::PendingApproval`; `x-papertrading` bypasses the human gate into the
-  sandbox ledger) in `ChatRuntime::from_env`.
-- Item 18: wire a strategy-manifest `StrategyStore` (persisted or in-memory) in
-  `ChatRuntime::from_env`.
-- Item 19: expose `tantra-ledger-portfolio`'s matched lots through a `TaxReportReader`
-  implementor (per account/date range) in `ChatRuntime::from_env`.
+- Items 14–16: close `tantra-data/docs/gaps/0020`–`0022` (fundamentals / mutual-fund / IPO
+  ingestion), then wire `FeedFundamentalReader`/`FeedFundReader`/`FeedIpoReader` to real reads.

@@ -27,6 +27,7 @@ pub mod run_ports;
 pub mod run_resolve;
 pub mod runs;
 pub mod screener;
+pub mod shared_ledger;
 pub mod strategies;
 pub mod strategy_ir;
 pub mod verify;
@@ -73,6 +74,7 @@ pub use screener::{
     DEFAULT_SCREENER_TIMEFRAME, MAX_SCREENER_BARS, MAX_SCREENER_ROWS, MAX_SCREENER_UNIVERSE,
     ResolvedScreenerQuery, check_scan_budget, check_screener_rows,
 };
+pub use shared_ledger::{ClosedLotEntry, SharedLedger};
 pub use strategies::{
     MAX_COMPILED_STRATEGIES, StrategyCatalog, compile_strategy, list_strategies,
     parse_compile_request,

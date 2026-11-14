@@ -16,11 +16,11 @@
 //!   [`tantra_runtime_persistence::SqlxSessionStore`] (embedded migrations run at boot) when a
 //!   database is attached ([`AppState::with_database`]); without one they fall back to
 //!   in-memory (`InMemorySessionStore`) and a server restart loses them.
-//! - Portfolio-backed tools are stubbed via [`StubPortfolioReader`]: `AppState` holds no
-//!   ledger-repository handle to build `LedgerPortfolioReader::from_combined` from, so every
-//!   portfolio-backed tool call returns `PortError::unavailable` rather than a real position or
-//!   P&L (deliberately an explicit error, not an empty success, so the model can't mistake "not
-//!   wired up" for "this account has zero positions").
+//! - Portfolio-backed tools read the runtime's shared ledger repositories
+//!   ([`AppState::shared_ledger`], docs/gaps/0006 design decision) through
+//!   [`LedgerPortfolioReader`]: the `rest-api` account, its FIFO positions and tax lots, its
+//!   orders and realized P&L — populated from the real `POST /orders`/fill flow, so an empty
+//!   answer genuinely means "no trading activity in this process", never fabricated data.
 //!
 //! Market/screener tools read through live data via [`crate::chat_market::FeedMarketReader`]/
 //! [`crate::chat_market::FeedSnapshotSource`]; a few of their fields still approximate or report
@@ -43,70 +43,16 @@ use tracing::{debug, warn};
 use crate::market_feed::ports::{BarReader, InstrumentMaster, QuoteReader};
 use tantra_agent_chat::{ChatAgent, InMemorySessionStore, SessionSelector, ToolRegistry};
 use tantra_agent_chat_tools::ports::alert::{AlertReader, AlertWriter};
-use tantra_agent_chat_tools::ports::error::PortError;
-use tantra_agent_chat_tools::ports::portfolio::{AccountSummary, DateRange, OrderFilter};
-use tantra_agent_chat_tools::ports::{market::MarketReader, portfolio::PortfolioReader};
+use tantra_agent_chat_tools::ports::market::MarketReader;
+use tantra_agent_chat_tools::ports::portfolio::PortfolioReader;
 use tantra_agent_core::{RuntimeMode, SessionScope, SessionStore};
 use tantra_agent_llm::LlmProvider;
 use tantra_agent_llm::candle_gguf::{CandleGgufConfig, CandleGgufProvider, ENV_GGUF_PATH};
-use tantra_core::{AccountId, InstrumentId, Money};
-use tantra_ledger::TaxLot;
-use tantra_ledger::repository::OrderRecord;
 use tantra_risk::RiskEngine;
+use tantra_runtime_api::{LedgerPortfolioReader, SharedLedger};
 
 use crate::AppState;
 use crate::chat_market::{FeedMarketReader, FeedSnapshotSource};
-
-/// Stand-in portfolio reader used until `AppState` exposes a ledger-repository handle to build
-/// `tantra_runtime_api::chat_adapters::LedgerPortfolioReader::from_combined` from (see
-/// `docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md`): every portfolio tool
-/// call answers `PortError::unavailable` rather than fabricating an empty position, order, or
-/// P&L that could be mistaken for a real (zero) answer.
-struct StubPortfolioReader;
-
-const PORTFOLIO_READER_GAP: &str = "portfolio reader not wired up; see docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md";
-
-#[async_trait::async_trait]
-impl PortfolioReader for StubPortfolioReader {
-    async fn accounts(&self) -> Result<Vec<AccountSummary>, PortError> {
-        Err(PortError::unavailable(PORTFOLIO_READER_GAP))
-    }
-
-    async fn positions(
-        &self,
-        _account: &AccountId,
-    ) -> Result<Vec<tantra_ledger::PositionRecord>, PortError> {
-        Err(PortError::unavailable(PORTFOLIO_READER_GAP))
-    }
-
-    async fn tax_lots(
-        &self,
-        _account: &AccountId,
-        _instrument: &InstrumentId,
-    ) -> Result<Vec<TaxLot>, PortError> {
-        Err(PortError::unavailable(PORTFOLIO_READER_GAP))
-    }
-
-    async fn cash(&self, _account: &AccountId) -> Result<Vec<Money>, PortError> {
-        Err(PortError::unavailable(PORTFOLIO_READER_GAP))
-    }
-
-    async fn orders(
-        &self,
-        _account: &AccountId,
-        _filter: OrderFilter,
-    ) -> Result<Vec<OrderRecord>, PortError> {
-        Err(PortError::unavailable(PORTFOLIO_READER_GAP))
-    }
-
-    async fn realized_pnl(
-        &self,
-        _account: &AccountId,
-        _range: DateRange,
-    ) -> Result<Money, PortError> {
-        Err(PortError::unavailable(PORTFOLIO_READER_GAP))
-    }
-}
 
 /// Whether either LLM backend is configured via environment variables (`TANTRA_GGUF_PATH` for
 /// the local Candle-GGUF provider, `TANTRA_LLM_BASE_URL` for the OpenAI/Ollama-compatible one).
@@ -128,6 +74,30 @@ fn resolve_llm_provider() -> Result<Arc<dyn LlmProvider>, tantra_agent_llm::LlmE
     }
 }
 
+/// Loads (or creates) the runtime jobs registry the chat trade-intent sink enqueues into
+/// (docs/gaps/0007 item 17): `TANTRA_JOBS_PATH` when set, else `~/.tantra/jobs.json`. A
+/// registry that cannot be opened leaves the sink answering its explicit gap citation rather
+/// than failing the chat build.
+fn jobs_registry() -> Option<Arc<std::sync::Mutex<tantra_runtime_jobs::FileJobRegistry>>> {
+    let path = std::env::var("TANTRA_JOBS_PATH")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME").ok().map(|home| {
+                std::path::PathBuf::from(home)
+                    .join(".tantra")
+                    .join("jobs.json")
+            })
+        })?;
+    match tantra_runtime_jobs::FileJobRegistry::load_or_create(path) {
+        Ok(registry) => Some(Arc::new(std::sync::Mutex::new(registry))),
+        Err(e) => {
+            tracing::warn!("jobs registry not available for the chat trade-intent sink: {e}");
+            None
+        }
+    }
+}
+
 /// The chat-agent runtime held by [`AppState`] once configured: the built conversational agent,
 /// ready to open one fresh session per WebSocket connection.
 pub struct ChatRuntime {
@@ -145,7 +115,10 @@ impl ChatRuntime {
     /// stand-in of docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md).
     /// `profiles` is the same store `/profile` routes serve: the price-alert tools read and
     /// write the caller's `Profile.alerts` document through it (see
-    /// [`crate::chat_alerts::ProfileAlertStore`]). `database` is the attached database from
+    /// [`crate::chat_alerts::ProfileAlertStore`]). `shared_ledger` is [`AppState`]'s
+    /// ledger-repository handle (docs/gaps/0006 design decision): the portfolio and tax tools
+    /// read the real `rest-api` account/positions/orders/lots/P&L through
+    /// [`LedgerPortfolioReader`]. `database` is the attached database from
     /// [`AppState::with_database`]: when set, the agent persists sessions to it via
     /// [`tantra_runtime_persistence::SqlxSessionStore`] (the embedded migrations that create
     /// `agent_chat_session`/`agent_chat_message` run at boot) instead of keeping them
@@ -157,12 +130,14 @@ impl ChatRuntime {
     /// `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`,
     /// `tantra-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md` and
     /// `tantra-data/docs/gaps/0006-news-ingestion.md`).
+    #[allow(clippy::too_many_arguments)]
     pub fn from_env(
         instruments: Arc<dyn InstrumentMaster>,
         bars: Arc<dyn BarReader>,
         quotes: Arc<dyn QuoteReader>,
         risk_engine: Arc<Mutex<RiskEngine>>,
         profiles: Arc<crate::profile_store::ProfileStore>,
+        shared_ledger: Arc<SharedLedger>,
         database: Option<Arc<tantra_runtime_persistence::Database>>,
         data_root: &std::path::Path,
     ) -> anyhow::Result<Option<Self>> {
@@ -172,18 +147,21 @@ impl ChatRuntime {
         let provider = resolve_llm_provider()?;
 
         let mut registry = ToolRegistry::new();
-        // stand-in for docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md:
-        // AppState has no ledger-repository handle for LedgerPortfolioReader::from_combined.
-        let portfolio: Arc<dyn PortfolioReader> = Arc::new(StubPortfolioReader);
+        // Portfolio-backed tools (docs/gaps/0006, now closed): `AppState`'s `shared_ledger`
+        // handle implements all four ledger-repository traits, so `LedgerPortfolioReader`
+        // answers real accounts/positions/tax lots/orders/cash/realized P&L — the same state
+        // the `POST /orders`/fill flow records — instead of the old explicit gap error.
+        let portfolio: Arc<dyn PortfolioReader> = Arc::new(LedgerPortfolioReader::new(
+            shared_ledger.clone(),
+            shared_ledger.clone(),
+            shared_ledger.clone(),
+            shared_ledger.clone(),
+        ));
         let market: Arc<dyn MarketReader> = Arc::new(
-            FeedMarketReader::with_block_deals(
-                data_root,
-                instruments.clone(),
-                bars,
-                quotes,
-                risk_engine,
-            )
-            .with_oi_store(data_root),
+            FeedMarketReader::new(instruments.clone(), bars, quotes, risk_engine)
+                .with_block_deals(data_root)
+                .with_corporate_actions(data_root)
+                .with_oi_store(data_root),
         );
         let snapshots: Arc<dyn tantra_agent_chat_tools::ports::snapshot::SnapshotSource> =
             Arc::new(FeedSnapshotSource::new(instruments));
@@ -207,11 +185,12 @@ impl ChatRuntime {
             Arc::new(crate::chat_fund::FeedFundReader::new());
         let ipo: Arc<dyn tantra_agent_chat_tools::ports::ipo::IpoReader> =
             Arc::new(crate::chat_ipo::FeedIpoReader::new());
-        // Tax / ledger-statement tools (plan 0007 Track 5 Phase 14): `tantra-ledger` has the
-        // matched lots but no runtime bridge exposes them, so the adapter answers its gap
-        // citation (see `crate::chat_tax`).
+        // Tax / ledger-statement tools (plan 0007 Track 5 Phase 14, docs/gaps/0007 item 19):
+        // `tantra-ledger-portfolio` matched lots are recorded by the fill flow and exposed
+        // through the shared ledger's closed-lot history, so `tax_report`/`ledger_statement`
+        // answer real realized P&L per account/date range (see `crate::chat_tax`).
         let tax: Arc<dyn tantra_agent_chat_tools::ports::tax::TaxReportReader> =
-            Arc::new(crate::chat_tax::FeedTaxReportReader::new());
+            Arc::new(crate::chat_tax::FeedTaxReportReader::new(shared_ledger));
         tantra_agent_chat_tools::catalog::register_read_only_tools(
             &mut registry,
             portfolio,
@@ -224,11 +203,13 @@ impl ChatRuntime {
             tax,
             Some(snapshots),
         );
-        // Safe trade tools (plan 0007 Track 5 Phases 12-13): no approval-queue sink or
-        // strategy store is wired, so both adapters answer their gap citations (see
+        // Safe trade tools (plan 0007 Track 5 Phases 12-13, docs/gaps/0007 items 17-18): the
+        // trade-intent sink enqueues validated intents into the `FileJobRegistry`-backed
+        // approval queue (PendingApproval human gate; `x-papertrading` marks paper intents),
+        // and the strategy store answers `strategy_manage` CRUD from an in-memory store (see
         // `crate::chat_trade` / `crate::chat_strategy_store`).
         let trade_sink: Arc<dyn tantra_agent_chat_tools::ports::trade_intent::TradeIntentSink> =
-            Arc::new(crate::chat_trade::FeedTradeIntentSink::new());
+            Arc::new(crate::chat_trade::FeedTradeIntentSink::new(jobs_registry()));
         let strategy_store: Arc<dyn tantra_agent_chat_tools::ports::strategy_store::StrategyStore> =
             Arc::new(crate::chat_strategy_store::FeedStrategyStore::new());
         tantra_agent_chat_tools::catalog::register_trade_tools(

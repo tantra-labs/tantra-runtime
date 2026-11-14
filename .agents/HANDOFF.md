@@ -3,6 +3,34 @@
 **Date**: 2026-11-14 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
+## Latest Batch — T7 remaining (gap 0006 closed; 0007 items 8/9/17/18/19 closed)
+
+Date: 2026-11-14. Implemented the runtime-side T7 items that were not upstream-blocked:
+- **Gap 0006 closed (portfolio-backed tools)** — design decision recorded in
+  `docs/design/code-shared-ledger.md`: `AppState.shared_ledger` is a **`SharedLedger`**
+  (`tantra-runtime-api::shared_ledger`) — the four in-memory `tantra-ledger` repositories +
+  a matched-lot history, each mutex-backed, with `&self` `record_*` methods and the four
+  repository trait impls (so one `Arc<SharedLedger>` coerces to all four `Arc<dyn Trait>`
+  `LedgerPortfolioReader::new` needs). The order flow opens the default `rest-api` account and
+  records every approved order (`orders.rs::record_into_shared`); the sim records every fill
+  (`exec.rs`: buy opens a FIFO lot, sell matches, cash adjusts, order row advances via
+  `update_order_fill`). `StubPortfolioReader` removed; `LedgerPortfolioReader` wired in
+  `ChatRuntime::from_env`. **Item 19 closed (tax)** — `FeedTaxReportReader` reads the shared
+  ledger's closed-lot history per account/date range.
+- **Item 17 closed (trade-intent)** — `FeedTradeIntentSink` enqueues validated intents into
+  the `FileJobRegistry` (`TANTRA_JOBS_PATH` else `~/.tantra/jobs.json`) as
+  `PendingApproval` jobs with `approval_policy = Manual` + `x-papertrading` metadata flag.
+- **Item 18 closed (strategy store)** — `FeedStrategyStore` in-memory `StrategySpec` CRUD.
+- **Item 9 closed (corporate actions in chat)** — `with_block_deals`/`with_corporate_actions`
+  are now composable builders; `from_env` wires block deals + corporate actions + OI store.
+  Item 8 (options chain) was already closed (T3.1); the 0007 doc now records it.
+- **Tests**: `tantra-runtime-api/tests/shared_ledger_tests.rs` (6) +
+  `tantra-runtime-api-rest/tests/chat_remaining_t7_tests.rs` (3: order-flow→portfolio/tax,
+  strategy-store CRUD, jobs-registry sink).
+- **Cleanup per gap-tracking §4**: gap 0006 doc removed (Closed in index), gap 0007 rewritten
+  (items 8/9/17/18/19 closed), new `docs/design/code-shared-ledger.md`; root task list T7 rows
+  + this HANDOFF + root HANDOFF updated.
+
 ## Latest Batch — T7 track (2026-11-14)
 
 - **T7.2 + T7.3 (plan 0004 Phases 4–5, Implemented)** — block/bulk deals real data:
@@ -37,18 +65,18 @@
 - **Docs/cleanup** — gaps 0004/0005 closed (index → Closed), plan 0004 → Implemented (doc
   removed), gap 0006/0007/0008 statuses updated.
 
-## Gate status — ✅ GREEN (2026-11-14, T7 track)
+## Gate status — ✅ GREEN (2026-11-14, T7 track + T7-remaining batch)
 
 - `cargo fmt --check`: ✅
 - `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
 - `cargo check --workspace --profile prod`: ✅
-- `cargo test --profile prod` for touched binaries: ✅ (profile 17, chat_projection 6,
-  chat_market_reader 16, block_deals 4, openapi_conformance 3, capabilities 5,
-  session_persistence 2, bootstrap 8 + e2e 16; market-store projection 5).
+- `cargo test --profile prod` for touched binaries: ✅ (shared_ledger 6, chat_remaining_t7 3,
+  orders_exec 8, orders_gateway 2, trading_state 18, chat_projection 6, chat_market_reader 16,
+  session_persistence 2 + full `tantra-runtime-api` suite).
   ⚠ Known env limit: a blanket `cargo test -p tantra-runtime-api-rest` (all ~45 binaries)
   hits the pre-existing prod-LTO link SIGKILL on unrelated heavy binaries; targeted binaries
   link and pass.
-- `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
+- `make prod` (§11 end-of-turn rebuild): pending before commit
 
 ## Phase / Slice Status
 
@@ -152,18 +180,17 @@
 
 ## Immediate Next Step
 
-T7 track shipped 2026-11-14: block/bulk deals (plan 0004 Ph 4–5), news + oi_buildup chat
-adapters (0007 items 6/7/13), profile schema (0004), OpenAPI (0005), session persistence
-(0006 half), broker boundary decision (0008). Remaining T7:
-- **Gap 0006 portfolio-backed tools**: decide which `tantra-ledger` repository implementation
-  (or a thin `AppState` adapter over `OrderLedger`/`PortfolioStore`) backs
-  `AccountRepository + PositionRepository + OrderRepository + LedgerRepository`, construct it in
-  `AppState`, replace `StubPortfolioReader` with `LedgerPortfolioReader::from_combined(..)`.
-- **Gap 0007 remaining items** (1–5, 8–12, 14–19) are upstream-blocked: last-price/volume feed,
-  indicator engine, macro source, instrument display-name field, regime classifier, L2 depth
-  (`tantra-market` 0006), institutional-flow/delivery Rust bridges (`tantra-data` 0017/0019),
-  trade-intent/strategy-store/tax wiring (0007 items 17–19).
+T7 track + the runtime-side T7-remaining items shipped 2026-11-14 (block/bulk deals, news,
+oi_buildup, options_chain, corporate-actions-in-chat, profile schema, OpenAPI, session
+persistence, **portfolio-backed tools (gap 0006 closed)**, trade-intent / strategy-store / tax
+wiring (0007 items 17–19 closed), broker boundary decision). Remaining T7:
+- **Gap 0007 remaining items** (1–5, 10–12, 14–16) are upstream-blocked: last-price/volume feed,
+  indicator engine, macro source, instrument display-name field (`tantra-market-store::wire::Instrument`),
+  regime classifier, L2 depth (`tantra-market` 0006), institutional-flow/delivery Rust bridges
+  (`tantra-data` 0017/0019), fundamentals/MF/IPO ingestion (`tantra-data` 0020–0022).
 - **Gap 0008** closes when option 2 (lift `BrokerAdapter` into `tantra-exec-core`) lands.
+- Strategy-store persistence across restarts is a follow-on (the in-memory store is
+  session-scoped; not a gap — nothing stubbed).
 - When chat sessions gain bearer identity, switch `ProfileAlertStore::for_user` to the
   connection's `token_id`.
 

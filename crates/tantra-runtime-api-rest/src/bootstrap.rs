@@ -485,6 +485,7 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         state.quotes.clone(),
         state.risk_engine.clone(),
         profiles,
+        state.shared_ledger.clone(),
         state.database.clone(),
         &config.data_dir,
     )

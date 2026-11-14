@@ -60,7 +60,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tantra_core::rust_decimal::Decimal;
 use tantra_core::rust_decimal::prelude::{FromPrimitive, ToPrimitive};
-use tantra_core::{InstrumentId, OrderSide, Price, Quantity, TimeInForce};
+use tantra_core::{
+    AccountId, AlgoId, ClientOrderId, InstrumentId, Money, OrderSide, Price, Quantity, TimeInForce,
+};
+use tantra_ledger::AccountRecord as LedgerAccountRecord;
+use tantra_ledger::OrderRecord as LedgerOrderRecord;
 use tantra_risk::RiskRefusal;
 use tantra_runtime_api::{ErrorCode, ErrorDetail, OrdersQuery, OrdersRequest};
 
@@ -882,6 +886,59 @@ fn refuse(state: &AppState, record: Option<Order>, detail: &ErrorDetail) -> Resp
     failure(StatusCode::UNPROCESSABLE_ENTITY, detail.clone())
 }
 
+/// Records an approved `POST /orders` placement into the shared ledger repositories the chat
+/// portfolio tools read through (docs/gaps/0006 design decision): opens the default `rest-api`
+/// account on first placement and records the order row under the same idempotency key the REST
+/// ledger uses, so `LedgerPortfolioReader` answers the same orders/positions the API routes do.
+/// A refusal is deliberately *not* mirrored — the portfolio tools report traded state only.
+fn record_into_shared(state: &AppState, order: &Order) {
+    let account_id = AccountId::from(REST_ALGO_ID);
+    if state.shared_ledger.account(&account_id).is_none() {
+        state.shared_ledger.record_account(LedgerAccountRecord {
+            account_id: account_id.clone(),
+            algo_id: Some(AlgoId::from(REST_ALGO_ID)),
+            cash: Money::inr(Decimal::ZERO),
+            status: "active".to_string(),
+            updated_at: order.created_at,
+        });
+    }
+    state.shared_ledger.record_order(LedgerOrderRecord {
+        client_order_id: ClientOrderId::from(order.order_id().to_string()),
+        broker_order_id: None,
+        algo_id: Some(AlgoId::from(REST_ALGO_ID)),
+        account_id,
+        instrument: order.instrument_id().clone(),
+        side: order.side(),
+        order_type: match order.order_type() {
+            OrderType::Market => tantra_core::OrderType::Market,
+            OrderType::Limit => {
+                tantra_core::OrderType::Limit(order.price().map(Price::new).unwrap_or(Price::ZERO))
+            }
+        },
+        time_in_force: order.time_in_force(),
+        price: order.price().map(Price::new),
+        quantity: Quantity::new(order.quantity()),
+        filled_quantity: Quantity::new(order.filled_qty()),
+        avg_fill_price: order.avg_fill_price().map(Price::new),
+        status: to_core_status(order.status()),
+        created_at: order.created_at,
+        updated_at: order.created_at,
+    });
+}
+
+/// Maps a ledger-row status onto the canonical wire status the chat portfolio reader reports.
+fn to_core_status(status: OrderStatus) -> tantra_core::OrderStatus {
+    match status {
+        OrderStatus::Initialized | OrderStatus::Submitted => tantra_core::OrderStatus::PendingNew,
+        OrderStatus::Accepted => tantra_core::OrderStatus::New,
+        OrderStatus::PartiallyFilled => tantra_core::OrderStatus::PartiallyFilled,
+        OrderStatus::Filled => tantra_core::OrderStatus::Filled,
+        OrderStatus::Cancelled => tantra_core::OrderStatus::Cancelled,
+        OrderStatus::Rejected => tantra_core::OrderStatus::Rejected,
+        OrderStatus::Expired => tantra_core::OrderStatus::Expired,
+    }
+}
+
 /// `Access::Write` (`POST /orders`): approval queue (E5-S4) -> risk stage -> simulator. An
 /// approved order is acknowledged with 200 and recorded in the write ledger (E11-S7, ADR 0019
 /// decision 3).
@@ -949,6 +1006,7 @@ pub(crate) async fn post_orders(
             )
             .with_status(OrderStatus::Submitted);
             state.orders.record(order.clone());
+            record_into_shared(&state, &order);
             state.exec.submit(&state.orders, order.clone());
             success(order_json(
                 &state.orders.get(order.order_id()).unwrap_or(order),
@@ -1135,6 +1193,7 @@ async fn gate_and_record(
             )
             .with_status(OrderStatus::Submitted);
             state.orders.record(order.clone());
+            record_into_shared(state, &order);
             state.exec.submit(&state.orders, order.clone());
             Ok(state.orders.get(order.order_id()).unwrap_or(order))
         }

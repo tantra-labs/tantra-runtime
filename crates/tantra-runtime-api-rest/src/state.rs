@@ -106,6 +106,13 @@ pub struct AppState {
     /// The database backing `SqlxSessionStore` for chat session persistence; `None` until
     /// `with_database` (docs/gaps/0006).
     pub database: Option<Arc<tantra_runtime_persistence::Database>>,
+    /// The process-scoped ledger repositories (docs/gaps/0006 design decision): the in-memory
+    /// `tantra-ledger` account/position/order/ledger repositories plus a FIFO matched-lot
+    /// history, populated from the real order/fill flow and read by the chat portfolio/tax
+    /// tools through [`LedgerPortfolioReader`](tantra_runtime_api::LedgerPortfolioReader). An
+    /// empty handle genuinely means "no trading activity in this process" — it is never
+    /// fabricated data.
+    pub shared_ledger: Arc<tantra_runtime_api::SharedLedger>,
 }
 
 impl AppState {
@@ -145,6 +152,7 @@ impl AppState {
             market_data_broadcast_tx: None,
             chat: None,
             database: None,
+            shared_ledger: Arc::new(tantra_runtime_api::SharedLedger::new()),
         }
     }
 
@@ -227,7 +235,7 @@ impl AppState {
     /// [`OrderLedger::position`] follows). This is the hook a live bar feed calls; event time is
     /// the bars' `ts_event`, never the wall clock. An out-of-order bar is an error.
     pub fn advance_market(&self, bars: &[tantra_core::Bar]) -> Result<(), ErrorDetail> {
-        self.exec.advance(&self.orders, bars)
+        self.exec.advance(&self.orders, &self.shared_ledger, bars)
     }
 
     /// Sets the operator trading state the write routes evaluate against.

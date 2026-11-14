@@ -36,8 +36,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tantra_core::rust_decimal::Decimal;
-use tantra_core::{Bar, InstrumentId, OrderSide};
-use tantra_runtime_api::{ErrorCode, ErrorDetail};
+use tantra_core::{Bar, FillReport, InstrumentId, OrderSide, Price, Quantity};
+use tantra_runtime_api::{ErrorCode, ErrorDetail, SharedLedger};
 
 use crate::OrderLedger;
 use crate::orders::{Order, OrderStatus, OrderType, RejectReason};
@@ -116,7 +116,7 @@ impl NextOpenSim {
     }
 
     /// Fills every working order on `bar.instrument` in full, at `bar.open`.
-    fn on_bar(&mut self, ledger: &OrderLedger, bar: &Bar) {
+    fn on_bar(&mut self, ledger: &OrderLedger, shared: &SharedLedger, bar: &Bar) {
         let matching: Vec<String> = self
             .working
             .iter()
@@ -127,6 +127,7 @@ impl NextOpenSim {
             let Some(w) = self.working.remove(&order_id) else {
                 continue;
             };
+            let instrument = w.instrument_id.clone();
             let signed = match w.side {
                 OrderSide::Buy => w.quantity,
                 OrderSide::Sell => -w.quantity,
@@ -143,6 +144,29 @@ impl NextOpenSim {
                 w.quantity,
                 bar.timestamp,
                 OrderStatus::Filled,
+            );
+            // The fill also lands in the shared ledger repositories (docs/gaps/0006 design
+            // decision): FIFO lot matching + realized P&L + cash for the chat portfolio/tax
+            // tools, and the order row's fill state so `orders` stays accurate.
+            let fill = FillReport::new(
+                format!("{order_id}-fill"),
+                &order_id,
+                uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, order_id.as_bytes()),
+                instrument,
+                w.side,
+                Price::new(bar.open.0),
+                Quantity::new(w.quantity),
+                crate::orders::REST_ALGO_ID,
+                bar.timestamp,
+                crate::orders::REST_ALGO_ID,
+            );
+            shared.record_fill(&fill);
+            shared.update_order_fill(
+                &order_id,
+                Quantity::new(w.quantity),
+                Price::new(bar.open.0),
+                tantra_core::OrderStatus::Filled,
+                bar.timestamp,
             );
         }
     }
@@ -180,10 +204,15 @@ impl ExecGateway {
     }
 
     /// Feeds `bars` (ascending event time) to the simulator and applies any resulting fills.
-    pub(crate) fn advance(&self, ledger: &OrderLedger, bars: &[Bar]) -> Result<(), ErrorDetail> {
+    pub(crate) fn advance(
+        &self,
+        ledger: &OrderLedger,
+        shared: &SharedLedger,
+        bars: &[Bar],
+    ) -> Result<(), ErrorDetail> {
         let mut sim = self.sim.lock().unwrap_or_else(PoisonError::into_inner);
         for bar in bars {
-            sim.on_bar(ledger, bar);
+            sim.on_bar(ledger, shared, bar);
         }
         Ok(())
     }
