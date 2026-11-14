@@ -1,6 +1,6 @@
 # 0007 — Chat market/content-reader adapters have approximated fields and missing data sources
 
-**Status**: open — items 1–13, 17/18/19 closed (item 10 closed 2026-11-14); items 14–16 remain
+**Status**: open — items 1–14, 17/18/19 closed (items 10 + 14 closed 2026-11-14); items 15–16 remain
 (upstream-blocked, verified blockers, unchanged by design).
 
 ## What's stubbed or hardcoded
@@ -103,10 +103,14 @@ and are either approximated or answered with an explicit error rather than fabri
     daily-bar source; `oi_buildup` computes the four-quadrant classification plus absolute OI and
     percentage changes from the raw series. The seedable `RuntimeMarketReader` `set_oi_buildup`
     store remains for tests.
-14. **`FundamentalReader` (chat tools `fundamental_ratios`/`financial_statements`) always
-    answers `PortError::unavailable`** via `crate::chat_fundamental::FeedFundamentalReader`.
-    Added with `tantra-agent` plan 0007 Track 3 Phase 6: no fundamentals/financial-statement
-    data source exists anywhere yet (`tantra-data/docs/gaps/0020-fundamentals-ingestion.md`).
+14. **`FundamentalReader` (chat tools `fundamental_ratios`/`financial_statements`)** — **CLOSED**
+    (2026-11-14): `tantra-data` fundamentals ingestion landed (`d94230c` — yfinance vendor
+    verified live, statements + point-in-time ratios, exact Decimal) and exported to
+    `{root}/catalog/fundamentals` + `{root}/catalog/fundamental_ratios`; the Rust
+    `tantra-market-store::FundamentalsProjectionReader` (`a8b0c05`) and
+    `FeedFundamentalReader::with_fundamentals` (`37db5b8`) serve the real ratios and
+    statements (latest-filing point-in-time grouping). An unwired reader keeps the explicit
+    gap error.
 15. **`FundReader` (chat tools `fund_search`/`fund_holdings`) always answers
     `PortError::unavailable`** via `crate::chat_fund::FeedFundReader`. Added with plan 0007
     Track 3 Phase 7: no mutual-fund NAV/holdings data source exists anywhere yet
@@ -149,10 +153,10 @@ approval-queue handle, a strategy store, and the shared ledger — all wired ear
 
 ## How to close it (remaining)
 
-- Items 14–16: close `tantra-data/docs/gaps/0020`–`0022` (fundamentals / mutual-fund / IPO
-  ingestion — **vendor selection + ingestion first**: real-world data procurement, not
+- Items 15–16: close `tantra-data/docs/gaps/0021`–`0022` (mutual-fund / IPO ingestion —
+  **vendor selection + ingestion first**: real-world data procurement, not
   code-closeable — then the bridge-exporter → projection-reader →
-  runtime wiring chain), then wire `FeedFundamentalReader`/`FeedFundReader`/`FeedIpoReader` to
+  runtime wiring chain), then wire `FeedFundReader`/`FeedIpoReader` to
   real reads.
 - Follow-on (no stub): wire a live broker trade feed (`tantra-market` gap 0003 / root
   `docs/gaps/0001`) into a `TradeReader` so `quote` reports real last prints/day volume instead
