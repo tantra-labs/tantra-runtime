@@ -48,14 +48,23 @@ pub struct Watchlist {
 enum WatchlistWire {
     /// Legacy bare symbol list: `["INFY"]` (pre-T7.4 stored profiles).
     Legacy(Vec<String>),
-    /// New structured form.
-    Structured(Watchlist),
+    /// New structured form: `{"name": ..., "instrument_ids": [...]}`.
+    Structured {
+        /// Display name of the watchlist.
+        #[serde(default)]
+        name: String,
+        /// The instrument symbols the watchlist holds.
+        #[serde(default)]
+        instrument_ids: Vec<String>,
+    },
 }
 
 impl<'de> Deserialize<'de> for Watchlist {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         match WatchlistWire::deserialize(d)? {
-            WatchlistWire::Structured(w) => Ok(w),
+            WatchlistWire::Structured { name, instrument_ids } => {
+                Ok(Watchlist { name, instrument_ids })
+            }
             WatchlistWire::Legacy(symbols) => Ok(Watchlist {
                 name: String::new(),
                 instrument_ids: symbols,
