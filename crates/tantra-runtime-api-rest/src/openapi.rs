@@ -3,6 +3,11 @@
 //! Generates a comprehensive OpenAPI 3.1 document describing all REST endpoints,
 //! request/response schemas, authentication schemes, and error responses.
 //! Uses `schemars` for JSON Schema generation from Rust types.
+//!
+//! Public so the route-vs-spec conformance test (`tests/openapi_conformance.rs`)
+//! can read the generated document; the structs below mirror the OpenAPI 3.1
+//! wire format, so field-level docs add little beyond their names.
+#![allow(missing_docs)]
 
 use axum::response::IntoResponse;
 use schemars::schema::*;
@@ -11,6 +16,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tantra_core::{InstrumentId, OrderSide, OrderStatus, OrderType, Price, Quantity, TimeInForce};
 use tantra_risk::{RiskLimits, RiskRefusal};
+use tantra_runtime_api::profile::{
+    LayoutDocument, LayoutsResponse, Module, ModulesResponse, Profile, ProfileRevision, Source,
+};
+use tantra_runtime_api::wire::{
+    BarAggregation, ErrorCode, ErrorDetail, Instrument, InstrumentKind, PortfolioAccount,
+    PortfolioHolding, PortfolioPosition, Position, PriceType, QuoteTick, ResponseEnvelope, Trade,
+    TradingState,
+};
 
 /// OpenAPI 3.1 info block.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -633,6 +646,993 @@ impl OpenApiDocument {
             },
         );
 
+        // Meta endpoints (capabilities, health)
+        paths.insert(
+            "/capabilities".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "meta",
+                    "Platform capabilities and endpoint manifest",
+                    "getCapabilities",
+                    vec![],
+                    None,
+                    "Capability manifest",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/health".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "meta",
+                    "Service health and runtime diagnostics",
+                    "getHealth",
+                    vec![],
+                    None,
+                    "Health status",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Instrument, bar and depth reference reads
+        paths.insert(
+            "/instruments/{id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "market",
+                    "Fetch a single instrument reference",
+                    "getInstrument",
+                    vec![path_param("id")],
+                    None,
+                    "Instrument reference",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/bars/{id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "market",
+                    "Historical bars for an instrument",
+                    "getBars",
+                    vec![
+                        path_param("id"),
+                        query_param("from"),
+                        query_param("to"),
+                        query_param("timeframe"),
+                    ],
+                    None,
+                    "Historical bars",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/depth/{id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "market",
+                    "Order book depth for an instrument",
+                    "getDepth",
+                    vec![path_param("id")],
+                    None,
+                    "Order book depth",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/bars".to_string(),
+            PathItem {
+                get: None,
+                post: Some(operation(
+                    "market",
+                    "Ingest tick/bar data",
+                    "postBars",
+                    vec![],
+                    Some(true),
+                    "Ingest acknowledged",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Operator trading state
+        paths.insert(
+            "/trading-state".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trading",
+                    "Read the operator trading state",
+                    "getTradingState",
+                    vec![],
+                    None,
+                    "Current trading state",
+                )),
+                post: None,
+                put: Some(operation(
+                    "trading",
+                    "Transition the operator trading state",
+                    "putTradingState",
+                    vec![],
+                    Some(true),
+                    "Updated trading state",
+                )),
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // User profile endpoints
+        paths.insert(
+            "/profile".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "profile",
+                    "Get the user profile",
+                    "getProfile",
+                    vec![],
+                    None,
+                    "User profile",
+                )),
+                post: None,
+                put: Some(operation(
+                    "profile",
+                    "Replace the user profile",
+                    "putProfile",
+                    vec![],
+                    Some(true),
+                    "Updated profile revision",
+                )),
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/profile/layouts".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "profile",
+                    "List named workbench layouts",
+                    "getProfileLayouts",
+                    vec![],
+                    None,
+                    "Named layouts",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/profile/layouts/{name}".to_string(),
+            PathItem {
+                get: None,
+                post: None,
+                put: Some(operation(
+                    "profile",
+                    "Create or replace a named layout",
+                    "putProfileLayout",
+                    vec![path_param("name")],
+                    Some(true),
+                    "Layout stored",
+                )),
+                patch: None,
+                delete: Some(operation(
+                    "profile",
+                    "Delete a named layout",
+                    "deleteProfileLayout",
+                    vec![path_param("name")],
+                    None,
+                    "Layout deleted",
+                )),
+            },
+        );
+        paths.insert(
+            "/profile/modules".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "profile",
+                    "List profile modules",
+                    "getProfileModules",
+                    vec![],
+                    None,
+                    "Profile modules",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/profile/modules/{id}".to_string(),
+            PathItem {
+                get: None,
+                post: None,
+                put: Some(operation(
+                    "profile",
+                    "Create or replace a profile module",
+                    "putProfileModule",
+                    vec![path_param("id")],
+                    Some(true),
+                    "Module stored",
+                )),
+                patch: None,
+                delete: Some(operation(
+                    "profile",
+                    "Delete a profile module",
+                    "deleteProfileModule",
+                    vec![path_param("id")],
+                    None,
+                    "Module deleted",
+                )),
+            },
+        );
+
+        // Portfolio read endpoints
+        paths.insert(
+            "/portfolio/accounts".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "List portfolio accounts",
+                    "getPortfolioAccounts",
+                    vec![],
+                    None,
+                    "Portfolio accounts",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/portfolio/positions".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "Current open positions",
+                    "getPortfolioPositions",
+                    vec![],
+                    None,
+                    "Open positions",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/portfolio/holdings".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "Current holdings",
+                    "getPortfolioHoldings",
+                    vec![],
+                    None,
+                    "Holdings",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/portfolio/trades".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "Portfolio trade history",
+                    "getPortfolioTrades",
+                    vec![],
+                    None,
+                    "Trade history",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/portfolio/chart".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "Portfolio equity curve",
+                    "getEquityCurve",
+                    vec![],
+                    None,
+                    "Equity curve",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/portfolio/concentration".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "Portfolio concentration risk",
+                    "getConcentrationRisk",
+                    vec![],
+                    None,
+                    "Concentration risk",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/portfolio/wac".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "Weighted average cost per instrument",
+                    "getWeightedAverageCost",
+                    vec![],
+                    None,
+                    "Weighted average cost",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Legacy report aliases
+        paths.insert(
+            "/ledger".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "General ledger (legacy alias of /reports/ledger)",
+                    "getLedger",
+                    vec![],
+                    None,
+                    "Ledger entries",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/tax/report".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Tax report (legacy alias of /reports/tax)",
+                    "getTaxReport",
+                    vec![],
+                    None,
+                    "Tax report",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/fees".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Fees report (legacy alias of /reports/fees)",
+                    "getFeesReport",
+                    vec![],
+                    None,
+                    "Fees report",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/positions".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trading",
+                    "Current open positions",
+                    "getPositions",
+                    vec![],
+                    None,
+                    "Open positions",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/positions/audit".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Position audit trail",
+                    "getPositionAudit",
+                    vec![],
+                    None,
+                    "Position audit trail",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/trades".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "portfolio",
+                    "Trade history",
+                    "getTrades",
+                    vec![],
+                    None,
+                    "Trade history",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Report endpoints
+        paths.insert(
+            "/reports/ledger".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "General ledger report",
+                    "getReportLedger",
+                    vec![],
+                    None,
+                    "Ledger entries",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/tax".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Tax report",
+                    "getReportTax",
+                    vec![],
+                    None,
+                    "Tax report",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/snapshots".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Portfolio snapshots",
+                    "getReportSnapshots",
+                    vec![],
+                    None,
+                    "Portfolio snapshots",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/audit".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Order and execution audit trail",
+                    "getReportAudit",
+                    vec![],
+                    None,
+                    "Audit trail",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/concentration".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Portfolio concentration report",
+                    "getReportConcentration",
+                    vec![],
+                    None,
+                    "Concentration risk",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/wac".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Weighted average cost report",
+                    "getReportWac",
+                    vec![],
+                    None,
+                    "Weighted average cost",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/fees".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Fees report",
+                    "getReportFees",
+                    vec![],
+                    None,
+                    "Fees report",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/equity-curve".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Equity curve report",
+                    "getReportEquityCurve",
+                    vec![],
+                    None,
+                    "Equity curve",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/reports/fills/{order_id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "reports",
+                    "Fills report for one order",
+                    "getReportFills",
+                    vec![path_param("order_id")],
+                    None,
+                    "Fills for the order",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Strategy authoring endpoints
+        paths.insert(
+            "/strategies".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "strategies",
+                    "List compiled strategies",
+                    "getStrategies",
+                    vec![],
+                    None,
+                    "Strategy catalog",
+                )),
+                post: Some(operation(
+                    "strategies",
+                    "Compile a strategy manifest",
+                    "postStrategies",
+                    vec![],
+                    Some(true),
+                    "Compiled strategy",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/strategies/verify".to_string(),
+            PathItem {
+                get: None,
+                post: Some(operation(
+                    "strategies",
+                    "Verify a strategy manifest",
+                    "postVerifyStrategy",
+                    vec![],
+                    Some(true),
+                    "Verification result",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Backtest runs
+        paths.insert(
+            "/backtests".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "List backtest runs",
+                    "getBacktests",
+                    vec![],
+                    None,
+                    "Backtest runs",
+                )),
+                post: Some(operation(
+                    "runs",
+                    "Start a backtest run",
+                    "postBacktests",
+                    vec![],
+                    Some(true),
+                    "Backtest run started",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/backtests/{id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "Backtest run detail",
+                    "getBacktestById",
+                    vec![path_param("id")],
+                    None,
+                    "Backtest run",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/backtests/{id}/journal".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "Backtest run journal",
+                    "getBacktestJournal",
+                    vec![path_param("id")],
+                    None,
+                    "Run journal",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/backtests/{id}/events".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "Backtest run events",
+                    "getBacktestEvents",
+                    vec![path_param("id")],
+                    None,
+                    "Run events",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Sweep runs
+        paths.insert(
+            "/sweeps".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "List sweep runs",
+                    "getSweeps",
+                    vec![],
+                    None,
+                    "Sweep runs",
+                )),
+                post: Some(operation(
+                    "runs",
+                    "Start a parameter sweep run",
+                    "postSweeps",
+                    vec![],
+                    Some(true),
+                    "Sweep run started",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/sweeps/{id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "Sweep run detail",
+                    "getSweepById",
+                    vec![path_param("id")],
+                    None,
+                    "Sweep run",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/sweeps/{id}/journal".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "Sweep run journal",
+                    "getSweepJournal",
+                    vec![path_param("id")],
+                    None,
+                    "Run journal",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Order fills and close-all
+        paths.insert(
+            "/orders/{id}/fills".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trading",
+                    "Fills for one order",
+                    "getOrderFills",
+                    vec![path_param("id")],
+                    None,
+                    "Order fills",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/positions/close".to_string(),
+            PathItem {
+                get: None,
+                post: Some(operation(
+                    "trading",
+                    "Close all open positions",
+                    "postClosePositions",
+                    vec![],
+                    Some(true),
+                    "Close request accepted",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Order approval workflow
+        paths.insert(
+            "/approval/queue".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "approval",
+                    "Pending order approval queue",
+                    "getApprovalQueue",
+                    vec![],
+                    None,
+                    "Approval queue",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/approval/approve".to_string(),
+            PathItem {
+                get: None,
+                post: Some(operation(
+                    "approval",
+                    "Approve a pending order",
+                    "postApproveOrder",
+                    vec![],
+                    Some(true),
+                    "Order approved",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/approval/reject".to_string(),
+            PathItem {
+                get: None,
+                post: Some(operation(
+                    "approval",
+                    "Reject a pending order",
+                    "postRejectOrder",
+                    vec![],
+                    Some(true),
+                    "Order rejected",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Screener and run journals
+        paths.insert(
+            "/screener/scan".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "screener",
+                    "Run an AST-filtered screener scan",
+                    "getScreenerScan",
+                    vec![
+                        query_param("symbols"),
+                        query_param("min_price"),
+                        query_param("max_price"),
+                    ],
+                    None,
+                    "Screener result rows",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/journals/{id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "runs",
+                    "Run journal by id",
+                    "getJournalById",
+                    vec![path_param("id")],
+                    None,
+                    "Run journal",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // WebSocket upgrade endpoints
+        paths.insert(
+            "/ws".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "ws",
+                    "WebSocket live stream",
+                    "getWs",
+                    vec![],
+                    None,
+                    "WebSocket upgrade",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/ws/market".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "ws",
+                    "WebSocket market data stream",
+                    "getWsMarket",
+                    vec![],
+                    None,
+                    "WebSocket upgrade",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/ws/chat".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "ws",
+                    "WebSocket chat stream",
+                    "getWsChat",
+                    vec![],
+                    None,
+                    "WebSocket upgrade",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
         let mut schemas = BTreeMap::new();
         schemas.insert(
             "InstrumentId".to_string(),
@@ -663,6 +1663,77 @@ impl OpenApiDocument {
         schemas.insert(
             "RiskRefusal".to_string(),
             schema_for!(RiskRefusal).schema.into(),
+        );
+        schemas.insert(
+            "ResponseEnvelope".to_string(),
+            schema_for!(ResponseEnvelope<serde_json::Value>)
+                .schema
+                .into(),
+        );
+        schemas.insert(
+            "ErrorCode".to_string(),
+            schema_for!(ErrorCode).schema.into(),
+        );
+        schemas.insert(
+            "ErrorDetail".to_string(),
+            schema_for!(ErrorDetail).schema.into(),
+        );
+        schemas.insert(
+            "QuoteTick".to_string(),
+            schema_for!(QuoteTick).schema.into(),
+        );
+        schemas.insert("Trade".to_string(), schema_for!(Trade).schema.into());
+        schemas.insert("Position".to_string(), schema_for!(Position).schema.into());
+        schemas.insert(
+            "PortfolioAccount".to_string(),
+            schema_for!(PortfolioAccount).schema.into(),
+        );
+        schemas.insert(
+            "PortfolioPosition".to_string(),
+            schema_for!(PortfolioPosition).schema.into(),
+        );
+        schemas.insert(
+            "PortfolioHolding".to_string(),
+            schema_for!(PortfolioHolding).schema.into(),
+        );
+        schemas.insert(
+            "Instrument".to_string(),
+            schema_for!(Instrument).schema.into(),
+        );
+        schemas.insert(
+            "InstrumentKind".to_string(),
+            schema_for!(InstrumentKind).schema.into(),
+        );
+        schemas.insert(
+            "BarAggregation".to_string(),
+            schema_for!(BarAggregation).schema.into(),
+        );
+        schemas.insert(
+            "PriceType".to_string(),
+            schema_for!(PriceType).schema.into(),
+        );
+        schemas.insert(
+            "TradingState".to_string(),
+            schema_for!(TradingState).schema.into(),
+        );
+        schemas.insert("Profile".to_string(), schema_for!(Profile).schema.into());
+        schemas.insert("Module".to_string(), schema_for!(Module).schema.into());
+        schemas.insert("Source".to_string(), schema_for!(Source).schema.into());
+        schemas.insert(
+            "LayoutDocument".to_string(),
+            schema_for!(LayoutDocument).schema.into(),
+        );
+        schemas.insert(
+            "LayoutsResponse".to_string(),
+            schema_for!(LayoutsResponse).schema.into(),
+        );
+        schemas.insert(
+            "ModulesResponse".to_string(),
+            schema_for!(ModulesResponse).schema.into(),
+        );
+        schemas.insert(
+            "ProfileRevision".to_string(),
+            schema_for!(ProfileRevision).schema.into(),
         );
 
         let mut security_schemes = BTreeMap::new();
@@ -721,8 +1792,43 @@ impl OpenApiDocument {
                     description: "Market reference data (symbol profile, economic calendar)"
                         .to_string(),
                 },
+                Tag {
+                    name: "reports".to_string(),
+                    description:
+                        "Ledger, tax, fees, audit, concentration, WAC and equity-curve reports"
+                            .to_string(),
+                },
+                Tag {
+                    name: "profile".to_string(),
+                    description: "User profile (layouts, modules, watchlists)".to_string(),
+                },
+                Tag {
+                    name: "runs".to_string(),
+                    description: "Backtest and parameter sweep runs, journals".to_string(),
+                },
+                Tag {
+                    name: "strategies".to_string(),
+                    description: "Strategy authoring (catalog, compile, verify)".to_string(),
+                },
+                Tag {
+                    name: "screener".to_string(),
+                    description: "AST-filtered stock screening".to_string(),
+                },
+                Tag {
+                    name: "ws".to_string(),
+                    description: "WebSocket streaming endpoints".to_string(),
+                },
+                Tag {
+                    name: "approval".to_string(),
+                    description: "Order approval workflow (queue, approve, reject)".to_string(),
+                },
             ],
         }
+    }
+
+    /// Serialize the v2 spec to pretty JSON (the checked-in artifact format).
+    pub fn v2_json() -> String {
+        serde_json::to_string_pretty(&Self::generate_v2()).unwrap_or_default()
     }
 
     /// Serialize the generated OpenAPI 3.1 document as a JSON `Value`,

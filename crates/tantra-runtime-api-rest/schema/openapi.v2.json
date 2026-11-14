@@ -1,0 +1,5185 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tantra REST API v2",
+    "version": "2.0.0",
+    "description": "Tantra trading platform REST API v2 (Latest & Recommended)"
+  },
+  "servers": [
+    {
+      "url": "/api/v2",
+      "description": "Tantra REST API v2 (Latest & Recommended)"
+    }
+  ],
+  "paths": {
+    "/approval/approve": {
+      "get": null,
+      "post": {
+        "tags": [
+          "approval"
+        ],
+        "summary": "Approve a pending order",
+        "operationId": "postApproveOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/approval/queue": {
+      "get": {
+        "tags": [
+          "approval"
+        ],
+        "summary": "Pending order approval queue",
+        "operationId": "getApprovalQueue",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Approval queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/approval/reject": {
+      "get": null,
+      "post": {
+        "tags": [
+          "approval"
+        ],
+        "summary": "Reject a pending order",
+        "operationId": "postRejectOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/backtests": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List backtest runs",
+        "operationId": "getBacktests",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Backtest runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Start a backtest run",
+        "operationId": "postBacktests",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backtest run started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/backtests/{id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Backtest run detail",
+        "operationId": "getBacktestById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Backtest run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/backtests/{id}/events": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Backtest run events",
+        "operationId": "getBacktestEvents",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Run events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/backtests/{id}/journal": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Backtest run journal",
+        "operationId": "getBacktestJournal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Run journal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/bars": {
+      "get": null,
+      "post": {
+        "tags": [
+          "market"
+        ],
+        "summary": "Ingest tick/bar data",
+        "operationId": "postBars",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ingest acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/bars/{id}": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "Historical bars for an instrument",
+        "operationId": "getBars",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Historical bars",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/capabilities": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Platform capabilities and endpoint manifest",
+        "operationId": "getCapabilities",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Capability manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/depth/{id}": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "Order book depth for an instrument",
+        "operationId": "getDepth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Order book depth",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/fees": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Fees report (legacy alias of /reports/fees)",
+        "operationId": "getFeesReport",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Fees report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Service health and runtime diagnostics",
+        "operationId": "getHealth",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/instruments": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "List all instruments",
+        "operationId": "getInstruments",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "List of instruments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Array_of_InstrumentId",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/InstrumentId"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/instruments/{id}": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "Fetch a single instrument reference",
+        "operationId": "getInstrument",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Instrument reference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/journals/{id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Run journal by id",
+        "operationId": "getJournalById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Run journal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/ledger": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "General ledger (legacy alias of /reports/ledger)",
+        "operationId": "getLedger",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Ledger entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/market-data/block-deals": {
+      "get": {
+        "tags": [
+          "market-reference"
+        ],
+        "summary": "Block / bulk deal disclosures",
+        "operationId": "getBlockDeals",
+        "parameters": [
+          {
+            "name": "instrument",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Block deals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/market-data/calendar": {
+      "get": {
+        "tags": [
+          "market-reference"
+        ],
+        "summary": "Economic / earnings / dividends / splits / IPO calendar",
+        "operationId": "getMarketCalendar",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Calendar events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/market-data/symbol-profile/{id}": {
+      "get": {
+        "tags": [
+          "market-reference"
+        ],
+        "summary": "Company symbol profile / fundamentals",
+        "operationId": "getSymbolProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Symbol profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/orders": {
+      "get": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "List orders",
+        "operationId": "getOrders",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "List of orders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "trade"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "Place a new order",
+        "operationId": "postOrders",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order placed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Risk refusal or validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "trade"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/orders/{id}": {
+      "get": null,
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "Cancel an order",
+        "operationId": "deleteOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Order cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "trade"
+            ]
+          }
+        ]
+      }
+    },
+    "/orders/{id}/fills": {
+      "get": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "Fills for one order",
+        "operationId": "getOrderFills",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Order fills",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Get portfolio",
+        "operationId": "getPortfolio",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Portfolio state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio/accounts": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "List portfolio accounts",
+        "operationId": "getPortfolioAccounts",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Portfolio accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio/chart": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Portfolio equity curve",
+        "operationId": "getEquityCurve",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Equity curve",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio/concentration": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Portfolio concentration risk",
+        "operationId": "getConcentrationRisk",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Concentration risk",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio/holdings": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Current holdings",
+        "operationId": "getPortfolioHoldings",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Holdings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio/positions": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Current open positions",
+        "operationId": "getPortfolioPositions",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Open positions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio/trades": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Portfolio trade history",
+        "operationId": "getPortfolioTrades",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Trade history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/portfolio/wac": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Weighted average cost per instrument",
+        "operationId": "getWeightedAverageCost",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Weighted average cost",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/positions": {
+      "get": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "Current open positions",
+        "operationId": "getPositions",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Open positions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/positions/audit": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Position audit trail",
+        "operationId": "getPositionAudit",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Position audit trail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/positions/close": {
+      "get": null,
+      "post": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "Close all open positions",
+        "operationId": "postClosePositions",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Close request accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/profile": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Get the user profile",
+        "operationId": "getProfile",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Replace the user profile",
+        "operationId": "putProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "patch": null,
+      "delete": null
+    },
+    "/profile/layouts": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "List named workbench layouts",
+        "operationId": "getProfileLayouts",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Named layouts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/profile/layouts/{name}": {
+      "get": null,
+      "post": null,
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Create or replace a named layout",
+        "operationId": "putProfileLayout",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Layout stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "patch": null,
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Delete a named layout",
+        "operationId": "deleteProfileLayout",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Layout deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      }
+    },
+    "/profile/modules": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "List profile modules",
+        "operationId": "getProfileModules",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Profile modules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/profile/modules/{id}": {
+      "get": null,
+      "post": null,
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Create or replace a profile module",
+        "operationId": "putProfileModule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Module stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "patch": null,
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Delete a profile module",
+        "operationId": "deleteProfileModule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Module deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      }
+    },
+    "/quotes": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "Get latest quotes",
+        "operationId": "getQuotes",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Latest quotes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/audit": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Order and execution audit trail",
+        "operationId": "getReportAudit",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Audit trail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/concentration": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Portfolio concentration report",
+        "operationId": "getReportConcentration",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Concentration risk",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/equity-curve": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Equity curve report",
+        "operationId": "getReportEquityCurve",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Equity curve",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/fees": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Fees report",
+        "operationId": "getReportFees",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Fees report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/fills/{order_id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Fills report for one order",
+        "operationId": "getReportFills",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Fills for the order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/ledger": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "General ledger report",
+        "operationId": "getReportLedger",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Ledger entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/snapshots": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Portfolio snapshots",
+        "operationId": "getReportSnapshots",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Portfolio snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/tax": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Tax report",
+        "operationId": "getReportTax",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Tax report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/reports/wac": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Weighted average cost report",
+        "operationId": "getReportWac",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Weighted average cost",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/schema": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Get OpenAPI schema",
+        "operationId": "getSchema",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/screener/scan": {
+      "get": {
+        "tags": [
+          "screener"
+        ],
+        "summary": "Run an AST-filtered screener scan",
+        "operationId": "getScreenerScan",
+        "parameters": [
+          {
+            "name": "symbols",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "min_price",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "max_price",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Screener result rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/strategies": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "List compiled strategies",
+        "operationId": "getStrategies",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Strategy catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "Compile a strategy manifest",
+        "operationId": "postStrategies",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compiled strategy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/strategies/verify": {
+      "get": null,
+      "post": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "Verify a strategy manifest",
+        "operationId": "postVerifyStrategy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/sweeps": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List sweep runs",
+        "operationId": "getSweeps",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Sweep runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Start a parameter sweep run",
+        "operationId": "postSweeps",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sweep run started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/sweeps/{id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Sweep run detail",
+        "operationId": "getSweepById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Sweep run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/sweeps/{id}/journal": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Sweep run journal",
+        "operationId": "getSweepJournal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Run journal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/tax/report": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Tax report (legacy alias of /reports/tax)",
+        "operationId": "getTaxReport",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Tax report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trade-journal/accounts": {
+      "get": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "List journal accounts",
+        "operationId": "listTradeJournalAccounts",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "List of journal accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "Create a journal account",
+        "operationId": "createTradeJournalAccount",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created journal account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trade-journal/calendar": {
+      "get": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "Daily P&L heatmap for a month",
+        "operationId": "getTradeJournalCalendar",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Monthly P&L calendar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trade-journal/compare": {
+      "get": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "Compare two performances",
+        "operationId": "compareTradeJournalAccounts",
+        "parameters": [
+          {
+            "name": "accountA",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "accountB",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Two-sided metrics comparison",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trade-journal/notes": {
+      "get": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "List day-keyed journal notes",
+        "operationId": "listTradeJournalNotes",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Journal notes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "Create or replace a journal note",
+        "operationId": "createTradeJournalNote",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created journal note",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trade-journal/overview": {
+      "get": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "Performance metrics and edge score",
+        "operationId": "getTradeJournalOverview",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "compare",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Overview metrics and edge score",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trade-journal/trades": {
+      "get": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "List closed trades with annotations",
+        "operationId": "listTradeJournalTrades",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Cursor-paginated closed trades",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": {
+        "tags": [
+          "trade-journal"
+        ],
+        "summary": "Set a trade's annotation",
+        "operationId": "patchTradeJournalTrade",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated trade annotation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "delete": null
+    },
+    "/trades": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "Trade history",
+        "operationId": "getTrades",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Trade history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trading-state": {
+      "get": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "Read the operator trading state",
+        "operationId": "getTradingState",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Current trading state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": {
+        "tags": [
+          "trading"
+        ],
+        "summary": "Transition the operator trading state",
+        "operationId": "putTradingState",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated trading state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "patch": null,
+      "delete": null
+    },
+    "/ws": {
+      "get": {
+        "tags": [
+          "ws"
+        ],
+        "summary": "WebSocket live stream",
+        "operationId": "getWs",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/ws/chat": {
+      "get": {
+        "tags": [
+          "ws"
+        ],
+        "summary": "WebSocket chat stream",
+        "operationId": "getWsChat",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/ws/market": {
+      "get": {
+        "tags": [
+          "ws"
+        ],
+        "summary": "WebSocket market data stream",
+        "operationId": "getWsMarket",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    }
+  },
+  "components": {
+    "schemas": {
+      "BarAggregation": {
+        "title": "BarAggregation",
+        "description": "Bar length unit of a [`BarSpecification`].",
+        "oneOf": [
+          {
+            "description": "Seconds.",
+            "type": "string",
+            "enum": [
+              "second"
+            ]
+          },
+          {
+            "description": "Minutes.",
+            "type": "string",
+            "enum": [
+              "minute"
+            ]
+          },
+          {
+            "description": "Hours.",
+            "type": "string",
+            "enum": [
+              "hour"
+            ]
+          },
+          {
+            "description": "Trading days.",
+            "type": "string",
+            "enum": [
+              "day"
+            ]
+          },
+          {
+            "description": "Weeks.",
+            "type": "string",
+            "enum": [
+              "week"
+            ]
+          },
+          {
+            "description": "Calendar months.",
+            "type": "string",
+            "enum": [
+              "month"
+            ]
+          }
+        ]
+      },
+      "ErrorCode": {
+        "title": "ErrorCode",
+        "description": "The stable error taxonomy. The wire spelling is `snake_case`; a caller branches on the code, never on the message.",
+        "oneOf": [
+          {
+            "description": "The request failed validation; `context.field` names the field.",
+            "type": "string",
+            "enum": [
+              "validation_invalid_request"
+            ]
+          },
+          {
+            "description": "The caller is not authenticated or not allowed to.",
+            "type": "string",
+            "enum": [
+              "unauthorized"
+            ]
+          },
+          {
+            "description": "The addressed resource does not exist.",
+            "type": "string",
+            "enum": [
+              "not_found"
+            ]
+          },
+          {
+            "description": "The request conflicts with the current state (e.g. a duplicate id).",
+            "type": "string",
+            "enum": [
+              "conflict"
+            ]
+          },
+          {
+            "description": "The route exists in the contract but is not implemented in this build.",
+            "type": "string",
+            "enum": [
+              "not_implemented"
+            ]
+          },
+          {
+            "description": "The addressed payload was written against a version this build does not read.",
+            "type": "string",
+            "enum": [
+              "unsupported"
+            ]
+          },
+          {
+            "description": "An internal failure; never a caller's fault.",
+            "type": "string",
+            "enum": [
+              "internal_error"
+            ]
+          },
+          {
+            "description": "The operation timed out and may succeed if retried.",
+            "type": "string",
+            "enum": [
+              "timeout"
+            ]
+          },
+          {
+            "description": "A pre-trade risk check refused the order.",
+            "type": "string",
+            "enum": [
+              "risk_max_notional_exceeded"
+            ]
+          },
+          {
+            "description": "The operator has halted trading (ADR 0018 rule 1): every placement is refused.",
+            "type": "string",
+            "enum": [
+              "risk_trading_halted"
+            ]
+          },
+          {
+            "description": "The platform is reduce-only and the order would add exposure (ADR 0018 rule 2).",
+            "type": "string",
+            "enum": [
+              "risk_reduce_only_violation"
+            ]
+          },
+          {
+            "description": "A market order's expected touch is outside the configured price collar.",
+            "type": "string",
+            "enum": [
+              "risk_price_collar"
+            ]
+          },
+          {
+            "description": "The order quantity is not a multiple of the instrument's lot size.",
+            "type": "string",
+            "enum": [
+              "risk_lot_multiple_violation"
+            ]
+          },
+          {
+            "description": "A limit price is off the instrument's tick grid.",
+            "type": "string",
+            "enum": [
+              "risk_tick_size_violation"
+            ]
+          },
+          {
+            "description": "The instrument is not in the master catalogue (ADR 0018 rule 3).",
+            "type": "string",
+            "enum": [
+              "risk_instrument_unknown"
+            ]
+          },
+          {
+            "description": "A rate limit was exceeded (e.g. the approval queue is full).",
+            "type": "string",
+            "enum": [
+              "rate_limited"
+            ]
+          }
+        ]
+      },
+      "ErrorDetail": {
+        "title": "ErrorDetail",
+        "description": "One failure, as it crosses the wire (ADR 0012).",
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "description": "The stable error code.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ErrorCode"
+              }
+            ]
+          },
+          "context": {
+            "description": "Machine-readable extras, e.g. `{\"field\": …, \"reason\": …}`."
+          },
+          "message": {
+            "description": "A human-readable sentence; never parsed.",
+            "type": "string"
+          },
+          "retryable": {
+            "description": "Whether retrying the identical request may succeed.",
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      },
+      "Instrument": {
+        "title": "Instrument",
+        "description": "The reference-data read model (`GET /instruments`).",
+        "type": "object",
+        "required": [
+          "currency",
+          "id",
+          "kind",
+          "lot_size",
+          "tick_size"
+        ],
+        "properties": {
+          "currency": {
+            "description": "Settlement currency.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/Currency"
+              }
+            ]
+          },
+          "id": {
+            "description": "The instrument id.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentId"
+              }
+            ]
+          },
+          "kind": {
+            "description": "What kind of instrument it is.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentKind"
+              }
+            ]
+          },
+          "lot_size": {
+            "description": "Units per tradable lot.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "tick_size": {
+            "description": "Minimum price increment.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "InstrumentId": {
+        "title": "InstrumentId",
+        "description": "Canonical instrument identifier across all feeds and brokers.\n\nOrdered by `(exchange, symbol, token, isin)` so it can key a `BTreeMap` and sort a dataset deterministically.",
+        "type": "object",
+        "required": [
+          "exchange",
+          "symbol"
+        ],
+        "properties": {
+          "exchange": {
+            "description": "Exchange venue",
+            "allOf": [
+              {
+                "$ref": "#/definitions/Exchange"
+              }
+            ]
+          },
+          "isin": {
+            "description": "International Securities Identification Number (optional)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "description": "Trading symbol (e.g., \"RELIANCE\", \"TCS\", \"INFY\")",
+            "type": "string"
+          },
+          "token": {
+            "description": "Broker-assigned instrument token (optional)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InstrumentKind": {
+        "title": "InstrumentKind",
+        "description": "The instrument kind a reference instrument carries (`GET /instruments`).",
+        "oneOf": [
+          {
+            "description": "Ordinary share.",
+            "type": "string",
+            "enum": [
+              "equity"
+            ]
+          },
+          {
+            "description": "Exchange-traded fund.",
+            "type": "string",
+            "enum": [
+              "etf"
+            ]
+          },
+          {
+            "description": "Bond.",
+            "type": "string",
+            "enum": [
+              "bond"
+            ]
+          },
+          {
+            "description": "IPO allotment.",
+            "type": "string",
+            "enum": [
+              "ipo"
+            ]
+          },
+          {
+            "description": "Futures contract.",
+            "type": "string",
+            "enum": [
+              "future"
+            ]
+          },
+          {
+            "description": "Options contract.",
+            "type": "string",
+            "enum": [
+              "option"
+            ]
+          },
+          {
+            "description": "Foreign exchange.",
+            "type": "string",
+            "enum": [
+              "fx"
+            ]
+          },
+          {
+            "description": "Index (not directly tradable).",
+            "type": "string",
+            "enum": [
+              "index"
+            ]
+          },
+          {
+            "description": "Mutual fund unit.",
+            "type": "string",
+            "enum": [
+              "mutual_fund"
+            ]
+          },
+          {
+            "description": "Anything else.",
+            "type": "string",
+            "enum": [
+              "other"
+            ]
+          }
+        ]
+      },
+      "LayoutDocument": {
+        "title": "LayoutDocument",
+        "description": "A workbench layout: any JSON value, opaque to the server."
+      },
+      "LayoutsResponse": {
+        "title": "LayoutsResponse",
+        "description": "`GET /profile/layouts` response: the named layouts by name.",
+        "type": "object",
+        "required": [
+          "layouts"
+        ],
+        "properties": {
+          "layouts": {
+            "description": "Layouts by name (opaque to the server).",
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "Module": {
+        "title": "Module",
+        "description": "A named collection of sources.",
+        "type": "object",
+        "required": [
+          "enabled",
+          "id",
+          "name",
+          "sources"
+        ],
+        "properties": {
+          "enabled": {
+            "description": "Whether the module is active.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Stable module id.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name.",
+            "type": "string"
+          },
+          "sources": {
+            "description": "The sources the module groups.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/Source"
+            }
+          }
+        }
+      },
+      "ModulesResponse": {
+        "title": "ModulesResponse",
+        "description": "`GET /profile/modules` response: the modules by id.",
+        "type": "object",
+        "required": [
+          "modules"
+        ],
+        "properties": {
+          "modules": {
+            "description": "Modules by id.",
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/Module"
+            }
+          }
+        }
+      },
+      "OrderSide": {
+        "title": "OrderSide",
+        "description": "Order side.",
+        "oneOf": [
+          {
+            "description": "Buy order",
+            "type": "string",
+            "enum": [
+              "BUY"
+            ]
+          },
+          {
+            "description": "Sell order",
+            "type": "string",
+            "enum": [
+              "SELL"
+            ]
+          }
+        ]
+      },
+      "OrderStatus": {
+        "title": "OrderStatus",
+        "description": "Lifecycle status of an order.",
+        "oneOf": [
+          {
+            "description": "Order created locally, awaiting transmission.",
+            "type": "string",
+            "enum": [
+              "pending_new"
+            ]
+          },
+          {
+            "description": "Order acknowledged by broker/exchange.",
+            "type": "string",
+            "enum": [
+              "new"
+            ]
+          },
+          {
+            "description": "Order partially filled.",
+            "type": "string",
+            "enum": [
+              "partially_filled"
+            ]
+          },
+          {
+            "description": "Order completely filled.",
+            "type": "string",
+            "enum": [
+              "filled"
+            ]
+          },
+          {
+            "description": "Order cancelled by user or algorithm.",
+            "type": "string",
+            "enum": [
+              "cancelled"
+            ]
+          },
+          {
+            "description": "Order rejected by broker or exchange.",
+            "type": "string",
+            "enum": [
+              "rejected"
+            ]
+          },
+          {
+            "description": "Order expired at market close or TIF expiration.",
+            "type": "string",
+            "enum": [
+              "expired"
+            ]
+          }
+        ]
+      },
+      "OrderType": {
+        "title": "OrderType",
+        "description": "Order type specification.",
+        "oneOf": [
+          {
+            "description": "Execute immediately at prevailing market price.",
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "market"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Execute at specified limit price or better.",
+            "type": "object",
+            "required": [
+              "price",
+              "type"
+            ],
+            "properties": {
+              "price": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "limit"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Stop-loss order triggered at trigger price.",
+            "type": "object",
+            "required": [
+              "price",
+              "type"
+            ],
+            "properties": {
+              "price": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "stop_loss"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Stop-limit order with separate trigger and limit prices.",
+            "type": "object",
+            "required": [
+              "price",
+              "type"
+            ],
+            "properties": {
+              "price": {
+                "type": "object",
+                "required": [
+                  "limit",
+                  "trigger"
+                ],
+                "properties": {
+                  "limit": {
+                    "description": "Limit price",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "trigger": {
+                    "description": "Trigger price",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "stop_limit"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "PortfolioAccount": {
+        "title": "PortfolioAccount",
+        "description": "`GET /portfolio/accounts`: one valued account of the caller's portfolio.",
+        "type": "object",
+        "required": [
+          "account_id",
+          "cash",
+          "currency",
+          "equity",
+          "positions_value"
+        ],
+        "properties": {
+          "account_id": {
+            "description": "The account id.",
+            "type": "string"
+          },
+          "cash": {
+            "description": "Free cash.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "currency": {
+            "description": "Settlement currency.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/Currency"
+              }
+            ]
+          },
+          "equity": {
+            "description": "Cash plus position value.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "positions_value": {
+            "description": "Market value of the open positions.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "PortfolioHolding": {
+        "title": "PortfolioHolding",
+        "description": "`GET /portfolio/holdings`: one valued delivery holding.",
+        "type": "object",
+        "required": [
+          "account_id",
+          "avg_price",
+          "instrument",
+          "market_value",
+          "quantity"
+        ],
+        "properties": {
+          "account_id": {
+            "description": "The account the holding sits in.",
+            "type": "string"
+          },
+          "avg_price": {
+            "description": "Volume-weighted average acquisition cost.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "instrument": {
+            "description": "The instrument held.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentId"
+              }
+            ]
+          },
+          "market_value": {
+            "description": "Quantity times mark price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "quantity": {
+            "description": "Quantity held.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "PortfolioPosition": {
+        "title": "PortfolioPosition",
+        "description": "`GET /portfolio/positions`: one valued open position, flattened across the caller's accounts.",
+        "type": "object",
+        "required": [
+          "account_id",
+          "avg_price",
+          "instrument",
+          "market_value",
+          "quantity",
+          "unrealized_pnl"
+        ],
+        "properties": {
+          "account_id": {
+            "description": "The account the position sits in.",
+            "type": "string"
+          },
+          "avg_price": {
+            "description": "Volume-weighted average entry price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "instrument": {
+            "description": "The instrument held.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentId"
+              }
+            ]
+          },
+          "market_value": {
+            "description": "Quantity times mark price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "quantity": {
+            "description": "Signed quantity; negative when short.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "unrealized_pnl": {
+            "description": "Unrealized PnL at the mark.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "Position": {
+        "title": "Position",
+        "description": "The position read model (`GET /positions`).",
+        "type": "object",
+        "required": [
+          "avg_price",
+          "instrument",
+          "quantity",
+          "realized_pnl",
+          "unrealized_pnl"
+        ],
+        "properties": {
+          "avg_price": {
+            "description": "Volume-weighted average entry price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "instrument": {
+            "description": "The instrument held.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentId"
+              }
+            ]
+          },
+          "last_price": {
+            "description": "Last mark price, when known.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "quantity": {
+            "description": "Signed quantity; negative when short.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "realized_pnl": {
+            "description": "Realized PnL booked on this position.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "unrealized_pnl": {
+            "description": "Unrealized PnL at the mark.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "Price": {
+        "title": "Decimal",
+        "type": "string",
+        "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+      },
+      "PriceType": {
+        "title": "PriceType",
+        "description": "Which price of a bar an indicator or query reads.",
+        "oneOf": [
+          {
+            "description": "The close (last traded) price.",
+            "type": "string",
+            "enum": [
+              "last"
+            ]
+          },
+          {
+            "description": "The best bid.",
+            "type": "string",
+            "enum": [
+              "bid"
+            ]
+          },
+          {
+            "description": "The best ask.",
+            "type": "string",
+            "enum": [
+              "ask"
+            ]
+          },
+          {
+            "description": "The open price.",
+            "type": "string",
+            "enum": [
+              "open"
+            ]
+          },
+          {
+            "description": "The high price.",
+            "type": "string",
+            "enum": [
+              "high"
+            ]
+          },
+          {
+            "description": "The low price.",
+            "type": "string",
+            "enum": [
+              "low"
+            ]
+          }
+        ]
+      },
+      "Profile": {
+        "title": "Profile",
+        "description": "Everything stored for one user (`GET` / `PUT /profile`).",
+        "type": "object",
+        "properties": {
+          "alerts": {
+            "description": "Alert rules (opaque to the server; may hold webhook URLs, visible only to this user).",
+            "default": null
+          },
+          "layouts": {
+            "description": "Named workbench layouts (opaque to the server).",
+            "default": {},
+            "type": "object",
+            "additionalProperties": true
+          },
+          "modules": {
+            "description": "Modules by id.",
+            "default": {},
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/Module"
+            }
+          },
+          "portfolios": {
+            "description": "Named portfolios (opaque to the server, like `preferences`).",
+            "default": null
+          },
+          "preferences": {
+            "description": "Preferences and theme (opaque to the server).",
+            "default": null
+          },
+          "revision": {
+            "description": "Monotonic revision, bumped by every successful write. A `PUT /profile` body carries the revision the client last read.",
+            "default": 0,
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "risk_profiles": {
+            "description": "Named risk profiles (opaque to the server).",
+            "default": null
+          },
+          "shortlist": {
+            "description": "Shortlisted symbols.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "watchlists": {
+            "description": "Named watchlists of symbols.",
+            "default": {},
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/Watchlist"
+            }
+          },
+          "workbench": {
+            "description": "Workbench grid and the symbol in each pane (opaque to the server).",
+            "default": null
+          },
+          "workspaces": {
+            "description": "Named workspaces (opaque to the server).",
+            "default": null
+          }
+        },
+        "additionalProperties": true
+      },
+      "ProfileRevision": {
+        "title": "ProfileRevision",
+        "description": "Answer to a profile write that returns no profile: the revision now stored.",
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "revision": {
+            "description": "The profile's revision after the write.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        }
+      },
+      "Quantity": {
+        "title": "Decimal",
+        "type": "string",
+        "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+      },
+      "QuoteTick": {
+        "title": "QuoteTick",
+        "description": "The top-of-book quote read model (`GET /quotes`).\n\nThe transport-level view of [`tantra_core::Tick`]'s quote arm, without the band enrichment, so a plain quote list stays a flat record.",
+        "type": "object",
+        "required": [
+          "ask",
+          "ask_qty",
+          "bid",
+          "bid_qty",
+          "exchange_ts",
+          "instrument",
+          "receive_ts"
+        ],
+        "properties": {
+          "ask": {
+            "description": "Best ask price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "ask_qty": {
+            "description": "Best ask quantity.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "bid": {
+            "description": "Best bid price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "bid_qty": {
+            "description": "Best bid quantity.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "exchange_ts": {
+            "description": "Exchange timestamp.",
+            "type": "string",
+            "format": "date-time"
+          },
+          "instrument": {
+            "description": "The quoted instrument.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentId"
+              }
+            ]
+          },
+          "receive_ts": {
+            "description": "Local ingestion receive timestamp.",
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ResponseEnvelope": {
+        "title": "ResponseEnvelope_for_AnyValue",
+        "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+        "type": "object",
+        "properties": {
+          "api_version": {
+            "description": "The API version the server answered under.",
+            "default": "v1",
+            "type": "string"
+          },
+          "data": {
+            "description": "The payload; absent on a failure."
+          },
+          "error": {
+            "description": "The failure; absent on a success.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/ErrorDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "description": "The wire schema version the payload was written against.",
+            "default": "4",
+            "type": "string"
+          }
+        }
+      },
+      "RiskLimits": {
+        "title": "RiskLimits",
+        "description": "Hard risk limits applied synchronously to all outgoing orders and decisions.\n\nThis struct merges rules from `tantra-ledger::RiskLimits` (deprecated) with the canonical tantra-risk risk limit schema.\n\nLegacy fields from `tantra-ledger` (mapped during Phase 1.2): - `max_notional` (f64, per-order notional ceiling) → `max_notional_per_order` (Decimal) - `max_participation` (f64, fraction of ADV) → `max_quantity_per_order` (Quantity) - `order_rate` (OrderRateLimit) → `order_rate_limit` (OrderRateLimit) - `stale_after_ms` (u64, feed staleness) → tracked via separate circuit breaker\n\nNew tantra-risk fields: - `max_daily_loss` (Decimal, daily cumulative loss limit) - `price_collar_bps` (u32, market order deviation collar in basis points)",
+        "type": "object",
+        "properties": {
+          "freeze_limits": {
+            "description": "Per-scrip freeze limits (exchange single-order quantity ceilings). Maps instrument to maximum allowed quantity per single order. Examples: NIFTY → 1,800, BANKNIFTY → 900.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
+          },
+          "max_daily_loss": {
+            "description": "Maximum allowable daily cumulative loss (in INR).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_mis_leverage": {
+            "description": "Maximum gross leverage for intraday (MIS) products. E.g., 5.0 means max 5x leverage on gross exposure vs equity.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_notional_per_order": {
+            "description": "Maximum notional value (in INR) permitted per single order. `None` = no notional rule; `Some` must be finite and `> 0`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_position_concentration_pct": {
+            "description": "Maximum single-scrip position concentration as a percentage of total portfolio equity (e.g., 10.0 means max 10% in any one scrip).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_quantity_per_order": {
+            "description": "Maximum quantity permitted per single order.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "order_rate_limit": {
+            "description": "Global order rate limit across the platform.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/OrderRateLimit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "price_collar_bps": {
+            "description": "Allowed market order deviation collar in basis points (1 bp = 0.01%).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        }
+      },
+      "RiskRefusal": {
+        "title": "RiskRefusal",
+        "description": "Typed refusal reason from the risk gate.",
+        "oneOf": [
+          {
+            "description": "Platform is under global halt (kill switch active).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "description": "Explanation for the platform halt",
+                    "type": "string"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "global_halted"
+                ]
+              }
+            }
+          },
+          {
+            "description": "The specific algorithm ID is halted.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "algo_id",
+                  "reason"
+                ],
+                "properties": {
+                  "algo_id": {
+                    "description": "Algo ID",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "Reason for halting",
+                    "type": "string"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "algo_halted"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Algo ID is not registered with the broker/exchange (SEBI Retail Algo Circular).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "algo_id",
+                  "reason"
+                ],
+                "properties": {
+                  "algo_id": {
+                    "description": "Unregistered algo ID",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "Reason for rejection",
+                    "type": "string"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "algo_not_registered"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Market-wide index circuit breaker triggered (10%, 15%, 20%).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "index_symbol",
+                  "stage_pct"
+                ],
+                "properties": {
+                  "index_symbol": {
+                    "description": "Index symbol (e.g. \"NIFTY 50\", \"SENSEX\")",
+                    "type": "string"
+                  },
+                  "resume_at": {
+                    "description": "Expected cooling-off resume time if applicable",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time"
+                  },
+                  "stage_pct": {
+                    "description": "Circuit percentage stage (10, 15, or 20)",
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "market_circuit_halt"
+                ]
+              }
+            }
+          },
+          {
+            "description": "SEBI Order-to-Trade Ratio limit exceeded per scrip.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "current_otr",
+                  "instrument",
+                  "max_otr"
+                ],
+                "properties": {
+                  "current_otr": {
+                    "description": "Current calculated OTR for this scrip",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "instrument": {
+                    "description": "Instrument with breached OTR",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/InstrumentId"
+                      }
+                    ]
+                  },
+                  "max_otr": {
+                    "description": "Configured ceiling",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "scrip_otr_breached"
+                ]
+              }
+            }
+          },
+          {
+            "description": "SEBI Order-to-Trade Ratio limit exceeded.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "algo_id",
+                  "current_otr",
+                  "max_otr"
+                ],
+                "properties": {
+                  "algo_id": {
+                    "description": "Breaching algo ID",
+                    "type": "string"
+                  },
+                  "current_otr": {
+                    "description": "Current calculated OTR",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "max_otr": {
+                    "description": "Configured ceiling",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "otr_breached"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Order price violates the scrip-wise circuit price band.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "band",
+                  "price"
+                ],
+                "properties": {
+                  "band": {
+                    "description": "Scrip price band bounds",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PriceBand"
+                      }
+                    ]
+                  },
+                  "price": {
+                    "description": "Order price requested",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "price_band_violation"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Market order's worst-case fill price exceeds the configured price collar around the band reference price (`RiskLimits::price_collar_bps`).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "collar_bps",
+                  "implied_price",
+                  "instrument",
+                  "reference_price"
+                ],
+                "properties": {
+                  "collar_bps": {
+                    "description": "Configured collar in basis points (1 bp = 0.01%)",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0.0
+                  },
+                  "implied_price": {
+                    "description": "Worst-case band-edge fill price that triggered the collar",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "instrument": {
+                    "description": "Instrument being traded",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/InstrumentId"
+                      }
+                    ]
+                  },
+                  "reference_price": {
+                    "description": "Band reference price the collar is anchored to",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "price_collar_violation"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Single order notional value exceeds configured limit.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "limit",
+                  "requested"
+                ],
+                "properties": {
+                  "limit": {
+                    "description": "Configured limit",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "requested": {
+                    "description": "Requested order notional",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "max_notional_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Order quantity exceeds exchange freeze limit for the scrip.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "instrument",
+                  "limit",
+                  "requested"
+                ],
+                "properties": {
+                  "instrument": {
+                    "description": "Instrument being traded",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/InstrumentId"
+                      }
+                    ]
+                  },
+                  "limit": {
+                    "description": "Exchange freeze limit for this scrip",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "requested": {
+                    "description": "Requested quantity",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "freeze_limit_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Order quantity exceeds configured limit.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "limit",
+                  "requested"
+                ],
+                "properties": {
+                  "limit": {
+                    "description": "Configured limit",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "requested": {
+                    "description": "Requested quantity",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "max_quantity_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Order rate limit exceeded in the current event window.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "count",
+                  "limit",
+                  "window_ms"
+                ],
+                "properties": {
+                  "count": {
+                    "description": "Number of orders approved in window",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0.0
+                  },
+                  "limit": {
+                    "description": "Maximum allowed",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0.0
+                  },
+                  "window_ms": {
+                    "description": "Window length in milliseconds",
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0.0
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "order_rate_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Cumulative daily loss threshold exceeded.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "current_loss",
+                  "limit"
+                ],
+                "properties": {
+                  "current_loss": {
+                    "description": "Realized daily loss",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "limit": {
+                    "description": "Maximum allowable loss",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "daily_loss_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Platform is in reduce-only mode and order increases risk.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "details"
+                ],
+                "properties": {
+                  "details": {
+                    "description": "Details",
+                    "type": "string"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "reduce_only_violation"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Single-scrip position concentration exceeds configured percentage of portfolio equity.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "instrument",
+                  "max_pct",
+                  "position_value",
+                  "total_equity"
+                ],
+                "properties": {
+                  "instrument": {
+                    "description": "Instrument being traded",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/InstrumentId"
+                      }
+                    ]
+                  },
+                  "max_pct": {
+                    "description": "Maximum allowed concentration percentage",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "position_value": {
+                    "description": "Current position value in INR",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "total_equity": {
+                    "description": "Total portfolio equity in INR",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "position_concentration_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Gross leverage for MIS (intraday) products exceeds configured limit.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "gross_exposure",
+                  "max_leverage",
+                  "total_equity"
+                ],
+                "properties": {
+                  "gross_exposure": {
+                    "description": "Gross exposure in INR",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "max_leverage": {
+                    "description": "Maximum allowed leverage",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "total_equity": {
+                    "description": "Total portfolio equity in INR",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "mis_leverage_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Order failed structural or tick validation.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "error"
+                ],
+                "properties": {
+                  "error": {
+                    "description": "Description of failure",
+                    "type": "string"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "invalid_order"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "Source": {
+        "title": "Source",
+        "description": "A source feeding a [`Module`], for example a broker adapter or a symbol list.",
+        "type": "object",
+        "required": [
+          "kind",
+          "reference"
+        ],
+        "properties": {
+          "kind": {
+            "description": "Source kind, for example `broker`, `symbols` or `parquet`.",
+            "type": "string"
+          },
+          "reference": {
+            "description": "Kind-specific reference (an adapter name, a list name, a directory).",
+            "type": "string"
+          }
+        }
+      },
+      "TimeInForce": {
+        "title": "TimeInForce",
+        "description": "Time in force.",
+        "oneOf": [
+          {
+            "description": "Order valid for the trading day.",
+            "type": "string",
+            "enum": [
+              "DAY"
+            ]
+          },
+          {
+            "description": "Immediate or Cancel (unfilled portion is cancelled).",
+            "type": "string",
+            "enum": [
+              "IOC"
+            ]
+          },
+          {
+            "description": "Good 'Til Cancelled.",
+            "type": "string",
+            "enum": [
+              "GTC"
+            ]
+          }
+        ]
+      },
+      "Trade": {
+        "title": "Trade",
+        "description": "The trade read model (`GET /trades` and the journal fill records): one realized execution.\n\nThis is the transport-owned wire view of [`tantra_core::FillReport`], kept a distinct type so the wire shape is this surface's contract, not the kernel's: the traded instrument is named `instrument_id` (matching every other wire record on this surface) while the kernel field stays `instrument`. A `Trade` converts losslessly from a [`FillReport`].",
+        "type": "object",
+        "required": [
+          "algo_id",
+          "client_order_id",
+          "fill_id",
+          "instrument_id",
+          "order_id",
+          "price",
+          "quantity",
+          "side",
+          "timestamp"
+        ],
+        "properties": {
+          "account_id": {
+            "description": "Optional account ID (defaults to \"default\" if not provided)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "algo_id": {
+            "description": "Associated algorithm ID",
+            "type": "string"
+          },
+          "client_id": {
+            "description": "Optional client ID",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_order_id": {
+            "description": "Associated client correlation ID",
+            "type": "string",
+            "format": "uuid"
+          },
+          "correlation_id": {
+            "description": "Distributed trace correlation ID",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "fee": {
+            "description": "Total transaction cost charged on this fill (brokerage, statutory levies, and exchange charges combined), in the fill's currency.",
+            "default": {
+              "amount": "0",
+              "currency": "Inr"
+            },
+            "allOf": [
+              {
+                "$ref": "#/definitions/Money"
+              }
+            ]
+          },
+          "fee_breakdown": {
+            "description": "Itemized breakdown of [`Trade::fee`], when the caller has it.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/FeeBreakdown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fill_id": {
+            "description": "Unique fill identifier",
+            "type": "string"
+          },
+          "instrument_id": {
+            "description": "Traded instrument",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentId"
+              }
+            ]
+          },
+          "order_id": {
+            "description": "Associated broker order ID",
+            "type": "string"
+          },
+          "price": {
+            "description": "Exact execution price",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "quantity": {
+            "description": "Executed quantity",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "side": {
+            "description": "Order side",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OrderSide"
+              }
+            ]
+          },
+          "timestamp": {
+            "description": "Execution timestamp",
+            "type": "string",
+            "format": "date-time"
+          },
+          "trace_context": {
+            "description": "Optional W3C distributed trace context",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/TraceContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TradingState": {
+        "title": "TradingState",
+        "description": "The operator trading state every write route evaluates against (ADR 0018).",
+        "oneOf": [
+          {
+            "description": "Orders flow normally.",
+            "type": "string",
+            "enum": [
+              "active"
+            ]
+          },
+          {
+            "description": "Only orders that reduce exposure are accepted.",
+            "type": "string",
+            "enum": [
+              "reducing"
+            ]
+          },
+          {
+            "description": "No order reaches the exchange.",
+            "type": "string",
+            "enum": [
+              "halted"
+            ]
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearer_format": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "market",
+      "description": "Market data endpoints (instruments, quotes, bars, depth)"
+    },
+    {
+      "name": "trading",
+      "description": "Trading endpoints (orders, positions)"
+    },
+    {
+      "name": "portfolio",
+      "description": "Portfolio endpoints (holdings, accounts, trades)"
+    },
+    {
+      "name": "meta",
+      "description": "Meta endpoints (schema, health, capabilities)"
+    },
+    {
+      "name": "trade-journal",
+      "description": "Trade-performance journal (annotations, metrics, calendar, comparison)"
+    },
+    {
+      "name": "market-reference",
+      "description": "Market reference data (symbol profile, economic calendar)"
+    },
+    {
+      "name": "reports",
+      "description": "Ledger, tax, fees, audit, concentration, WAC and equity-curve reports"
+    },
+    {
+      "name": "profile",
+      "description": "User profile (layouts, modules, watchlists)"
+    },
+    {
+      "name": "runs",
+      "description": "Backtest and parameter sweep runs, journals"
+    },
+    {
+      "name": "strategies",
+      "description": "Strategy authoring (catalog, compile, verify)"
+    },
+    {
+      "name": "screener",
+      "description": "AST-filtered stock screening"
+    },
+    {
+      "name": "ws",
+      "description": "WebSocket streaming endpoints"
+    },
+    {
+      "name": "approval",
+      "description": "Order approval workflow (queue, approve, reject)"
+    }
+  ]
+}

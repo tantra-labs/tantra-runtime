@@ -49,7 +49,7 @@ mod ingest;
 mod journal;
 mod market;
 pub mod market_feed;
-mod openapi;
+pub mod openapi;
 mod operator_journal;
 pub mod orders;
 mod portfolio;
