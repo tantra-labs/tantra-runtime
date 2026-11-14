@@ -2,40 +2,46 @@
 //! (agent plan 0006 Phase 3).
 //!
 //! Filings read through the `tantra-data` projection lakehouse via
-//! [`tantra_market_store::FilingsProjectionReader`] (closes
-//! `tantra-data/docs/gaps/0007-filings-rust-bridge.md`). News has no ingestion
-//! anywhere yet, so `news_search` answers an explicit [`PortError::unavailable`]
-//! with the gap citation the chat agent surfaces to the user — never a fabricated
-//! empty success (same honest-stub shape as
+//! [`tantra_market_store::FilingsProjectionReader`]; news reads the `catalog/news`
+//! projections via [`tantra_market_store::NewsProjectionReader`] (closes
+//! `tantra-data/docs/gaps/0007-filings-rust-bridge.md` and
+//! `tantra-data/docs/gaps/0006-news-ingestion.md`). An unconfigured reader answers an
+//! explicit [`PortError::unavailable`] with the gap citation the chat agent surfaces to
+//! the user — never a fabricated empty success (same honest-stub shape as
 //! [`crate::chat_market::FeedMarketReader`] per
-//! `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md`):
-//! - News: no news ingestion exists anywhere yet — see
-//!   `tantra-data/docs/gaps/0006-news-ingestion.md`.
+//! `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md`).
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use tantra_agent_chat_tools::ports::content::{ContentReader, FilingRecord, NewsArticle};
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_core::{Exchange, InstrumentId};
-use tantra_market_store::{FilingProjection, FilingsProjectionReader};
+use tantra_market_store::{
+    FilingProjection, FilingsProjectionReader, NewsProjection, NewsProjectionReader,
+};
 
-/// Content adapter answering news/filings chat tools with explicit gap citations
-/// until their data sources are bridged into this runtime.
+/// Content adapter answering news/filings chat tools with real projections — or explicit
+/// gap citations when a reader is not configured.
 ///
-/// Filings are bridged: when constructed with [`FeedContentReader::with_filings`]
-/// the adapter reads the `tantra-data` filings projections
-/// (`{root}/catalog/filings`) through `tantra-market-store`'s projection reader.
-/// [`FeedContentReader::new`] keeps the unavailable-fallback shape for callers
-/// with no data directory (so the pre-bridge semantics stay unchanged).
+/// Filings are bridged: when constructed with [`FeedContentReader::with_filings`] the
+/// adapter reads the `tantra-data` filings projections (`{root}/catalog/filings`) through
+/// `tantra-market-store`'s projection reader. News is bridged with
+/// [`FeedContentReader::with_news`] over `{root}/catalog/news`. [`FeedContentReader::new`]
+/// keeps the unavailable-fallback shape for callers with no data directory (so the
+/// pre-bridge semantics stay unchanged).
 pub struct FeedContentReader {
     filings: Option<FilingsProjectionReader>,
+    news: Option<NewsProjectionReader>,
 }
 
 impl FeedContentReader {
-    /// Builds the content adapter without a filings projection — every content
-    /// tool answers its explicit gap citation.
+    /// Builds the content adapter without projections — every content tool answers its
+    /// explicit gap citation.
     pub fn new() -> Self {
-        Self { filings: None }
+        Self {
+            filings: None,
+            news: None,
+        }
     }
 
     /// Builds the content adapter over a data directory whose `catalog/filings`
@@ -44,7 +50,15 @@ impl FeedContentReader {
     pub fn with_filings(root: &std::path::Path) -> Self {
         Self {
             filings: Some(FilingsProjectionReader::new(root)),
+            news: None,
         }
+    }
+
+    /// Builds the content adapter over a data directory whose `catalog/news` projections
+    /// `tantra-data` maintains (closes `tantra-data/docs/gaps/0006-news-ingestion.md`).
+    pub fn with_news(mut self, root: &std::path::Path) -> Self {
+        self.news = Some(NewsProjectionReader::new(root));
+        self
     }
 }
 
@@ -87,21 +101,54 @@ fn to_filing_record(projection: FilingProjection) -> Option<FilingRecord> {
     })
 }
 
+/// Maps one lakehouse news projection row onto the chat tool catalog's record.
+fn to_news_article(projection: NewsProjection) -> NewsArticle {
+    NewsArticle {
+        id: projection.article_id,
+        title: projection.title,
+        source: projection.source,
+        url: Some(projection.url),
+        published_at: projection.published_at,
+        summary: projection.summary,
+        instruments: projection.instruments,
+    }
+}
+
 #[async_trait]
 impl ContentReader for FeedContentReader {
     async fn news_search(
         &self,
-        _query: Option<&str>,
-        _instrument: Option<&str>,
-        _limit: Option<usize>,
+        query: Option<&str>,
+        instrument: Option<&str>,
+        limit: Option<usize>,
     ) -> Result<Vec<NewsArticle>, PortError> {
-        // No news ingestion exists anywhere yet — see
-        // tantra-data/docs/gaps/0006-news-ingestion.md. An explicit error, not an
-        // empty success, so the model can't mistake "not wired up" for "nothing
-        // happened in the news today."
-        Err(PortError::unavailable(
-            "news ingestion is not wired up; see tantra-data/docs/gaps/0006-news-ingestion.md",
-        ))
+        let Some(reader) = &self.news else {
+            return Err(PortError::unavailable(
+                "no news projections configured; see tantra-runtime/docs/gaps/0007 item 7",
+            ));
+        };
+        let projections = reader
+            .read()
+            .map_err(|e| PortError::internal(format!("failed to read news projections: {e}")))?;
+        let q = query.unwrap_or("").to_lowercase();
+        let mut articles: Vec<NewsArticle> = projections
+            .into_iter()
+            .map(to_news_article)
+            .filter(|a| {
+                q.is_empty()
+                    || a.title.to_lowercase().contains(&q)
+                    || a.summary
+                        .as_deref()
+                        .is_some_and(|s| s.to_lowercase().contains(&q))
+            })
+            .filter(|a| {
+                instrument
+                    .is_none_or(|inst| a.instruments.iter().any(|i| i.eq_ignore_ascii_case(inst)))
+            })
+            .collect();
+        articles.sort_by_key(|b| std::cmp::Reverse(b.published_at)); // newest first
+        articles.truncate(limit.unwrap_or(usize::MAX));
+        Ok(articles)
     }
 
     async fn filings(

@@ -284,6 +284,102 @@ async fn block_deals_read_through_projection() {
 }
 
 #[tokio::test]
+async fn news_search_read_through_projection() {
+    let dir = tempdir().unwrap();
+    let news_dir = dir.path().join("catalog").join("news");
+    std::fs::create_dir_all(&news_dir).unwrap();
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("published_date", DataType::Date32, false),
+        Field::new("published_at", DataType::Utf8, false),
+        Field::new("article_id", DataType::Utf8, false),
+        Field::new("title", DataType::Utf8, false),
+        Field::new("source", DataType::Utf8, false),
+        Field::new("url", DataType::Utf8, false),
+        Field::new("summary", DataType::Utf8, true),
+        Field::new("instruments", DataType::Utf8, false),
+    ]));
+    let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+    let days = i32::try_from(
+        (chrono::NaiveDate::from_ymd_opt(2026, 11, 6).unwrap() - unix_epoch).num_days(),
+    )
+    .unwrap();
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![days, days])),
+            Arc::new(StringArray::from(vec![
+                "2026-11-06T10:30:00Z",
+                "2026-11-06T09:00:00Z",
+            ])),
+            Arc::new(StringArray::from(vec!["a1", "a2"])),
+            Arc::new(StringArray::from(vec![
+                "Reliance board meeting",
+                "TCS results",
+            ])),
+            Arc::new(StringArray::from(vec!["moneycontrol", "moneycontrol"])),
+            Arc::new(StringArray::from(vec![
+                "https://example.com/reliance",
+                "https://example.com/tcs",
+            ])),
+            Arc::new(StringArray::from(vec![Some("Q3 update"), None])),
+            Arc::new(StringArray::from(vec!["NSE:RELIANCE-EQ", "NSE:TCS-EQ"])),
+        ],
+    )
+    .unwrap();
+
+    let path = news_dir.join("2026-11-06.parquet");
+    let file = std::fs::File::create(&path).unwrap();
+    let mut writer = ArrowWriter::try_new(file, schema, None).unwrap();
+    writer.write(&batch).unwrap();
+    writer.close().unwrap();
+
+    let reader = FeedContentReader::new().with_news(dir.path());
+    let all = reader.news_search(None, None, None).await.unwrap();
+    assert_eq!(all.len(), 2);
+    // Newest first: the 10:30 article sorts before the 09:00 one.
+    assert_eq!(all[0].id, "a1");
+    assert_eq!(all[1].id, "a2");
+    assert_eq!(all[0].title, "Reliance board meeting");
+    assert_eq!(all[0].source, "moneycontrol");
+    assert_eq!(all[0].url.as_deref(), Some("https://example.com/reliance"));
+    assert_eq!(all[0].summary.as_deref(), Some("Q3 update"));
+    assert_eq!(all[0].instruments, vec!["NSE:RELIANCE-EQ"]);
+    assert_eq!(
+        all[0].published_at.to_rfc3339(),
+        "2026-11-06T10:30:00+00:00"
+    );
+    assert_eq!(all[1].summary, None);
+
+    let only_reliance = reader
+        .news_search(Some("reliance"), None, None)
+        .await
+        .unwrap();
+    assert_eq!(only_reliance.len(), 1);
+    assert_eq!(only_reliance[0].id, "a1");
+
+    let only_tcs = reader
+        .news_search(None, Some("NSE:TCS-EQ"), None)
+        .await
+        .unwrap();
+    assert_eq!(only_tcs.len(), 1);
+    assert_eq!(only_tcs[0].id, "a2");
+
+    // No reader wired: the adapter answers its explicit gap citation, not an empty
+    // success, so the model can't mistake "not wired up" for "no news today".
+    let unconfigured = FeedContentReader::new();
+    let err = unconfigured
+        .news_search(None, None, None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message.contains("no news projections configured"),
+        "unconfigured news must cite the missing projections, got: {err}"
+    );
+}
+
+#[tokio::test]
 async fn filings_unavailable_without_projection() {
     let reader = FeedContentReader::new();
     let err = reader.filings(None, None, None).await.unwrap_err();

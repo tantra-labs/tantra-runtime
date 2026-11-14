@@ -10,7 +10,10 @@ use tantra_agent_chat_tools::ports::error::PortErrorKind;
 use tantra_agent_chat_tools::ports::market::MarketReader;
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
-use tantra_core::{Currency, Exchange, InstrumentId, InstrumentKind, OptionType, Price, PriceBand};
+use tantra_core::{
+    Currency, Exchange, InstrumentId, InstrumentKind, OptionType, Price, PriceBand, Quantity,
+};
+use tantra_market_store::{OpenInterestSnapshot, write_oi_file};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api_rest::chat_market::{FeedMarketReader, FeedSnapshotSource};
 use tantra_runtime_api_rest::market_feed::ports::{
@@ -19,6 +22,7 @@ use tantra_runtime_api_rest::market_feed::ports::{
 use tantra_runtime_api_rest::market_feed::wire::{
     Bar, BarAggregation, BarSpecification, BarType, Instrument, PriceType, QuoteTick, UnixNanos,
 };
+use tempfile::tempdir;
 
 fn ts(hour: u32) -> UnixNanos {
     UnixNanos::from_datetime(Utc.with_ymd_and_hms(2026, 1, 5, hour, 0, 0).unwrap())
@@ -285,6 +289,91 @@ fn option_instrument(symbol: &str, expiry: &str, strike: f64, ot: OptionType) ->
         Some(ot),
         Some("NIFTY".to_string()),
     )
+}
+
+#[tokio::test]
+async fn oi_buildup_reads_real_store_and_bars() {
+    let today = Utc::now().date_naive();
+    let day2 = today - chrono::Days::new(2);
+    let day1 = today - chrono::Days::new(1);
+
+    // OI lakehouse: three dated snapshot files with rising open interest, so the
+    // analyzer classifies a long buildup (price up, OI up) over the window.
+    let dir = tempdir().unwrap();
+    let snapshot = |date: chrono::NaiveDate, oi: i64| OpenInterestSnapshot {
+        instrument: reliance(),
+        as_of: date,
+        open_interest: Quantity::new(Decimal::from(oi)),
+    };
+    write_oi_file(dir.path(), day2, &[snapshot(day2, 100)]).unwrap();
+    write_oi_file(dir.path(), day1, &[snapshot(day1, 200)]).unwrap();
+    write_oi_file(dir.path(), today, &[snapshot(today, 250)]).unwrap();
+
+    // Daily bars on the same dates with rising closes (fixed-2026-01-05 `ts(hour)`
+    // timestamps would fall outside [today-5, today], so build today-based ones).
+    let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
+    let bar_at = |date: chrono::NaiveDate, close: f64| {
+        let ts =
+            UnixNanos::from_datetime(Utc.from_utc_datetime(&date.and_hms_opt(10, 0, 0).unwrap()));
+        Bar::new(
+            BarType::new(reliance(), spec),
+            close,
+            close,
+            close,
+            close,
+            1_000.0,
+            ts,
+            ts,
+        )
+    };
+    let bars = vec![
+        bar_at(day2, 100.0),
+        bar_at(day1, 120.0),
+        bar_at(today, 150.0),
+    ];
+    let feed = Arc::new(FakeFeed {
+        bars,
+        ..Default::default()
+    });
+    let reader = FeedMarketReader::new(
+        feed.clone(),
+        feed.clone(),
+        feed,
+        Arc::new(Mutex::new(RiskEngine::default())),
+    )
+    .with_oi_store(dir.path());
+
+    let result = reader.oi_buildup(&reliance(), None).await.unwrap();
+    assert_eq!(result.classification, "long_buildup");
+    // The parquet store persists OI at scale 4, so 250 round-trips as 250.0000.
+    assert_eq!(
+        result.open_interest,
+        Quantity::new(Decimal::new(2_500_000, 4))
+    );
+    // (250 - 100) / 100 * 100; computed identically to the adapter so scale matches.
+    let first_oi = Decimal::new(1_000_000, 4);
+    let last_oi = Decimal::new(2_500_000, 4);
+    assert_eq!(
+        result.oi_change_pct,
+        Some((last_oi - first_oi) / first_oi * Decimal::from(100))
+    );
+    let first_close = Decimal::from_f64_retain(100.0).unwrap();
+    let last_close = Decimal::from_f64_retain(150.0).unwrap();
+    assert_eq!(
+        result.price_change_pct,
+        Some((last_close - first_close) / first_close * Decimal::from(100))
+    );
+}
+
+#[tokio::test]
+async fn oi_buildup_unavailable_without_store() {
+    let reader = reader_over(FakeFeed::default(), RiskEngine::default());
+    let err = reader.oi_buildup(&reliance(), None).await.unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message.contains("no open-interest store wired"),
+        "unconfigured OI buildup must cite the missing store, got: {err}"
+    );
 }
 
 #[tokio::test]

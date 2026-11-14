@@ -26,8 +26,9 @@ use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
 use tantra_core::{Currency, Exchange, InstrumentId, Money, Price, PriceBand, Quantity};
 use tantra_market_store::{
-    BlockDealProjection, BlockDealsProjectionReader, CorporateActionProjection,
-    CorporateActionsProjectionReader, InstrumentChainReader,
+    BlockDealProjection, BlockDealsProjectionReader, BuildupAnalyzer, BuildupReader,
+    CorporateActionProjection, CorporateActionsProjectionReader, InstrumentChainReader,
+    OpenInterestStore, ParquetOpenInterestStore,
 };
 use tantra_risk::RiskEngine;
 
@@ -57,6 +58,8 @@ pub struct FeedMarketReader {
     chain: Arc<dyn ChainReader>,
     corporate_actions: Option<CorporateActionsProjectionReader>,
     block_deals: Option<BlockDealsProjectionReader>,
+    oi_store: Option<Arc<dyn OpenInterestStore>>,
+    buildup: Option<Arc<dyn BuildupReader>>,
 }
 
 impl FeedMarketReader {
@@ -82,6 +85,8 @@ impl FeedMarketReader {
             chain,
             corporate_actions: None,
             block_deals: None,
+            oi_store: None,
+            buildup: None,
         }
     }
 
@@ -117,6 +122,26 @@ impl FeedMarketReader {
             block_deals: Some(BlockDealsProjectionReader::new(root)),
             ..Self::new(instruments, bars, quotes, risk_engine)
         }
+    }
+
+    /// Opens the `tantra-data` OI lakehouse (`{root}/open_interest`) and wires a
+    /// [`BuildupAnalyzer`] over it and this reader's daily-bar source (closes
+    /// `tantra-runtime/docs/gaps/0007` item 13). A store that cannot be opened leaves
+    /// `oi_buildup` answering its explicit gap error rather than failing the build.
+    pub fn with_oi_store(mut self, root: &std::path::Path) -> Self {
+        match ParquetOpenInterestStore::open(root) {
+            Ok(store) => {
+                let store: Arc<dyn OpenInterestStore> = Arc::new(store);
+                let analyzer: Arc<dyn BuildupReader> =
+                    Arc::new(BuildupAnalyzer::new(store.clone(), self.bars.clone()));
+                self.oi_store = Some(store);
+                self.buildup = Some(analyzer);
+            }
+            Err(e) => {
+                tracing::warn!("open-interest store not wired: {e}");
+            }
+        }
+        self
     }
 }
 
@@ -398,18 +423,110 @@ impl MarketReader for FeedMarketReader {
 
     async fn oi_buildup(
         &self,
-        _instrument: &InstrumentId,
-        _lookback_days: Option<u32>,
+        instrument: &InstrumentId,
+        lookback_days: Option<u32>,
     ) -> Result<OiBuildupSnapshot, PortError> {
-        // The OI time-series store + four-quadrant classifier exist in `tantra-market-store`
-        // (`tantra-market/docs/gaps/0002` closed) but this runtime holds no OI store
-        // instance — see docs/gaps/0007 item 12. An explicit error, not an empty success,
-        // so the model can't mistake "not wired up" for "no position movement" (same
-        // pattern as `indicators`/`macro_series` above).
-        Err(PortError::unavailable(
-            "no open-interest store wired in the runtime chat adapters; see tantra-runtime/docs/gaps/0007 item 12",
-        ))
+        let Some(store) = &self.oi_store else {
+            return Err(PortError::unavailable(
+                "no open-interest store wired in the runtime chat adapters; see tantra-runtime/docs/gaps/0007 item 13",
+            ));
+        };
+        let Some(buildup) = &self.buildup else {
+            return Err(PortError::unavailable(
+                "no open-interest store wired in the runtime chat adapters; see tantra-runtime/docs/gaps/0007 item 13",
+            ));
+        };
+        let (start, end) = oi_window(lookback_days);
+        let signal = buildup
+            .buildup(instrument, start, end)
+            .await
+            .map_err(feed_port_error)?
+            .ok_or_else(|| {
+                PortError::unavailable(
+                    "not enough OI or bar observations in the window; see tantra-runtime/docs/gaps/0007 item 13",
+                )
+            })?;
+
+        // Absolute end-of-window OI and percentage changes need the raw series; the
+        // analyzer only classifies the move.
+        let history = store
+            .history(instrument, start, Some(end))
+            .await
+            .map_err(feed_port_error)?;
+        let open_interest = history.last().map(|s| s.open_interest).ok_or_else(|| {
+            PortError::unavailable(
+                "open-interest series is empty; see tantra-runtime/docs/gaps/0007 item 13",
+            )
+        })?;
+        let first_oi = history
+            .first()
+            .map(|s| s.open_interest.value())
+            .ok_or_else(|| {
+                PortError::unavailable(
+                    "open-interest series is empty; see tantra-runtime/docs/gaps/0007 item 13",
+                )
+            })?;
+        let oi_change_pct = if first_oi.is_zero() {
+            None
+        } else {
+            let last_oi = open_interest.value();
+            Some((last_oi - first_oi) / first_oi * Decimal::from(100))
+        };
+
+        let spec = crate::market_feed::wire::BarSpecification::new(
+            1,
+            crate::market_feed::wire::BarAggregation::Day,
+            crate::market_feed::wire::PriceType::Last,
+        );
+        let from = start.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let to = end
+            .checked_add_days(chrono::Days::new(1))
+            .unwrap_or(end)
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let request = crate::market_feed::ports::BarRequest::new(
+            instrument.clone(),
+            spec,
+            Some(crate::market_feed::wire::UnixNanos::from_datetime(from)),
+            Some(crate::market_feed::wire::UnixNanos::from_datetime(to)),
+        )
+        .map_err(feed_port_error)?;
+        let bars = self
+            .bars
+            .read_bars(&request)
+            .await
+            .map_err(feed_port_error)?;
+        let first_close = bars.first().map(|b| to_decimal(b.close())).ok_or_else(|| {
+            PortError::unavailable("not enough bar observations in the window; see tantra-runtime/docs/gaps/0007 item 13")
+        })?;
+        let last_close = bars
+            .last()
+            .map(|b| to_decimal(b.close()))
+            .unwrap_or(first_close);
+        let price_change_pct = if first_close.is_zero() {
+            None
+        } else {
+            Some((last_close - first_close) / first_close * Decimal::from(100))
+        };
+
+        Ok(OiBuildupSnapshot {
+            instrument: instrument.clone(),
+            as_of: end.and_hms_opt(0, 0, 0).unwrap().and_utc(),
+            open_interest,
+            oi_change_pct,
+            price_change_pct,
+            classification: signal.class.to_string(),
+        })
     }
+}
+
+/// The `[start, end]` analysis window for a lookback of `lookback_days` trading days
+/// ending today (default 5), as `NaiveDate`s.
+fn oi_window(lookback_days: Option<u32>) -> (chrono::NaiveDate, chrono::NaiveDate) {
+    let end = chrono::Utc::now().date_naive();
+    let start = end - chrono::Days::new(u64::from(lookback_days.unwrap_or(5)));
+    (start, end)
 }
 
 /// Parses a canonical `EXCHANGE:SYMBOL` instrument string (the projection form, e.g.
