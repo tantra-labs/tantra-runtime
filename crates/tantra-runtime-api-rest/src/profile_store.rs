@@ -35,6 +35,15 @@ pub const MAX_WATCHLISTS: usize = 100;
 /// Most symbols in one watchlist, and in the shortlist.
 pub const MAX_SYMBOLS: usize = 5000;
 
+/// Most named portfolios one profile may hold (when stored as an object).
+pub const MAX_PORTFOLIOS: usize = 50;
+
+/// Most named risk profiles one profile may hold (when stored as an object).
+pub const MAX_RISK_PROFILES: usize = 50;
+
+/// Most named workspaces one profile may hold (when stored as an object).
+pub const MAX_WORKSPACES: usize = 50;
+
 /// Why a profile operation failed.
 #[derive(Debug, thiserror::Error)]
 pub enum ProfileError {
@@ -166,11 +175,24 @@ fn encode_within_limits(profile: &Profile) -> Result<Vec<u8>> {
         return too_large(format!("more than {MAX_WATCHLISTS} watchlists"));
     }
     if profile.shortlist.len() > MAX_SYMBOLS
-        || profile.watchlists.values().any(|w| w.len() > MAX_SYMBOLS)
+        || profile
+            .watchlists
+            .values()
+            .any(|w| w.instrument_ids.len() > MAX_SYMBOLS)
     {
         return too_large(format!(
             "more than {MAX_SYMBOLS} symbols in a watchlist or the shortlist"
         ));
+    }
+    let object_len = |v: &serde_json::Value| v.as_object().map(|m| m.len()).unwrap_or(0);
+    if object_len(&profile.portfolios) > MAX_PORTFOLIOS {
+        return too_large(format!("more than {MAX_PORTFOLIOS} portfolios"));
+    }
+    if object_len(&profile.risk_profiles) > MAX_RISK_PROFILES {
+        return too_large(format!("more than {MAX_RISK_PROFILES} risk profiles"));
+    }
+    if object_len(&profile.workspaces) > MAX_WORKSPACES {
+        return too_large(format!("more than {MAX_WORKSPACES} workspaces"));
     }
     let bytes = serde_json::to_vec_pretty(profile)?;
     if bytes.len() > MAX_PROFILE_BYTES {

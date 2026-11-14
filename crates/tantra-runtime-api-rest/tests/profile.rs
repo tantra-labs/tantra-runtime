@@ -427,6 +427,58 @@ async fn put_profile_validates_map_keys_like_the_sub_resources() {
 }
 
 #[tokio::test]
+async fn watchlists_portfolios_risk_profiles_and_workspaces_round_trip() {
+    let (app, _dir) = router(&[]);
+    let put = json!({
+        "revision": 0,
+        "watchlists": {"w1": {"name": "Core", "instrument_ids": ["INFY"]}},
+        "portfolios": {"long": {"target": 0.6}},
+        "risk_profiles": {"m": {"max_loss": 0.02}},
+        "workspaces": {"ws1": {"name": "Main"}}
+    });
+    let (status, body) = send(&app, Method::PUT, "/profile", Some(put), None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, body) = send(&app, Method::GET, "/profile", None, None).await;
+    assert_eq!(body["data"]["watchlists"]["w1"]["name"], json!("Core"));
+    assert_eq!(
+        body["data"]["watchlists"]["w1"]["instrument_ids"],
+        json!(["INFY"])
+    );
+    assert_eq!(body["data"]["portfolios"], json!({"long": {"target": 0.6}}));
+    assert_eq!(
+        body["data"]["risk_profiles"],
+        json!({"m": {"max_loss": 0.02}})
+    );
+    assert_eq!(body["data"]["workspaces"], json!({"ws1": {"name": "Main"}}));
+
+    // The legacy bare-array watchlist form still round-trips.
+    let put = json!({"revision": 1, "watchlists": {"core": ["INFY"]}});
+    let (status, body) = send(&app, Method::PUT, "/profile", Some(put), None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, body) = send(&app, Method::GET, "/profile", None, None).await;
+    assert_eq!(
+        body["data"]["watchlists"]["core"]["instrument_ids"],
+        json!(["INFY"])
+    );
+    assert_eq!(body["data"]["watchlists"]["core"]["name"], json!(""));
+}
+
+#[tokio::test]
+async fn new_watchlist_fields_respect_count_limits() {
+    let (app, _dir) = router(&[]);
+    let portfolios: Value = (0..51).map(|i| (format!("p{i}"), json!({}))).collect();
+    let put = json!({"revision": 0, "portfolios": portfolios});
+    let (status, body) = send(&app, Method::PUT, "/profile", Some(put), None).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "{body}");
+    assert_eq!(
+        body["error"]["context"]["reason"],
+        json!("profile_too_large")
+    );
+    let (_, body) = send(&app, Method::GET, "/profile", None, None).await;
+    assert_eq!(body["data"]["revision"], json!(0));
+}
+
+#[tokio::test]
 async fn unknown_profile_fields_survive_a_get_put_round_trip() {
     let (app, _dir) = router(&[]);
     let put = json!({"revision": 0, "futureThing": {"k": 1}});

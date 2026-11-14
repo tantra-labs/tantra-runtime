@@ -9,6 +9,7 @@ use serde_json::Value;
 use tantra_agent_chat_tools::ports::alert::{AlertReader, AlertStatus, AlertWriter, PriceAlert};
 use tantra_agent_chat_tools::ports::error::PortErrorKind;
 use tantra_core::Price;
+use tantra_runtime_api::Watchlist;
 use tantra_runtime_api_rest::chat_alerts::ProfileAlertStore;
 use tantra_runtime_api_rest::{DEFAULT_USER_ID, Profile, ProfileStore};
 
@@ -226,7 +227,10 @@ async fn alert_writes_bump_the_revision_and_leave_other_profile_fields_intact() 
             Profile {
                 watchlists: std::collections::BTreeMap::from([(
                     "core".to_string(),
-                    vec!["NSE:TCS".to_string()],
+                    Watchlist {
+                        name: String::new(),
+                        instrument_ids: vec!["NSE:TCS".to_string()],
+                    },
                 )]),
                 preferences: serde_json::json!({ "theme": "dark" }),
                 ..Default::default()
@@ -243,7 +247,10 @@ async fn alert_writes_bump_the_revision_and_leave_other_profile_fields_intact() 
         "one bump for the seed put, one for the alert"
     );
     assert_eq!(
-        profile.watchlists.get("core").map(Vec::as_slice),
+        profile
+            .watchlists
+            .get("core")
+            .map(|w| w.instrument_ids.as_slice()),
         Some(&["NSE:TCS".to_string()][..])
     );
     assert_eq!(profile.preferences["theme"], "dark");

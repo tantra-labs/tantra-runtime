@@ -42,6 +42,7 @@ pub use market::{
 };
 pub use profile::{
     LayoutDocument, LayoutsResponse, Module, ModulesResponse, Profile, ProfileRevision, Source,
+    Watchlist,
 };
 pub use requests::{
     BacktestEventsQuery, BacktestRequest, BarsIngestRequest, BarsQuery, DepthQuery,

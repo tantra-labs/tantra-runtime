@@ -33,6 +33,37 @@ pub struct Module {
     pub enabled: bool,
 }
 
+/// One named watchlist, keyed by its own stable id in `Profile.watchlists`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, JsonSchema)]
+pub struct Watchlist {
+    /// Display name of the watchlist (may differ from its map key / stable id).
+    pub name: String,
+    /// The instrument symbols the watchlist holds.
+    pub instrument_ids: Vec<String>,
+}
+
+/// Wire shape for `Watchlist` that also accepts the legacy bare-array form.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WatchlistWire {
+    /// Legacy bare symbol list: `["INFY"]` (pre-T7.4 stored profiles).
+    Legacy(Vec<String>),
+    /// New structured form.
+    Structured(Watchlist),
+}
+
+impl<'de> Deserialize<'de> for Watchlist {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match WatchlistWire::deserialize(d)? {
+            WatchlistWire::Structured(w) => Ok(w),
+            WatchlistWire::Legacy(symbols) => Ok(Watchlist {
+                name: String::new(),
+                instrument_ids: symbols,
+            }),
+        }
+    }
+}
+
 /// Everything stored for one user (`GET` / `PUT /profile`).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -45,7 +76,7 @@ pub struct Profile {
     /// Modules by id.
     pub modules: BTreeMap<String, Module>,
     /// Named watchlists of symbols.
-    pub watchlists: BTreeMap<String, Vec<String>>,
+    pub watchlists: BTreeMap<String, Watchlist>,
     /// Shortlisted symbols.
     pub shortlist: Vec<String>,
     /// Preferences and theme (opaque to the server).
@@ -54,6 +85,12 @@ pub struct Profile {
     pub workbench: Value,
     /// Alert rules (opaque to the server; may hold webhook URLs, visible only to this user).
     pub alerts: Value,
+    /// Named portfolios (opaque to the server, like `preferences`).
+    pub portfolios: Value,
+    /// Named risk profiles (opaque to the server).
+    pub risk_profiles: Value,
+    /// Named workspaces (opaque to the server).
+    pub workspaces: Value,
     /// Fields this server version does not know (written by a newer client or server); kept so
     /// a get / put round trip does not drop them.
     #[serde(flatten)]
