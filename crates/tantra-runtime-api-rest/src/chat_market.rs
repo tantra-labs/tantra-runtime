@@ -18,9 +18,9 @@ use chrono::{DateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
-    BlockDeal, CorporateAction, InstitutionalFlow, InstrumentSearchResult, MacroSeries, MarketBar,
-    MarketDepth, MarketHistory, MarketIndicators, MarketQuote, MarketReader, OptionContract,
-    OptionsChain,
+    BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
+    MacroSeries, MarketBar, MarketDepth, MarketHistory, MarketIndicators, MarketQuote,
+    MarketReader, OiBuildupSnapshot, OptionContract, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
@@ -346,6 +346,37 @@ impl MarketReader for FeedMarketReader {
         // happened that day" (same pattern as `indicators`/`macro_series` above).
         Err(PortError::unavailable(
             "FII/DII institutional-flow Rust bridge not wired; see tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md",
+        ))
+    }
+
+    async fn delivery_stats(
+        &self,
+        _instrument: &InstrumentId,
+        _range: DateRange,
+        _limit: Option<usize>,
+    ) -> Result<Vec<DeliveryBar>, PortError> {
+        // Delivery % is ingested Python-side (`tantra-data` gap 0014 closed) but has no
+        // Rust-consumer bridge yet — see
+        // tantra-data/docs/gaps/0019-delivery-rust-bridge.md. An explicit error, not an
+        // empty success, so the model can't mistake "not wired up" for "no delivery
+        // prints" (same pattern as `indicators`/`macro_series` above).
+        Err(PortError::unavailable(
+            "delivery % Rust bridge not wired; see tantra-data/docs/gaps/0019-delivery-rust-bridge.md",
+        ))
+    }
+
+    async fn oi_buildup(
+        &self,
+        _instrument: &InstrumentId,
+        _lookback_days: Option<u32>,
+    ) -> Result<OiBuildupSnapshot, PortError> {
+        // The OI time-series store + four-quadrant classifier exist in `tantra-market-store`
+        // (`tantra-market/docs/gaps/0002` closed) but this runtime holds no OI store
+        // instance — see docs/gaps/0007 item 12. An explicit error, not an empty success,
+        // so the model can't mistake "not wired up" for "no position movement" (same
+        // pattern as `indicators`/`macro_series` above).
+        Err(PortError::unavailable(
+            "no open-interest store wired in the runtime chat adapters; see tantra-runtime/docs/gaps/0007 item 12",
         ))
     }
 }

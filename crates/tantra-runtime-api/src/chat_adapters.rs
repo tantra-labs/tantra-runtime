@@ -13,8 +13,9 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
-    BlockDeal, CorporateAction, InstitutionalFlow, InstrumentSearchResult, MacroSeries, MarketBar,
-    MarketDepth, MarketHistory, MarketIndicators, MarketQuote, MarketReader, OptionsChain,
+    BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
+    MacroSeries, MarketBar, MarketDepth, MarketHistory, MarketIndicators, MarketQuote,
+    MarketReader, OiBuildupSnapshot, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::{
     AccountSummary, DateRange, OrderFilter, PortfolioReader,
@@ -205,6 +206,8 @@ pub struct RuntimeMarketReader {
     corporate_actions: RwLock<Vec<CorporateAction>>,
     depth: RwLock<HashMap<InstrumentId, MarketDepth>>,
     institutional_flows: RwLock<Vec<InstitutionalFlow>>,
+    delivery_stats: RwLock<Vec<DeliveryBar>>,
+    oi_buildup: RwLock<HashMap<InstrumentId, OiBuildupSnapshot>>,
 }
 
 impl RuntimeMarketReader {
@@ -276,6 +279,19 @@ impl RuntimeMarketReader {
     /// Set or replace the daily FII/DII institutional-flow list.
     pub fn set_institutional_flows(&self, flows: Vec<InstitutionalFlow>) {
         *self.institutional_flows.write().unwrap() = flows;
+    }
+
+    /// Set or replace the delivery-adjusted volume history list.
+    pub fn set_delivery_stats(&self, bars: Vec<DeliveryBar>) {
+        *self.delivery_stats.write().unwrap() = bars;
+    }
+
+    /// Set or update the OI-buildup classification snapshot for an instrument.
+    pub fn set_oi_buildup(&self, instrument: InstrumentId, snapshot: OiBuildupSnapshot) {
+        self.oi_buildup
+            .write()
+            .unwrap()
+            .insert(instrument, snapshot);
     }
 }
 
@@ -518,6 +534,62 @@ impl MarketReader for RuntimeMarketReader {
             ));
         }
         Ok(flows.clone())
+    }
+
+    async fn delivery_stats(
+        &self,
+        instrument: &InstrumentId,
+        range: DateRange,
+        limit: Option<usize>,
+    ) -> Result<Vec<DeliveryBar>, PortError> {
+        let bars = self.delivery_stats.read().unwrap();
+        if bars.is_empty() {
+            // Nothing seeded and the delivery-% series is Python-side only (no Rust
+            // consumer bridge) — see
+            // tantra-data/docs/gaps/0019-delivery-rust-bridge.md. An explicit error,
+            // not an empty success, so callers can't mistake "not wired up" for "this
+            // instrument had no delivery prints."
+            return Err(PortError::unavailable(
+                "delivery % data is Python-side only; see tantra-data/docs/gaps/0019-delivery-rust-bridge.md",
+            ));
+        }
+        let mut hits: Vec<DeliveryBar> = bars
+            .iter()
+            .filter(|b| {
+                b.instrument == *instrument
+                    && range.start.is_none_or(|start| b.date >= start)
+                    && range.end.is_none_or(|end| b.date < end)
+            })
+            .cloned()
+            .collect();
+        const MAX_DELIVERY_CAP: usize = 50;
+        let effective_limit = limit
+            .map(|l| l.min(MAX_DELIVERY_CAP))
+            .unwrap_or(MAX_DELIVERY_CAP);
+        hits.truncate(effective_limit);
+        Ok(hits)
+    }
+
+    async fn oi_buildup(
+        &self,
+        instrument: &InstrumentId,
+        _lookback_days: Option<u32>,
+    ) -> Result<OiBuildupSnapshot, PortError> {
+        let map = self.oi_buildup.read().unwrap();
+        if map.is_empty() {
+            // Nothing seeded and the runtime chat adapters have no OI store wired —
+            // the store + classifier live in `tantra-market-store` (gap 0002 closed)
+            // but are not constructed here; see
+            // tantra-runtime/docs/gaps/0007 item 12. An explicit error, not an empty
+            // success, so callers can't mistake "not wired up" for "no position
+            // movement in this instrument."
+            return Err(PortError::unavailable(
+                "no open-interest store wired in the runtime chat adapters; see tantra-runtime/docs/gaps/0007 item 12",
+            ));
+        }
+        map.get(instrument)
+            .cloned()
+            .ok_or_else(|| PortError::not_found(format!("OI buildup not found for {instrument}")))
     }
 }
 

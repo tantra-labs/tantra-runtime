@@ -53,6 +53,28 @@ and are either approximated or answered with an explicit error rather than fabri
    population additionally waits on
    `tantra-data/docs/gaps/0009-corporate-actions-ingestion.md`. The seedable
    `RuntimeMarketReader` accepts a `set_corporate_actions` store for tests.
+10. **`MarketReader::market_depth` always answers `PortError::unavailable`** in
+    `FeedMarketReader`. Added with chat tool `market_depth` (`tantra-agent` plan 0007 Track 2
+    Phase 4): the feed ports serve top-of-book quotes only; no L2 depth source exists
+    (`tantra-market/docs/gaps/0006-l2-order-book-depth.md`). The seedable
+    `RuntimeMarketReader` accepts a `set_market_depth` store for tests.
+11. **`MarketReader::institutional_flows` always answers `PortError::unavailable`** in
+    `FeedMarketReader`. Added with chat tool `institutional_flows` (plan 0007 Track 2 Phase 4):
+    FII/DII daily flows are ingested Python-side (`tantra-data` gap 0013 closed) but have no
+    Rust-consumer bridge (`tantra-data/docs/gaps/0017-institutional-flow-rust-bridge.md`). The
+    seedable `RuntimeMarketReader` accepts a `set_institutional_flows` store for tests.
+12. **`MarketReader::delivery_stats` always answers `PortError::unavailable`** in
+    `FeedMarketReader`. Added with chat tool `delivery_analysis` (`tantra-agent` plan 0010
+    Phase 2): delivery % is ingested Python-side (`tantra-data` gap 0014 closed) but has no
+    Rust-consumer bridge (`tantra-data/docs/gaps/0019-delivery-rust-bridge.md`). The seedable
+    `RuntimeMarketReader` accepts a `set_delivery_stats` store for tests.
+13. **`MarketReader::oi_buildup` always answers `PortError::unavailable`** in
+    `FeedMarketReader`. Added with chat tool `oi_buildup` (plan 0010 Phase 3): the OI
+    time-series store + four-quadrant classifier live in `tantra-market-store`
+    (`tantra-market/docs/gaps/0002` closed) but this runtime holds no OI store instance —
+    wiring `ParquetOpenInterestStore::open(data_root)` + `BuildupAnalyzer` into
+    `FeedMarketReader` is the remaining work. The seedable `RuntimeMarketReader` accepts a
+    `set_oi_buildup` store for tests.
 
 ## Why
 
@@ -84,3 +106,12 @@ scope for a read-through wiring pass.
 - Item 9: close `tantra-data` gaps 0008 (corporate-actions → Rust bridge) and 0009
   (historical ingestion), then replace `FeedMarketReader::corporate_actions`'s stub with a
   real read through the bridge.
+- Item 10: close `tantra-market/docs/gaps/0006` (L2 depth source), then replace
+  `FeedMarketReader::market_depth`'s stub with a real read.
+- Item 11: close `tantra-data/docs/gaps/0017` (institutional-flow → Rust bridge), then
+  replace `FeedMarketReader::institutional_flows`'s stub with a real read through the bridge.
+- Item 12: close `tantra-data/docs/gaps/0019` (delivery % → Rust bridge), then replace
+  `FeedMarketReader::delivery_stats`'s stub with a real read through the bridge.
+- Item 13: wire `ParquetOpenInterestStore::open(data_root)` + `BuildupAnalyzer` (both in
+  `tantra-market-store`, gap 0002 closed) into `FeedMarketReader`, then replace its
+  `oi_buildup` stub with a real read through `BuildupReader`.

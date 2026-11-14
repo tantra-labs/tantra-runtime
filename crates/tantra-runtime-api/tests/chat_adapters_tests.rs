@@ -5,8 +5,9 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tantra_agent_chat_tools::ports::error::PortErrorKind;
 use tantra_agent_chat_tools::ports::market::{
-    BlockDeal, CorporateAction, InstitutionalFlow, InstrumentSearchResult, MacroSeries, MarketBar,
-    MarketDepth, MarketDepthLevel, MarketQuote, MarketReader, OptionContract, OptionsChain,
+    BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
+    MacroSeries, MarketBar, MarketDepth, MarketDepthLevel, MarketQuote, MarketReader,
+    OiBuildupSnapshot, OptionContract, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::{DateRange, OrderFilter, PortfolioReader};
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
@@ -455,6 +456,78 @@ async fn test_runtime_market_reader() {
     let fetched_flows = reader.institutional_flows(None).await.unwrap();
     assert_eq!(fetched_flows.len(), 1);
     assert_eq!(fetched_flows[0], flow);
+
+    // 12. Delivery analysis — explicitly unavailable until seeded, then filtered by
+    //     instrument/range and capped by limit.
+    let delivery_err = reader
+        .delivery_stats(&inst, DateRange::new(None, None), None)
+        .await
+        .unwrap_err();
+    assert_eq!(delivery_err.kind, PortErrorKind::Unavailable);
+
+    let delivery_day = DeliveryBar {
+        instrument: inst.clone(),
+        date: now,
+        traded_qty: Quantity::new(dec!(1200000)),
+        delivered_qty: Quantity::new(dec!(900000)),
+        delivery_pct: dec!(75.0),
+    };
+    let other_day = DeliveryBar {
+        instrument: InstrumentId::new(Exchange::Nse, "TCS"),
+        date: now + Duration::days(3),
+        traded_qty: Quantity::new(dec!(500000)),
+        delivered_qty: Quantity::new(dec!(200000)),
+        delivery_pct: dec!(40.0),
+    };
+    reader.set_delivery_stats(vec![delivery_day.clone(), other_day.clone()]);
+
+    let all_delivery = reader
+        .delivery_stats(&inst, DateRange::new(None, None), None)
+        .await
+        .unwrap();
+    assert_eq!(all_delivery.len(), 1);
+    assert_eq!(all_delivery[0], delivery_day);
+
+    let range_delivery = reader
+        .delivery_stats(
+            &inst,
+            DateRange::new(Some(now - Duration::days(1)), Some(now + Duration::days(1))),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(range_delivery.len(), 1);
+    assert_eq!(range_delivery[0].delivery_pct, dec!(75.0));
+
+    let missing_delivery = reader
+        .delivery_stats(&inst, DateRange::new(None, None), Some(0))
+        .await
+        .unwrap();
+    assert!(missing_delivery.is_empty());
+
+    // 13. OI buildup — explicitly unavailable until seeded, then served from the map.
+    let oi_err = reader.oi_buildup(&inst, None).await.unwrap_err();
+    assert_eq!(oi_err.kind, PortErrorKind::Unavailable);
+
+    let buildup = OiBuildupSnapshot {
+        instrument: inst.clone(),
+        as_of: now,
+        open_interest: Quantity::new(dec!(1250000)),
+        oi_change_pct: Some(dec!(6.5)),
+        price_change_pct: Some(dec!(2.1)),
+        classification: "long_buildup".to_string(),
+    };
+    reader.set_oi_buildup(inst.clone(), buildup.clone());
+
+    let fetched_buildup = reader.oi_buildup(&inst, Some(5)).await.unwrap();
+    assert_eq!(fetched_buildup, buildup);
+    assert_eq!(fetched_buildup.classification, "long_buildup");
+
+    let missing_buildup = reader
+        .oi_buildup(&InstrumentId::new(Exchange::Nse, "TCS"), None)
+        .await
+        .unwrap_err();
+    assert_eq!(missing_buildup.kind, PortErrorKind::NotFound);
 }
 
 #[tokio::test]
