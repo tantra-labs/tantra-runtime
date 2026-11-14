@@ -459,6 +459,7 @@ pub fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         state.quotes.clone(),
         state.risk_engine.clone(),
         profiles,
+        &config.data_dir,
     )
     .context("configuring chat agent")?
     {

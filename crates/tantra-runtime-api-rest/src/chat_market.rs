@@ -14,7 +14,7 @@ use crate::market_feed::ports::{
 };
 use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
@@ -23,8 +23,10 @@ use tantra_agent_chat_tools::ports::market::{
 };
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
-use tantra_core::{InstrumentId, Price, PriceBand, Quantity};
-use tantra_market_store::InstrumentChainReader;
+use tantra_core::{Currency, Exchange, InstrumentId, Money, Price, PriceBand, Quantity};
+use tantra_market_store::{
+    CorporateActionProjection, CorporateActionsProjectionReader, InstrumentChainReader,
+};
 use tantra_risk::RiskEngine;
 
 /// Bar-count cap shared with `tantra_runtime_api::chat_adapters::RuntimeMarketReader`.
@@ -51,6 +53,7 @@ pub struct FeedMarketReader {
     quotes: Arc<dyn QuoteReader>,
     risk_engine: Arc<Mutex<RiskEngine>>,
     chain: Arc<dyn ChainReader>,
+    corporate_actions: Option<CorporateActionsProjectionReader>,
 }
 
 impl FeedMarketReader {
@@ -74,6 +77,24 @@ impl FeedMarketReader {
             quotes,
             risk_engine,
             chain,
+            corporate_actions: None,
+        }
+    }
+
+    /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
+    /// additionally wiring the `tantra-data` corporate-actions projections
+    /// (`{root}/catalog/corporate_actions`) through `tantra-market-store`'s projection
+    /// reader (closes `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`).
+    pub fn with_corporate_actions(
+        root: &std::path::Path,
+        instruments: Arc<dyn InstrumentMaster>,
+        bars: Arc<dyn BarReader>,
+        quotes: Arc<dyn QuoteReader>,
+        risk_engine: Arc<Mutex<RiskEngine>>,
+    ) -> Self {
+        Self {
+            corporate_actions: Some(CorporateActionsProjectionReader::new(root)),
+            ..Self::new(instruments, bars, quotes, risk_engine)
         }
     }
 }
@@ -270,20 +291,86 @@ impl MarketReader for FeedMarketReader {
 
     async fn corporate_actions(
         &self,
-        _instrument: Option<&InstrumentId>,
-        _action_type: Option<&str>,
-        _limit: Option<usize>,
+        instrument: Option<&InstrumentId>,
+        action_type: Option<&str>,
+        limit: Option<usize>,
     ) -> Result<Vec<CorporateAction>, PortError> {
-        // The historical corporate-actions reader exists Python-side (`tantra_data`'s
-        // `CorporateActionsRepository`/`DuckDbCorporateActionsStore`) but nothing bridges
-        // that lakehouse into Rust consumers yet — see
-        // tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md. An explicit error,
-        // not an empty success (same pattern as `indicators`/`macro_series` above, per
-        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md).
-        Err(PortError::unavailable(
-            "corporate-actions data is not served yet; see tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md",
-        ))
+        let Some(reader) = &self.corporate_actions else {
+            // No corporate-actions projections configured — same explicit gap citation
+            // as before the bridge landed (see
+            // tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md). An explicit
+            // error, not an empty success (same pattern as `indicators`/`macro_series`
+            // above, per docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md).
+            return Err(PortError::unavailable(
+                "corporate-actions data is not served yet; see tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md",
+            ));
+        };
+        let projections = reader.read().map_err(|e| {
+            PortError::internal(format!("failed to read corporate-actions projections: {e}"))
+        })?;
+        let mut actions: Vec<CorporateAction> = projections
+            .into_iter()
+            .filter_map(to_corporate_action)
+            .filter(|a| instrument.is_none_or(|inst| a.instrument == *inst))
+            .filter(|a| action_type.is_none_or(|at| a.action_type == *at))
+            .collect();
+        actions.sort_by_key(|a| a.ex_date);
+        actions.truncate(limit.unwrap_or(usize::MAX));
+        Ok(actions)
     }
+}
+
+/// Parses a canonical `EXCHANGE:SYMBOL` instrument string (the projection form, e.g.
+/// `NSE:RELIANCE-EQ`) into an [`InstrumentId`]. `InstrumentId` has no `FromStr` impl in
+/// `tantra-core` (its `Exchange` component does), so the canonical projection form is split
+/// here; rows with an unknown exchange or no symbol are rejected and skipped by the caller.
+fn parse_instrument(s: &str) -> Option<InstrumentId> {
+    let (exchange, symbol) = s.split_once(':')?;
+    if symbol.is_empty() {
+        return None;
+    }
+    let exchange = exchange.parse::<Exchange>().ok()?;
+    Some(InstrumentId::new(exchange, symbol))
+}
+
+/// Maps one lakehouse corporate-action projection row onto the chat tool catalog's
+/// record. Rows whose instrument string does not parse as a canonical
+/// [`InstrumentId`], or whose action type is outside the canonical
+/// {split, bonus, dividend, rights} set, are skipped. The projections are
+/// INR-denominated, so per-share dividend amounts map to `Currency::Inr`.
+fn to_corporate_action(projection: CorporateActionProjection) -> Option<CorporateAction> {
+    let instrument = parse_instrument(&projection.instrument)?;
+    if !matches!(
+        projection.action_type.as_str(),
+        "split" | "bonus" | "dividend" | "rights"
+    ) {
+        return None;
+    }
+    let amount = if projection.action_type == "dividend" {
+        projection
+            .per_share
+            .map(|per_share| Money::new(per_share, Currency::Inr))
+    } else {
+        None
+    };
+    Some(CorporateAction {
+        instrument,
+        action_type: projection.action_type,
+        ex_date: Utc.from_utc_datetime(
+            &projection
+                .ex_date
+                .and_hms_opt(0, 0, 0)
+                .expect("midnight is always a valid time of day"),
+        ),
+        record_date: None,
+        amount,
+        ratio_from: projection
+            .old_shares
+            .map(|old| Quantity::new(Decimal::from(old))),
+        ratio_to: projection
+            .new_shares
+            .map(|new| Quantity::new(Decimal::from(new))),
+    })
 }
 
 /// Read-through `SnapshotSource` grounding screener/universe tools in the live instrument

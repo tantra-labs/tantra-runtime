@@ -24,8 +24,9 @@
 //! unavailable (see `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md`).
 //! The price-alert tools write the caller's `Profile.alerts` document through the profiles
 //! store ([`crate::chat_alerts::ProfileAlertStore`], agent plan 0006 Phase 2). The news/filings
-//! content tools (agent plan 0006 Phase 3) answer explicit gap citations through
-//! [`crate::chat_content::FeedContentReader`] until their data sources are bridged in.
+//! content tools (agent plan 0006 Phase 3) read filings through the `tantra-data` projections
+//! via [`crate::chat_content::FeedContentReader`]; news still answers an explicit gap citation
+//! (see `tantra-data/docs/gaps/0006-news-ingestion.md`).
 
 use std::sync::{Arc, Mutex};
 
@@ -141,13 +142,18 @@ impl ChatRuntime {
     /// stand-in of docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md).
     /// `profiles` is the same store `/profile` routes serve: the price-alert tools read and
     /// write the caller's `Profile.alerts` document through it (see
-    /// [`crate::chat_alerts::ProfileAlertStore`]).
+    /// [`crate::chat_alerts::ProfileAlertStore`]). `data_root` points at the data directory
+    /// whose `catalog/filings` and `catalog/corporate_actions` projections `tantra-data`
+    /// maintains — they back the filings and corporate-actions chat tools (closes
+    /// `tantra-data/docs/gaps/0007-filings-rust-bridge.md` and
+    /// `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`).
     pub fn from_env(
         instruments: Arc<dyn InstrumentMaster>,
         bars: Arc<dyn BarReader>,
         quotes: Arc<dyn QuoteReader>,
         risk_engine: Arc<Mutex<RiskEngine>>,
         profiles: Arc<crate::profile_store::ProfileStore>,
+        data_root: &std::path::Path,
     ) -> anyhow::Result<Option<Self>> {
         if !llm_configured() {
             return Ok(None);
@@ -158,7 +164,8 @@ impl ChatRuntime {
         // stand-in for docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md:
         // AppState has no ledger-repository handle for LedgerPortfolioReader::from_combined.
         let portfolio: Arc<dyn PortfolioReader> = Arc::new(StubPortfolioReader);
-        let market: Arc<dyn MarketReader> = Arc::new(FeedMarketReader::new(
+        let market: Arc<dyn MarketReader> = Arc::new(FeedMarketReader::with_corporate_actions(
+            data_root,
             instruments.clone(),
             bars,
             quotes,
@@ -166,11 +173,12 @@ impl ChatRuntime {
         ));
         let snapshots: Arc<dyn tantra_agent_chat_tools::ports::snapshot::SnapshotSource> =
             Arc::new(FeedSnapshotSource::new(instruments));
-        // News/filings content tools (agent plan 0006 Phase 3): no reachable data source
-        // yet — `FeedContentReader` answers the explicit gap citations instead of
-        // fabricated empty results (see `crate::chat_content`).
-        let content: Arc<dyn tantra_agent_chat_tools::ports::content::ContentReader> =
-            Arc::new(crate::chat_content::FeedContentReader::new());
+        // News/filings content tools (agent plan 0006 Phase 3): filings read through the
+        // `tantra-data` projections (`{data_root}/catalog/filings`); news has no data
+        // source and still answers its explicit gap citation (see `crate::chat_content`).
+        let content: Arc<dyn tantra_agent_chat_tools::ports::content::ContentReader> = Arc::new(
+            crate::chat_content::FeedContentReader::with_filings(data_root),
+        );
         tantra_agent_chat_tools::catalog::register_read_only_tools(
             &mut registry,
             portfolio,
