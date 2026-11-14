@@ -1,6 +1,7 @@
 # 0007 — Chat market/content-reader adapters have approximated fields and missing data sources
 
-**Status**: open — items 1–5, 6/7/8/9/11/12/13/17/18/19 closed; items 10 and 14–16 remain (upstream-blocked).
+**Status**: open — items 1–5, 6/7/8/9/11/12/13/17/18/19 closed; items 10 and 14–16 remain
+(upstream-blocked, verified blockers, unchanged by design).
 
 ## What's stubbed or hardcoded
 
@@ -16,8 +17,8 @@ and are either approximated or answered with an explicit error rather than fabri
    port (`with_trade_reader`) backed by `tantra-market-store::LiveQuoteStore::put_trade` +
    `ports::TradeReader`/`TradeSnapshot`; `quote` reports the latest print's price and the
    session-day volume (sum of trade sizes) when a reader is attached. The live broker trade
-   feed itself is not implemented anywhere (real feeds remain `tantra-market` gaps
-   0001/0002), so `ChatRuntime::from_env` wires no reader and an unwired reader honestly
+   feed itself is not implemented anywhere (real feeds remain `tantra-market` gap 0003 /
+   root `docs/gaps/0001`), so `ChatRuntime::from_env` wires no reader and an unwired reader honestly
    falls back to the bid/ask midpoint rather than fabricating a print.
 2. **`MarketQuote::volume` is always `Decimal::ZERO`.** **CLOSED (plumbing)** (this batch):
    the same `TradeReader` path reports the accumulated session-day volume (`TradeSnapshot::day_volume`),
@@ -72,8 +73,10 @@ and are either approximated or answered with an explicit error rather than fabri
    answers `PortError::unavailable`.
 10. **`MarketReader::market_depth` always answers `PortError::unavailable`** in
     `FeedMarketReader`. Added with chat tool `market_depth` (`tantra-agent` plan 0007 Track 2
-    Phase 4): the feed ports serve top-of-book quotes only; no L2 depth source exists
-    (`tantra-market/docs/gaps/0006-l2-order-book-depth.md`). The seedable
+    Phase 4): the feed ports serve top-of-book quotes only; no L2 depth source exists (the
+    `DepthReader` port and `DepthSnapshot` shape already exist in `tantra-market-store`; only a
+    data source implementing it is missing —
+    `tantra-market/docs/gaps/0006-l2-order-book-depth.md`). The seedable
     `RuntimeMarketReader` accepts a `set_market_depth` store for tests.
 11. **`MarketReader::institutional_flows` — CLOSED** (this batch): the `tantra-data`
     institutional-flow projections (`{root}/catalog/institutional_flows`, exported by
@@ -147,9 +150,10 @@ a strategy store, and the shared ledger — all wired earlier.
   it is missing), then replace `FeedMarketReader::market_depth`'s stub with a real read and
   compute `liquidity_imbalance_pct`.
 - Items 14–16: close `tantra-data/docs/gaps/0020`–`0022` (fundamentals / mutual-fund / IPO
-  ingestion — vendor selection + ingestion first, then the bridge-exporter → projection-reader →
+  ingestion — **vendor selection + ingestion first**: real-world data procurement, not
+  code-closeable — then the bridge-exporter → projection-reader →
   runtime wiring chain), then wire `FeedFundamentalReader`/`FeedFundReader`/`FeedIpoReader` to
   real reads.
-- Follow-on (no stub): wire a live broker trade feed (`tantra-market` gaps 0001/0002) into a
-  `TradeReader` so `quote` reports real last prints/day volume instead of the honest midpoint
-  fallback.
+- Follow-on (no stub): wire a live broker trade feed (`tantra-market` gap 0003 / root
+  `docs/gaps/0001`) into a `TradeReader` so `quote` reports real last prints/day volume instead
+  of the honest midpoint fallback.

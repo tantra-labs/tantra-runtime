@@ -27,8 +27,12 @@ in parallel waves (2 subagents max):
   gained `with_risk_engine` (`otr_max_ratio`/`otr_warning_threshold`/`price_band_count`) +
   `with_regime` (20-SMA-slope classifier, `TANTRA_REGIME_INSTRUMENT`); `ChatRuntime::from_env`
   wires the three projection builders. 8 new runtime tests (30 in the two touched binaries).
-- **Still blocked**: item 10 (L2 depth — `tantra-market` 0006), items 14–16 (fundamentals/MF/IPO
-  vendors — `tantra-data` 0020–0022). Live trade feed stays unwired (`tantra-market` 0001/0002).
+- **Still blocked (verified, unchanged by design)**: item 10 (L2 depth — `tantra-market` 0006;
+  the `DepthReader` port/`DepthSnapshot` exist in `tantra-market-store`, only a data source
+  implementing it is missing), items 14–16 (fundamentals/MF/IPO vendors — `tantra-data` 0020–0022,
+  vendor selection + ingestion first; real-world data procurement, not code-closeable). Live
+  trade feed stays unwired (plumbing-only; real broker feed tracked by `tantra-market` gap 0003 /
+  root `docs/gaps/0001`).
 
 ## Latest Batch — T7 remaining (gap 0006 closed; 0007 items 8/9/17/18/19 closed)
 
@@ -213,12 +217,16 @@ persistence, **portfolio-backed tools (gap 0006 closed)**, trade-intent / strate
 wiring (0007 items 17–19 closed), broker boundary decision). The 2026-11-14 batch closed gap 0007
 items 1–5, 11, 12 (last-price/volume plumbing, indicators, macro_series, display-name, regime +
 risk metrics, institutional flows, delivery). Remaining T7:
-- **Gap 0007 items 10 and 14–16** are upstream-blocked: L2 depth (`tantra-market` 0006), and
-  fundamentals / mutual-fund / IPO ingestion (`tantra-data` 0020–0022 — vendor selection first).
-- Follow-on (no stub): wire a live broker trade feed (`tantra-market` 0001/0002) into a
-  `TradeReader` so `quote` reports real last prints/day volume instead of the midpoint fallback;
-  populate the `display_name` catalog column from broker master data.
-- **Gap 0008** closes when option 2 (lift `BrokerAdapter` into `tantra-exec-core`) lands.
+- **Gap 0007 items 10 and 14–16** are upstream-blocked, verified, unchanged by design: L2 depth
+  (`tantra-market` 0006 — the `DepthReader` port/`DepthSnapshot` exist in `tantra-market-store`;
+  only a data source implementing it is missing), and fundamentals / mutual-fund / IPO ingestion
+  (`tantra-data` 0020–0022 — vendor selection + ingestion first; real-world data procurement, not
+  code-closeable).
+- Follow-on (no stub): wire a live broker trade feed (`tantra-market` gap 0003 / root
+  `docs/gaps/0001`) into a `TradeReader` so `quote` reports real last prints/day volume instead
+  of the midpoint fallback; populate the `display_name` catalog column from broker master data.
+- **Gap 0008** unchanged as intended — a documented architecture decision (option 1), not a stub;
+  it closes only if option 2 (lift `BrokerAdapter` into `tantra-exec-core`) ever executes.
 - Strategy-store persistence across restarts is a follow-on (the in-memory store is
   session-scoped; not a gap — nothing stubbed).
 - When chat sessions gain bearer identity, switch `ProfileAlertStore::for_user` to the
