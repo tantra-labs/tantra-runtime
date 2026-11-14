@@ -42,7 +42,7 @@ use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tracing::{debug, warn};
 
-use crate::market_feed::ports::{BarReader, InstrumentMaster, QuoteReader};
+use crate::market_feed::ports::{BarReader, DepthReader, InstrumentMaster, QuoteReader};
 use tantra_agent_chat::{ChatAgent, InMemorySessionStore, SessionSelector, ToolRegistry};
 use tantra_agent_chat_tools::ports::alert::{AlertReader, AlertWriter};
 use tantra_agent_chat_tools::ports::market::MarketReader;
@@ -139,6 +139,7 @@ impl ChatRuntime {
         instruments: Arc<dyn InstrumentMaster>,
         bars: Arc<dyn BarReader>,
         quotes: Arc<dyn QuoteReader>,
+        depth: Arc<dyn DepthReader>,
         risk_engine: Arc<Mutex<RiskEngine>>,
         profiles: Arc<crate::profile_store::ProfileStore>,
         shared_ledger: Arc<SharedLedger>,
@@ -173,7 +174,8 @@ impl ChatRuntime {
             .with_oi_store(data_root)
             .with_institutional_flows(data_root)
             .with_delivery(data_root)
-            .with_economic_calendar(data_root),
+            .with_economic_calendar(data_root)
+            .with_depth_reader(depth),
         );
         // The market reader deliberately wires no live `TradeReader`: no broker trade feed
         // exists in this runtime yet (real feeds remain `tantra-market` gaps 0001/0002), so

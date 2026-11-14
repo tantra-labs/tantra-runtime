@@ -180,7 +180,8 @@ pub fn import_ticks_ndjson(ticks: &Path, out: &Path) -> Result<(usize, usize)> {
         .with_context(|| format!("writing {}", path.display()))?;
     let store = ParquetTickStore::open(out)
         .with_context(|| format!("reading back the tick store {}", out.display()))?;
-    Ok(store.len())
+    let (quotes, trades, _) = store.len();
+    Ok((quotes, trades))
 }
 
 /// Summary of a single Parquet bar file loaded via [`load_parquet_bars_summary`].

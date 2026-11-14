@@ -18,7 +18,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::market_feed::ports::{
-    BarReader, BarRequest, ChainContract, ChainReader, InstrumentMaster, QuoteReader, TradeReader,
+    BarReader, BarRequest, ChainContract, ChainReader, DepthReader, DepthSnapshot,
+    InstrumentMaster, QuoteReader, TradeReader,
 };
 use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use async_trait::async_trait;
@@ -28,8 +29,8 @@ use rust_decimal::prelude::ToPrimitive;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
     BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
-    MacroSeries, MarketBar, MarketDepth, MarketHistory, MarketIndicators, MarketQuote,
-    MarketReader, OiBuildupSnapshot, OptionContract, OptionsChain,
+    MacroSeries, MarketBar, MarketDepth, MarketDepthLevel, MarketHistory, MarketIndicators,
+    MarketQuote, MarketReader, OiBuildupSnapshot, OptionContract, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
@@ -78,6 +79,7 @@ pub struct FeedMarketReader {
     delivery: Option<DeliveryProjectionReader>,
     economic_calendar: Option<EconomicCalendarProjectionReader>,
     trades: Option<Arc<dyn TradeReader>>,
+    depth: Option<Arc<dyn DepthReader>>,
 }
 
 impl FeedMarketReader {
@@ -109,6 +111,7 @@ impl FeedMarketReader {
             delivery: None,
             economic_calendar: None,
             trades: None,
+            depth: None,
         }
     }
 
@@ -184,6 +187,17 @@ impl FeedMarketReader {
     /// 0001/0002 — and an unwired reader keeps answering the honest midpoint fallback.
     pub fn with_trade_reader(mut self, reader: Arc<dyn TradeReader>) -> Self {
         self.trades = Some(reader);
+        self
+    }
+
+    /// Builds a [`FeedMarketReader`] over the given feed ports and shared risk engine,
+    /// additionally attaching an L2 order-book [`DepthReader`] so `market_depth` serves the
+    /// real ladder (the same port `GET /depth/{id}` reads from; closes
+    /// `tantra-runtime/docs/gaps/0007` item 10 and `tantra-market/docs/gaps/0006`). The port
+    /// stays unconfigured by default, and an unwired reader keeps answering the explicit
+    /// gap error rather than fabricating an empty book.
+    pub fn with_depth_reader(mut self, reader: Arc<dyn DepthReader>) -> Self {
+        self.depth = Some(reader);
         self
     }
 }
@@ -600,17 +614,52 @@ impl MarketReader for FeedMarketReader {
 
     async fn market_depth(
         &self,
-        _instrument: &InstrumentId,
-        _levels: Option<usize>,
+        instrument: &InstrumentId,
+        levels: Option<usize>,
     ) -> Result<MarketDepth, PortError> {
-        // No L2 order-book depth source is wired into this runtime yet — the feed ports
-        // serve top-of-book quotes only — see
-        // tantra-market/docs/gaps/0006-l2-order-book-depth.md. An explicit error, not an
-        // empty success, so the model can't mistake "not wired up" for "this instrument
-        // really has an empty book" (same pattern as `indicators`/`macro_series` above).
-        Err(PortError::unavailable(
-            "L2 order-book depth source not wired; see tantra-market/docs/gaps/0006-l2-order-book-depth.md",
-        ))
+        let Some(reader) = &self.depth else {
+            // No L2 order-book depth reader is wired — this runtime's `GET /depth/{id}` reads
+            // from the same `DepthReader` port, and the parquet lakehouse / live stores only
+            // answer once depth ticks are ingested. An explicit error, not an empty success,
+            // so the model can't mistake "not wired up" for "this instrument really has an
+            // empty book" (same pattern as `indicators`/`macro_series` above).
+            return Err(PortError::unavailable(
+                "L2 order-book depth reader not wired; see tantra-market/docs/gaps/0006-l2-order-book-depth.md",
+            ));
+        };
+        let levels = levels.unwrap_or(5).clamp(1, 20);
+        let DepthSnapshot { as_of, bids, asks } = reader
+            .read_depth(instrument, levels)
+            .await
+            .map_err(feed_port_error)?;
+        let bids: Vec<MarketDepthLevel> = bids
+            .into_iter()
+            .map(|(price, quantity)| MarketDepthLevel { price, quantity })
+            .collect();
+        let asks: Vec<MarketDepthLevel> = asks
+            .into_iter()
+            .map(|(price, quantity)| MarketDepthLevel { price, quantity })
+            .collect();
+        // Liquidity imbalance percent = (bid_total - ask_total) / (bid_total + ask_total) * 100,
+        // exact Decimal, zero when the book is empty on one or both sides.
+        let bid_total: Decimal = bids
+            .iter()
+            .fold(Decimal::ZERO, |acc, level| acc + level.quantity.value());
+        let ask_total: Decimal = asks
+            .iter()
+            .fold(Decimal::ZERO, |acc, level| acc + level.quantity.value());
+        let liquidity_imbalance_pct = if (bid_total + ask_total).is_zero() {
+            Decimal::ZERO
+        } else {
+            (bid_total - ask_total) * Decimal::from(100) / (bid_total + ask_total)
+        };
+        Ok(MarketDepth {
+            instrument: instrument.clone(),
+            as_of: as_of.to_datetime(),
+            bids,
+            asks,
+            liquidity_imbalance_pct,
+        })
     }
 
     async fn institutional_flows(

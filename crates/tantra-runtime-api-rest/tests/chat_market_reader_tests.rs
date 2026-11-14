@@ -20,7 +20,7 @@ use tantra_market_store::{
 use tantra_risk::RiskEngine;
 use tantra_runtime_api_rest::chat_market::{FeedMarketReader, FeedSnapshotSource};
 use tantra_runtime_api_rest::market_feed::ports::{
-    BarReader, BarRequest, InstrumentMaster, PortError as FeedPortError, QuoteReader,
+    BarReader, BarRequest, DepthSnapshot, InstrumentMaster, PortError as FeedPortError, QuoteReader,
 };
 use tantra_runtime_api_rest::market_feed::wire::{
     AggressorSide, Bar, BarAggregation, BarSpecification, BarType, Instrument, PriceType,
@@ -529,6 +529,41 @@ async fn market_depth_is_explicitly_unavailable_with_gap_citation() {
         err.message.contains("0006-l2-order-book-depth.md"),
         "stub must cite the upstream gap, got: {err}"
     );
+}
+
+#[tokio::test]
+async fn market_depth_reads_wired_ladder_and_computes_imbalance() {
+    let instrument = reliance();
+    let store = Arc::new(LiveQuoteStore::new(Arc::new(DatasetReader::from_dataset(
+        Dataset::default(),
+    ))));
+    store.put_depth(
+        instrument.clone(),
+        DepthSnapshot {
+            as_of: ts(9),
+            bids: vec![
+                (Price::new(dec!(100.0)), Quantity::new(dec!(500))),
+                (Price::new(dec!(99.9)), Quantity::new(dec!(500))),
+            ],
+            asks: vec![(Price::new(dec!(100.1)), Quantity::new(dec!(300)))],
+        },
+    );
+
+    let reader = FeedMarketReader::new(
+        Arc::new(FakeFeed::default()),
+        Arc::new(FakeFeed::default()),
+        Arc::new(FakeFeed::default()),
+        Arc::new(Mutex::new(RiskEngine::default())),
+    )
+    .with_depth_reader(store.clone());
+
+    let depth = reader.market_depth(&instrument, Some(1)).await.unwrap();
+    assert_eq!(depth.bids.len(), 1, "the levels cap is applied");
+    assert_eq!(depth.asks.len(), 1);
+    assert_eq!(depth.bids[0].price, Price::new(dec!(100.0)));
+    assert_eq!(depth.bids[0].quantity, Quantity::new(dec!(500)));
+    // bid_total 500 vs ask_total 300 → (500 − 300) / (500 + 300) × 100 = 25.
+    assert_eq!(depth.liquidity_imbalance_pct, dec!(25));
 }
 
 #[tokio::test]

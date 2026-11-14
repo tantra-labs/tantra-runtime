@@ -483,6 +483,7 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         state.instruments.clone(),
         state.bars.clone(),
         state.quotes.clone(),
+        state.depth.clone(),
         state.risk_engine.clone(),
         profiles,
         state.shared_ledger.clone(),

@@ -43,7 +43,7 @@ fn parquet_store(root: &Path) -> ParquetTickStore {
     let file = root.join(TICK_DIR).join("ticks.parquet");
     write_tick_file(&file, &quotes, &[]).expect("tick file written");
     let store = ParquetTickStore::open(root).expect("store reopened");
-    let (quotes_in_store, _) = store.len();
+    let (quotes_in_store, _, _) = store.len();
     assert_eq!(quotes_in_store, 80, "every tick read back");
     store
 }

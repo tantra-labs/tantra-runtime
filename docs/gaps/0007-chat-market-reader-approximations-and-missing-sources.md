@@ -1,6 +1,6 @@
 # 0007 — Chat market/content-reader adapters have approximated fields and missing data sources
 
-**Status**: open — items 1–5, 6/7/8/9/11/12/13/17/18/19 closed; items 10 and 14–16 remain
+**Status**: open — items 1–13, 17/18/19 closed (item 10 closed 2026-11-14); items 14–16 remain
 (upstream-blocked, verified blockers, unchanged by design).
 
 ## What's stubbed or hardcoded
@@ -72,12 +72,15 @@ and are either approximated or answered with an explicit error rather than fabri
    `tantra-data/docs/gaps/0008-corporate-actions-rust-bridge.md`). The unconfigured fallback
    answers `PortError::unavailable`.
 10. **`MarketReader::market_depth` always answers `PortError::unavailable`** in
-    `FeedMarketReader`. Added with chat tool `market_depth` (`tantra-agent` plan 0007 Track 2
-    Phase 4): the feed ports serve top-of-book quotes only; no L2 depth source exists (the
-    `DepthReader` port and `DepthSnapshot` shape already exist in `tantra-market-store`; only a
-    data source implementing it is missing —
-    `tantra-market/docs/gaps/0006-l2-order-book-depth.md`). The seedable
-    `RuntimeMarketReader` accepts a `set_market_depth` store for tests.
+    `FeedMarketReader`. **CLOSED** (2026-11-14): the `DepthReader` port and exact-Decimal
+    `DepthSnapshot` now have two data sources — `LiveQuoteStore::put_depth` (live depth store,
+    mirrors `put_trade`) and `ParquetTickStore` depth ticks (`write_depth_file`, kind `"depth"`,
+    real broker full-mode `Tick::Depth` frames are the lakehouse input, zerodha 10 levels /
+    dhan 5). `FeedMarketReader` gained `with_depth_reader`, wired from `ChatRuntime::from_env`
+    to the same reader `GET /depth/{id}` serves; `market_depth` builds the real ladder and
+    computes `liquidity_imbalance_pct` exactly. An unwired reader keeps the explicit gap error
+    (closes `tantra-market/docs/gaps/0006`). The seedable `RuntimeMarketReader` keeps
+    `set_market_depth` for tests.
 11. **`MarketReader::institutional_flows` — CLOSED** (this batch): the `tantra-data`
     institutional-flow projections (`{root}/catalog/institutional_flows`, exported by
     `LakehouseBridgeExporter::export_institutional_flows`) are read through
@@ -134,21 +137,18 @@ and are either approximated or answered with an explicit error rather than fabri
 Closing docs/gaps/0006's market/screener stand-in only required wiring the tool catalog to data
 AppState already has live access to (instrument reference data, quotes, bars, risk-engine price
 bands). The fields above need either a new data source this runtime doesn't have yet (a live
-broker last-trade/volume feed, an L2 depth source, fundamentals/mutual-fund/IPO ingestion) or a
-product decision (which risk metrics to surface to the chat agent). The 2026-11-14 batch closed
-every item whose data already existed somewhere: the indicator library and daily bars (item 3a),
-the `tantra-data` institutional-flow/delivery/economic-calendar projections and their Rust
-readers (items 3b/11/12), the instrument display-name column (item 4), the risk-engine metrics +
-a SMA-based regime classifier (item 5), and the last-price/volume read-through plumbing (items
-1–2). The trade/strategy/tax tools were runtime-side-only: they needed an approval-queue handle,
-a strategy store, and the shared ledger — all wired earlier.
+broker last-trade/volume feed, fundamentals/mutual-fund/IPO ingestion) or a product decision
+(which risk metrics to surface to the chat agent). The 2026-11-14 batch closed every item whose
+data already existed somewhere: the indicator library and daily bars (item 3a), the
+`tantra-data` institutional-flow/delivery/economic-calendar projections and their Rust readers
+(items 3b/11/12), the instrument display-name column (item 4), the risk-engine metrics +
+a SMA-based regime classifier (item 5), the last-price/volume read-through plumbing (items
+1–2), and the L2 order-book depth (item 10 — `LiveQuoteStore::put_depth` + parquet depth ticks,
+see item 10 above). The trade/strategy/tax tools were runtime-side-only: they needed an
+approval-queue handle, a strategy store, and the shared ledger — all wired earlier.
 
 ## How to close it (remaining)
 
-- Item 10: close `tantra-market/docs/gaps/0006` (L2 depth source — the `DepthReader` port and
-  `DepthSnapshot` shape already exist in `tantra-market-store`; only a data source implementing
-  it is missing), then replace `FeedMarketReader::market_depth`'s stub with a real read and
-  compute `liquidity_imbalance_pct`.
 - Items 14–16: close `tantra-data/docs/gaps/0020`–`0022` (fundamentals / mutual-fund / IPO
   ingestion — **vendor selection + ingestion first**: real-world data procurement, not
   code-closeable — then the bridge-exporter → projection-reader →

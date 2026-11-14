@@ -353,12 +353,12 @@ pub(crate) async fn get_depth(
     }
     match state.depth.read_depth(&id, levels).await {
         Ok(book) => {
-            let side = |levels: Vec<(f64, f64)>| {
+            let side = |levels: Vec<(Price, Quantity)>| {
                 levels
                     .into_iter()
                     .map(|(price, qty)| DepthLevel {
-                        price: Decimal::from_f64_retain(price).unwrap_or_default(),
-                        qty: Decimal::from_f64_retain(qty).unwrap_or_default(),
+                        price: price.value(),
+                        qty: qty.value(),
                     })
                     .collect()
             };
