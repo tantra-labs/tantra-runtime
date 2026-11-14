@@ -29,13 +29,16 @@ in parallel waves (2 subagents max):
   wires the three projection builders. 8 new runtime tests (30 in the two touched binaries).
 - **Closed since (2026-11-14)**: item 10 (L2 market depth — exact-Decimal `DepthSnapshot` +
   `LiveQuoteStore::put_depth` + parquet depth ticks in `tantra-market-store`, wired via
-  `FeedMarketReader::with_depth_reader`; gap 0006 retired) and item 14 (fundamentals —
+  `FeedMarketReader::with_depth_reader`; gap 0006 retired), items 14 (fundamentals —
   `tantra-data` 0020 landed `d94230c`, `FundamentalsProjectionReader` `a8b0c05`,
-  `FeedFundamentalReader::with_fundamentals` `37db5b8`). **Still blocked (verified, unchanged
-  by design)**: items 15–16 (mutual funds / IPO vendors — `tantra-data` 0021–0022, vendor
-  selection + ingestion first; real-world data procurement, not code-closeable). Live trade
-  feed stays unwired (plumbing-only; real broker feed tracked by `tantra-market` gap 0003 /
-  root `docs/gaps/0001`).
+  `FeedFundamentalReader::with_fundamentals` `37db5b8`), 15–16 (mutual funds/IPO —
+  `tantra-data` 0021/0022 landed `17c5b94` — AMFI + NSE verified live;
+  `FundsIposProjectionReader` `9f8b04c`; `FeedFundReader`/`FeedIpoReader` `f752334`). **Gap
+  0007 fully closed** (all 19 items; doc retired). **Fund *holdings* remain unsourced** —
+  no free verified holdings feed; `fund_holdings` keeps its explicit citation (documented in
+  `tantra-data` 0021 closed row, never fabricated). Live trade feed stays unwired
+  (plumbing-only; real broker feed tracked by `tantra-market` gap 0003 / root
+  `docs/gaps/0001`).
 
 ## Latest Batch — T7 remaining (gap 0006 closed; 0007 items 8/9/17/18/19 closed)
 
