@@ -100,10 +100,11 @@
   other-field preservation, per-user scoping via `ProfileAlertStore::for_user`).
   `ChatRuntime::from_env` gained a `profiles: Arc<ProfileStore>` parameter and registers the
   alert tools; `bootstrap.rs` passes the store (configured before the chat runtime).
-- **Plan 0004 Phases 1–3 (block/bulk deal chat tool) — implemented 2026-11-11** (one line:
-  honest `FeedMarketReader::block_deals` stub + seedable `RuntimeMarketReader` store; see
-  `docs/plans/0004`). Phase 4 stays blocked on `tantra-data` gap 0005; Phase 5 optional after
-  that.
+- **Plan 0004 Phases 1–4 (block/bulk deal chat tool) — implemented 2026-11-14** (one line:
+  honest `FeedMarketReader::block_deals` stub + seedable `RuntimeMarketReader` store; Phase 4
+  now reads real `tantra-data` projections via `BlockDealsProjectionReader` and `GET
+  /market-data/block-deals` (T7.2/T7.3, `tantra-data` gap 0005 closed); see
+  `docs/plans/0004`). Phase 5 optional after that.
 - **PLAN-0001 Stages 1–3 + Stage 4** (RunId/journals, worker pool, strategy dispatch, cron
   scheduler, typed manifests): implemented — recorded in `docs/plans/README.md` Implemented
   table. Stage 4's CLI/agent half lives in `tantra-ui` (`tantra-cli`).
@@ -121,10 +122,10 @@
 Agent plan 0006 is fully implemented (Phases 1–4). Remaining chat-tool data blockers are all
 upstream gaps, tracked in `docs/gaps/0007-*.md`: `tantra-market/docs/gaps/0001` (options-chain
 reader) for `options_chain`; `tantra-data/docs/gaps/0008`+`0009` (Rust bridge + ingestion) for
-`corporate_actions`; `tantra-data/docs/gaps/0005` for plan 0004 Phase 4 (real block/bulk data);
-`tantra-data/docs/gaps/0006`+`0007` for the content tools. When chat sessions gain bearer
-identity (`docs/gaps/0006`), switch `ProfileAlertStore::for_user` to the connection's
-`token_id`.
+`corporate_actions` (its runtime bridge lives in the same projection reader the block-deal
+tools use; only the `with_corporate_actions` wiring is pending); `tantra-data/docs/gaps/0006`+`0007`
+for the content tools. When chat sessions gain bearer identity (`docs/gaps/0006`), switch
+`ProfileAlertStore::for_user` to the connection's `token_id`.
 
 ## Do not regress
 
@@ -161,7 +162,9 @@ identity (`docs/gaps/0006`), switch `ProfileAlertStore::for_user` to the connect
   on the random-ID path.
 - `tantra_runtime_api::chat_adapters::RuntimeMarketReader` is a seedable test adapter: empty
   block-deals store ⇒ `PortError::unavailable` (gap 0005 citation); seeded ⇒ filter matches.
-  Same honest-stub shape as `FeedMarketReader` (gap 0007 item 6). Agent plan 0006 Phase 4 added
+  Same honest-stub shape as `FeedMarketReader`'s unconfigured path (gap 0007 item 6;
+  `FeedMarketReader::block_deals` now reads real projections when wired via
+  `with_block_deals`). Agent plan 0006 Phase 4 added
   the same shape for `set_options_chain` (keyed by underlying, empty ⇒ unavailable citing
   `tantra-market/docs/gaps/0001`) and `set_corporate_actions` (empty ⇒ unavailable citing
   `tantra-data/docs/gaps/0008`); expiry filters match on calendar day, not exact instant.
