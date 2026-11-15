@@ -9,7 +9,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
-| *(none open)* | | |
+| [0005](0005-group-screener-alerts.md) | Group Screener Alerts Engine (AlertRule store, scheduler, edge detection, sinks, `/v1/alerts/*`, MCP port wiring) | `tantra-runtime-persistence`, `tantra-runtime-api(-rest)` | Proposed — research `docs/research/trendlyne-screener-alerts-mcp.md`; root plan `docs/plans/0007` (F7, F8 wiring) |
 
 ## Implemented Plans
 
