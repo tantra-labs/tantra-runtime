@@ -3,7 +3,48 @@
 **Date**: 2026-11-16 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
-## Latest Batch — T14 Wave 3 (E9 parity test)
+## Latest Batch — T14 P1 COMPLETE (plan 0005 D1–D5; T14.5–T14.9 done)
+
+Date: 2026-11-16. All five runtime-wiring deliverables of
+`docs/plans/0005-paper-exchange-runtime-wiring.md` landed (1 subagent/wave, sequential;
+commits local, not pushed):
+- **D1 / T14.5 (`027ebac`)** — REST `/orders` on the `tantra-exec-paper` exchange:
+  `NextOpenSim` deleted; `ExecGateway` is a thin adapter over `PaperExchange` (real NSE
+  delivery `FillCostFn` default, `ZeroFillCost` for tests; ledger↔broker id map; fill/event
+  drain cursors into the ledger + shared ledger). Limit / `stop_market` / `stop_limit`
+  (`price` = trigger) / IOC accepted; shorts allowed; `DELETE /orders/{id}` and
+  `POST /positions/close` square both directions. Tests `paper_orders_tests.rs` (R1/R2/R3/R7
+  + stops) + `orders_exec.rs` re-based onto exchange semantics.
+- **D2 / T14.6 (`a9d1d96`)** — `PaperAdapter`/`ZerodhaKiteAdapter`/`AngelOneSmartApiAdapter`
+  sim scaffolds delegate fills to a per-adapter `PaperExchange` (`AdapterState` inline fill
+  math deleted); live-credentials Zerodha path untouched; market orders fill at the seeded
+  reference price, limits rest. `dispatch_tests.rs` re-based (3 of 5 replay intents fill).
+- **D3 / T14.7 (`18be257`)** — `/ws/live` bidirectional: broadcast of `OrderAccepted`/`Fill`/
+  `PartialFill`/`Cancelled`/`Rejected`/`StopTriggered`/`DepthChanged`/`PositionSnapshot`/
+  `EquitySnapshot` from `ExecGateway` (per-drain + per-bar), client `subscribe`/`unsubscribe`/
+  `ping`/`place_order`/`cancel_order` routing through the same REST gate. Tests `ws_live.rs`
+  (R4).
+- **D4 / T14.8 (`a1cbeda`)** — backtester drives the exchange for its L2 fills (inline
+  `sim::l2_book` usage removed; engine keeps its own latency gating + slippage-impact + MIS +
+  kokoro settlement; `account_fill` extracted for both immediate and later resting fills).
+  R5 golden parity `backtest_paper_parity_tests.rs` (40 backtest tests green; E9
+  `paper_parity_tests.rs` untouched). **Recorded deviation**: adverse-fill slippage no longer
+  applied on the L2 path (crate-local vs exchange model types differ, no contra-level read);
+  restore via `PaperExchange::with_adverse_fill` in a future batch.
+- **D5 / T14.9 (`f70e0e2`)** — `paper-serve --tape <file> [--addr --cash --real-time
+  --mis-square-off HH:MM]` daemon bin + `src/paper_serve.rs` library core: replays a bar tape
+  into the exchange, serves REST + `/ws/live`, exits on tape end; MIS square-off via
+  `ExecGateway::mis_square_off` (deterministic v5 close ids); calendar gate = documented
+  follow-on. Tests `paper_serve.rs` (R6). Orchestrator fixed a random-v4 → deterministic-v5
+  close id before commit.
+- Plan 0005 doc + plans README → Implemented (record of D4/D5 deviations); runtime gap 0008
+  closed earlier (P0 wave 3, `a005141` — committed 2026-11-16 from the leftover P0 tree).
+- **Immediate next step**: T14 P2 — Python wheel `tantra.paper` (`tantra-ffi` plan 0003,
+  T14.10/T14.11), then P3 (CSR/WASM, `tantra-ui` plan 0008), P4 (golden parity suite + docs).
+  Follow-on candidates recorded: L2 adverse-fill restore; `paper serve` live broker feed
+  (`tantra-market-dhan`/`zerodha`) + NSE trading-calendar gate.
+
+## Prior batch — T14 Wave 3 (E9 parity test)
 
 Date: 2026-11-16. E9 of `tantra-exec/docs/plans/0003` (runtime plan 0005 D4) landed:
 - New `tests/paper_parity_tests.rs` (4 tests) driving the paper exchange
@@ -38,16 +79,9 @@ Date: 2026-11-16. T14.4 lifted the sync `BrokerAdapter` port into
   -p tantra-exec-core -p tantra-exec-paper --profile prod`, `cargo test
   -p tantra-runtime-strategy --profile prod`, clippy `-D warnings`, `make prod`.
 
-## Latest Batch — T14 P1/P2 PLANNED (docs only; no development)
+## Prior batch — T14 P1/P2 planned (docs only) — SUPERSEDED by the P1 COMPLETE entry above
 
-Date: 2026-11-15. **Plan `docs/plans/0005-paper-exchange-runtime-wiring.md`** (Proposed, T14
-P1/P2): REST `/orders` + strategy dispatch switch from `NextOpenSim`/`PaperAdapter` fill math
-onto the shared `tantra-exec-paper` engine (limit/stop/short support, partial fills, cancel);
-`/ws/live` bidirectional push (orders/fills/depth/positions); backtest engine drives the
-exchange on historical bars → byte-identical fills vs paper (golden); standalone `paper serve`
-daemon (replay tape or live broker feed, NSE calendar + MIS 15:20). D2 lifts the sync
-`BrokerAdapter` port to `tantra-exec-core` → **closes gap 0008 (option 2)**. Index updated.
-Execution NOT started — awaits approval; TDD slices R1–R7 in the plan.
+Date: 2026-11-15. Planning artifacts for plan 0005 (Proposed → now Implemented, D1–D5 done).
 
 ## Latest Batch — gap 0007 items 1–5, 11, 12 closed (upstream bridges landed)
 
