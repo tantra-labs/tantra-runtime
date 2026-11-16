@@ -73,6 +73,10 @@ pub(crate) struct ExecGateway {
     /// length seen at the last drain.
     last_seen_fills: Arc<Mutex<usize>>,
     last_seen_events: Arc<Mutex<usize>>,
+    /// Broadcast of the exchange's lifecycle events, fills, depth updates and account
+    /// snapshots as wire JSON, fanned out to `/ws/live` clients (plan 0005 D3, T14.7). A full
+    /// channel drops the oldest payload for lagged receivers; `send` never blocks.
+    events_tx: tokio::sync::broadcast::Sender<serde_json::Value>,
 }
 
 impl ExecGateway {
@@ -84,6 +88,7 @@ impl ExecGateway {
             cum_qty: Arc::default(),
             last_seen_fills: Arc::default(),
             last_seen_events: Arc::default(),
+            events_tx: tokio::sync::broadcast::channel(256).0,
         }
     }
 
@@ -99,6 +104,26 @@ impl ExecGateway {
     /// this way).
     pub(crate) fn with_exchange(exchange: PaperExchange) -> Self {
         Self::new(exchange)
+    }
+
+    /// A fresh `/ws/live` event stream subscription, starting at the next published payload.
+    pub(crate) fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<serde_json::Value> {
+        self.events_tx.subscribe()
+    }
+
+    /// The broker order id (`PAPER-0001`-style) the exchange assigned to `ledger_id`, if it is
+    /// still being tracked.
+    pub(crate) fn broker_id_for(&self, ledger_id: &str) -> Option<String> {
+        self.ledger_to_broker
+            .lock()
+            .ok()
+            .and_then(|m| m.get(ledger_id).cloned())
+    }
+
+    /// Publishes one wire payload to every `/ws/live` subscriber. A full channel drops the
+    /// oldest payload for lagged receivers and returns `Err`; `send` never blocks.
+    fn publish(&self, payload: serde_json::Value) {
+        let _ = self.events_tx.send(payload);
     }
 
     /// Converts the ledger row into a canonical [`OrderRequest`] and submits it to the
@@ -193,11 +218,24 @@ impl ExecGateway {
         shared: &SharedLedger,
         bars: &[Bar],
     ) -> Result<(), ErrorDetail> {
+        let mut depth_updates = Vec::new();
         {
             let mut exchange = self.exchange.lock().unwrap_or_else(PoisonError::into_inner);
             for bar in bars {
                 exchange.feed_bar(bar);
+                // Capture the bar's resulting spread inside the lock and publish outside it.
+                let (bid, ask) = exchange.depth(&bar.instrument).unwrap_or((None, None));
+                depth_updates.push((bar.instrument.clone(), bid, ask, bar.timestamp));
             }
+        }
+        for (instrument, bid, ask, timestamp) in depth_updates {
+            self.publish(serde_json::json!({
+                "type": "DepthChanged",
+                "instrument": instrument,
+                "bid": bid.map(|price| price.0.to_string()),
+                "ask": ask.map(|price| price.0.to_string()),
+                "timestamp": timestamp.to_rfc3339(),
+            }));
         }
         self.drain_fills(ledger, shared);
         Ok(())
@@ -225,7 +263,15 @@ impl ExecGateway {
             .unwrap_or_else(PoisonError::into_inner)
             .cancel_order(&broker_id, now);
         match result {
-            Ok(()) => {}
+            Ok(()) => {
+                // The exchange's own `Cancelled` event stays undrained (this path takes only
+                // `ledger`, not `shared`), so notify `/ws/live` subscribers directly.
+                self.publish(serde_json::json!({
+                    "type": "Cancelled",
+                    "broker_order_id": broker_id,
+                    "timestamp": now.to_rfc3339(),
+                }));
+            }
             // The ledger row is already terminal (the caller cancelled it); a terminal exchange
             // order or an unknown id is nothing to do.
             Err(ExchangeError::OrderNotFound(_)) | Err(ExchangeError::Terminal(_)) => {}
@@ -303,8 +349,28 @@ impl ExecGateway {
         }
         *fills_cursor = fills.len();
 
+        // The account book follows every drain: publish fresh snapshots so `/ws/live` clients
+        // can track positions and equity without polling (plan 0005 D3, T14.7).
+        let snapshot_ts = Utc::now();
+        self.publish(serde_json::json!({
+            "type": "PositionSnapshot",
+            "positions": exchange
+                .positions()
+                .iter()
+                .map(|(id, qty)| (id.symbol.clone(), serde_json::Value::String(qty.to_string())))
+                .collect::<serde_json::Map<String, serde_json::Value>>(),
+            "timestamp": snapshot_ts.to_rfc3339(),
+        }));
+        self.publish(serde_json::json!({
+            "type": "EquitySnapshot",
+            "cash": exchange.cash().to_string(),
+            "equity": exchange.equity().to_string(),
+            "timestamp": snapshot_ts.to_rfc3339(),
+        }));
+
         let events = exchange.events();
-        for event in &events[*events_cursor..] {
+        let new_events = &events[*events_cursor..];
+        for event in new_events {
             match event {
                 ExchangeEvent::Cancelled {
                     broker_order_id, ..
@@ -330,6 +396,76 @@ impl ExecGateway {
                 _ => {}
             }
         }
+        // Fan every new lifecycle event out to `/ws/live` subscribers as wire JSON, exactly as
+        // the exchange reported it.
+        for event in new_events {
+            self.publish(exchange_event_to_json(event));
+        }
         *events_cursor = events.len();
+    }
+}
+
+/// Serializes one exchange lifecycle event to the canonical `/ws/live` wire shape (plan 0005
+/// D3, T14.7): a `type` tag plus the event's fields, decimals as strings. A fill payload is the
+/// canonical `tantra_core` `FillReport` DTO as-is.
+fn exchange_event_to_json(event: &ExchangeEvent) -> serde_json::Value {
+    match event {
+        ExchangeEvent::OrderAccepted {
+            broker_order_id,
+            instrument,
+            side,
+            quantity,
+            timestamp,
+        } => serde_json::json!({
+            "type": "OrderAccepted",
+            "broker_order_id": broker_order_id,
+            "instrument": instrument,
+            "side": live_side(*side),
+            "quantity": quantity.0.to_string(),
+            "timestamp": timestamp.to_rfc3339(),
+        }),
+        ExchangeEvent::Fill { fill } => serde_json::json!({
+            "type": "Fill",
+            "fill": fill,
+        }),
+        ExchangeEvent::PartialFill { fill } => serde_json::json!({
+            "type": "PartialFill",
+            "fill": fill,
+        }),
+        ExchangeEvent::Cancelled {
+            broker_order_id,
+            timestamp,
+        } => serde_json::json!({
+            "type": "Cancelled",
+            "broker_order_id": broker_order_id,
+            "timestamp": timestamp.to_rfc3339(),
+        }),
+        ExchangeEvent::Rejected {
+            broker_order_id,
+            reason,
+            timestamp,
+        } => serde_json::json!({
+            "type": "Rejected",
+            "broker_order_id": broker_order_id,
+            "reason": reason,
+            "timestamp": timestamp.to_rfc3339(),
+        }),
+        ExchangeEvent::StopTriggered {
+            broker_order_id,
+            timestamp,
+        } => serde_json::json!({
+            "type": "StopTriggered",
+            "broker_order_id": broker_order_id,
+            "timestamp": timestamp.to_rfc3339(),
+        }),
+    }
+}
+
+/// The `/ws/live` wire spelling of an order side: lowercase `buy`/`sell` (the canonical core
+/// [`OrderSide`] serde spells it `BUY`/`SELL`).
+fn live_side(side: OrderSide) -> &'static str {
+    match side {
+        OrderSide::Buy => "buy",
+        OrderSide::Sell => "sell",
     }
 }

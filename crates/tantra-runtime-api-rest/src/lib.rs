@@ -73,6 +73,7 @@ mod user_doc;
 pub mod v1;
 pub mod v2;
 pub mod ws;
+mod ws_live;
 
 pub use approval::ApprovalQueue;
 pub use auth::{
@@ -112,6 +113,7 @@ pub use ticks_file::{
     load_ticks_ndjson, pair_fills, parse_ticks_ndjson,
 };
 pub use ws::ws_handler;
+pub use ws_live::ws_live_handler;
 
 pub use v1::{
     delete_order, get_capabilities, get_health, get_orders, get_schema, get_strategies,

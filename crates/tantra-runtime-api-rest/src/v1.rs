@@ -26,6 +26,7 @@ use crate::trade_journal::{
     patch_trade_journal_trade, post_trade_journal_account, post_trade_journal_note,
 };
 use crate::ws::ws_handler;
+use crate::ws_live::ws_live_handler;
 use crate::{
     ApiJson, AppState, capability_manifest, ingest, openapi, orders, portfolio, profile, runs,
     screener, streams::get_backtest_events, trading_state,
@@ -256,6 +257,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/trade-journal/compare", get(get_trade_journal_compare))
         .route("/ws", get(ws_handler))
         .route("/ws/market", get(ws_handler))
+        .route("/ws/live", get(ws_live_handler))
         .route("/ws/chat", get(chat_ws_handler))
         .layer(axum::middleware::from_fn(v1_headers))
 }
