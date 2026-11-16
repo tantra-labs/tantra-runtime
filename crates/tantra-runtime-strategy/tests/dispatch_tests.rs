@@ -2,7 +2,8 @@
 //!
 //! Verifies:
 //! - Sub-15 µs SEBI pre-trade risk engine evaluation latency SLO.
-//! - Exact identical fills, positions, cash, and equity between PaperAdapter and ZerodhaAdapter.
+//! - Exact identical fills, positions, cash, and equity between PaperAdapter,
+//!   ZerodhaAdapter, and AngelOneAdapter (limit orders rest until crossed).
 //! - Order cancellation and SEBI OTR audit trail recording.
 //! - SEBI Risk refusal rejection and broker protection.
 //! - Zero floats invariant in financial ledgers (exact `rust_decimal::Decimal`).
@@ -12,7 +13,7 @@ use std::time::Instant;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde_json::to_string;
-use tantra_core::{Exchange, InstrumentId, Price, Quantity};
+use tantra_core::{Exchange, InstrumentId, OrderSide, Price, Quantity};
 use tantra_risk::{GlobalState, RiskEngine};
 use tantra_runtime_strategy::{
     AngelOneAdapter, DispatchError, Dispatcher, IntentError, OrderIntent, PaperAdapter,
@@ -208,18 +209,24 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
             .expect("angelone dispatch ok");
 
         assert!(p_id.starts_with("PAPER-"));
-        assert!(z_id.starts_with("KITE-"));
-        assert!(a_id.starts_with("SMARTAPI-"));
+        // Plan 0005 D2: the shared paper exchange mints `PAPER-XXXX` broker ids
+        // for every simulated adapter (the old KITE-/SMARTAPI- prefixes came
+        // from the deleted inline fill math).
+        assert!(z_id.starts_with("PAPER-"));
+        assert!(a_id.starts_with("PAPER-"));
     }
 
     // 1. Verify fill counts are identical
     let paper_fills = paper_view.fills();
     let zerodha_fills = zerodha_view.fills();
     let angelone_fills = angelone_view.fills();
+    // Plan 0005 D2: only the 3 market orders fill — the 2 RELIANCE limit
+    // orders rest until the market crosses them.
     assert_eq!(
         paper_fills.len(),
-        sequence.len(),
-        "all intents must generate fills"
+        3,
+        "only market orders must generate fills, got {}",
+        paper_fills.len()
     );
     assert_eq!(
         paper_fills.len(),
@@ -232,13 +239,26 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
         "fill count must match between paper and angelone"
     );
 
-    // 2. Verify each fill has identical economic properties
+    // 2. Verify each fill has identical economic properties — the 3 market
+    // orders fill immediately at the seeded reference price.
+    let expected_fills = [
+        (OrderSide::Buy, Decimal::from(1500), Decimal::from(20)),
+        (OrderSide::Sell, Decimal::from(1500), Decimal::from(5)),
+        (OrderSide::Buy, Decimal::from(3500), Decimal::from(15)),
+    ];
     for (i, ((pf, zf), af)) in paper_fills
         .iter()
         .zip(zerodha_fills.iter())
         .zip(angelone_fills.iter())
         .enumerate()
     {
+        let (side, price, qty) = expected_fills[i];
+        assert_eq!(pf.side, side, "Fill #{i} side mismatch (paper)");
+        assert_eq!(
+            pf.price.0, price,
+            "Fill #{i} must execute at the reference price (paper)"
+        );
+        assert_eq!(pf.quantity.0, qty, "Fill #{i} quantity mismatch (paper)");
         assert_eq!(
             pf.instrument, zf.instrument,
             "Fill #{i} instrument mismatch (paper vs zerodha)"
@@ -279,17 +299,27 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
         "positions must match exactly (paper vs angelone)"
     );
     assert_eq!(p_pos.get(&infy), Some(&Decimal::from(15))); // 20 bought - 5 sold
-    assert_eq!(p_pos.get(&reliance), Some(&Decimal::from(5))); // 10 bought - 5 sold
+    assert_eq!(
+        p_pos.get(&reliance).copied().unwrap_or(Decimal::ZERO),
+        Decimal::ZERO // both RELIANCE limit orders rest -> flat
+    );
     assert_eq!(p_pos.get(&tcs), Some(&Decimal::from(15))); // 15 bought
 
     // 4. Verify cash balance reflects real (non-zero) statutory fees and is
     // identical across all adapters (economic parity). Pure-notional cash
-    // would be 912,800; the statutory cost engine deducts real fees, so cash
-    // must be strictly below that while all three adapters agree.
-    let pure_notional_cash = Decimal::from(912_800);
+    // would be 925,000 (1,000,000 − 30,000 INFY buy − 52,500 TCS buy + 7,500
+    // INFY sell; both RELIANCE limit orders rest); the statutory cost engine
+    // deducts real fees, so cash must be strictly below that while all three
+    // adapters agree.
+    let pure_notional_cash = Decimal::from(925_000);
     assert!(
         paper_view.cash() < pure_notional_cash,
         "cash must reflect real statutory fees, got {}",
+        paper_view.cash()
+    );
+    assert!(
+        paper_view.cash() < Decimal::from(1_000_000),
+        "cash must stay below the initial balance, got {}",
         paper_view.cash()
     );
     assert_eq!(
@@ -304,11 +334,17 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
     );
 
     // 5. Verify total mark-to-market equity reflects real fees and is
-    // identical across all adapters. Pure-notional equity would be 1,000,300;
-    // statutory fees reduce it, and all three adapters must agree.
-    let pure_notional_equity = Decimal::from(1_000_300);
+    // identical across all adapters. Pure-notional equity would be 1,000,000
+    // (cash 925,000 + 15×1500 INFY + 15×3500 TCS; RELIANCE is flat); statutory
+    // fees reduce it, and all three adapters must agree.
+    let pure_notional_equity = Decimal::from(1_000_000);
     assert!(
         paper_view.equity() < pure_notional_equity,
+        "equity must reflect real statutory fees, got {}",
+        paper_view.equity()
+    );
+    assert!(
+        paper_view.equity() < Decimal::from(1_000_300),
         "equity must reflect real statutory fees, got {}",
         paper_view.equity()
     );
@@ -332,9 +368,10 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
     zerodha_view.set_market_price(reliance.clone(), Decimal::from(2600));
     angelone_view.set_market_price(reliance.clone(), Decimal::from(2600));
 
-    // Equity after the price shift must still reflect real fees (below the
-    // pure-notional 1,002,300) and remain identical across adapters.
-    let updated_pure_notional_equity = Decimal::from(1_002_300);
+    // Equity after the price shift must still reflect real fees and remain
+    // identical across adapters. INFY +100/share × 15 = +1,500; RELIANCE is
+    // flat, so its shift contributes nothing: pure-notional 1,001,500.
+    let updated_pure_notional_equity = Decimal::from(1_001_500);
     assert!(
         paper_view.equity() < updated_pure_notional_equity,
         "updated equity must reflect real statutory fees, got {}",
@@ -473,7 +510,9 @@ fn test_full_replay_is_byte_identical() {
     let first = replay_fills_serialized(nse).expect("first dispatch sequence ok");
     let second = replay_fills_serialized(nse).expect("second dispatch sequence ok");
 
-    assert_eq!(first.len(), replay_sequence(nse).len());
+    // Plan 0005 D2: only the 3 market orders fill; the 2 RELIANCE limit orders
+    // rest until the market crosses them.
+    assert_eq!(first.len(), 3);
     for (i, (a, b)) in first.iter().zip(second.iter()).enumerate() {
         assert_eq!(a, b, "fill #{i} must be byte-identical across replays");
     }

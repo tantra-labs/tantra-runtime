@@ -10,8 +10,9 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use tantra_core::uuid::Uuid;
-use tantra_core::{FillReport, InstrumentId, Money, OrderRequest, OrderSide, Price};
+use tantra_core::{FillReport, InstrumentId, OrderRequest, OrderSide, Price, Quantity, Tick};
 use tantra_exec_core::{BrokerError, BrokerExecutor};
+use tantra_exec_paper::{FillCostFn, PaperExchange};
 use tantra_exec_zerodha::ZerodhaExecutor;
 use tantra_market_finance::india::costs::NseCashEquitySchedule;
 use tantra_market_finance::{CostSchedule, MarketSegment};
@@ -202,225 +203,261 @@ impl Dispatcher {
     }
 }
 
-/// Internal ledger state for simulated broker adapters.
-#[derive(Debug, Clone)]
-struct AdapterState {
-    cash: Decimal,
-    positions: HashMap<InstrumentId, Decimal>,
-    orders: HashMap<String, OrderRequest>,
-    fills: Vec<FillReport>,
+/// Shared paper-exchange venue behind the simulated broker adapters.
+///
+/// Owns a [`tantra_exec_paper::PaperExchange`] as the single fill engine — all
+/// fill math, positions, and statutory fee computation live in the exchange
+/// (T14.6, plan 0005 D2) — plus the adapter-local reference-price mirrors and
+/// the broker-id → request map backing the read APIs.
+struct PaperVenue {
+    /// The paper exchange that executes fills.
+    exchange: PaperExchange,
+    /// Adapter reference prices keyed by instrument; drives depth seeding at
+    /// submit time so market orders fill at the reference price.
     market_prices: HashMap<InstrumentId, Decimal>,
-    cancelled_orders: Vec<String>,
+    /// Last-seen reference price mirror for mark-to-market equity. The
+    /// exchange has no public last-price reader, so the adapter keeps its own
+    /// mirror updated by `set_market_price` and submit-time depth seeding.
+    last_prices: HashMap<InstrumentId, Decimal>,
+    /// broker_id → submitted [`OrderRequest`], backing the read API and the
+    /// fill `algo_id` rewrite.
+    orders: HashMap<String, OrderRequest>,
 }
 
-impl AdapterState {
-    fn new(initial_cash: Decimal) -> Self {
-        Self {
-            cash: initial_cash,
-            positions: HashMap::new(),
-            orders: HashMap::new(),
-            fills: Vec::new(),
-            market_prices: HashMap::new(),
-            cancelled_orders: Vec::new(),
-        }
-    }
+/// Real NSE cash-equity delivery cost model, plugged into the paper exchange
+/// through its [`FillCostFn`] hook so simulated fills carry the same statutory
+/// fees the previous inline `execute_order` charged (real fees, never zero).
+///
+/// The only f64 boundary is this fee-table computation, converted back with
+/// `Decimal::from_f64_retain` — exactly the pattern the previous inline cost
+/// path used; all ledger arithmetic stays in `Decimal`.
+struct NseDeliveryFillCost;
 
-    fn set_market_price(&mut self, instrument: InstrumentId, price: Decimal) {
-        self.market_prices.insert(instrument, price);
-    }
-
-    fn execute_order(
-        &mut self,
-        prefix: &str,
-        order: &OrderRequest,
-        now: DateTime<Utc>,
-    ) -> Result<String, String> {
-        let fill_price = match order.order_type.limit_price() {
-            Some(price) => price.0,
-            None => match self.market_prices.get(&order.instrument) {
-                Some(p) => *p,
-                None => {
-                    return Err(format!(
-                        "no market price available for market order on instrument {}",
-                        order.instrument
-                    ));
-                }
-            },
-        };
-
-        let qty = order.quantity.0;
-        let notional = fill_price * qty;
-
-        match order.side {
-            OrderSide::Buy => {
-                self.cash -= notional;
-                *self
-                    .positions
-                    .entry(order.instrument.clone())
-                    .or_insert(Decimal::ZERO) += qty;
-            }
-            OrderSide::Sell => {
-                self.cash += notional;
-                *self
-                    .positions
-                    .entry(order.instrument.clone())
-                    .or_insert(Decimal::ZERO) -= qty;
-            }
-        }
-
-        // Compute statutory transaction costs using tantra-market-finance
+impl FillCostFn for NseDeliveryFillCost {
+    fn compute(&self, side: OrderSide, notional: Decimal) -> Decimal {
         let notional_f64 = notional.to_f64().unwrap_or(0.0);
         let schedule = NseCashEquitySchedule::delivery();
         let seg = MarketSegment::from("equity");
-        let raw_fees = schedule.compute_costs(&seg, order.side, notional_f64);
-
-        let brokerage = Money::inr(
-            Decimal::from_f64_retain(raw_fees.get("brokerage").unwrap_or(0.0)).unwrap_or_default(),
-        );
-        let stt = Money::inr(
-            Decimal::from_f64_retain(raw_fees.get("stt").unwrap_or(0.0)).unwrap_or_default(),
-        );
-        let exchange_charges = Money::inr(
-            Decimal::from_f64_retain(raw_fees.get("exchange_fee").unwrap_or(0.0))
-                .unwrap_or_default(),
-        );
-        let gst = Money::inr(
-            Decimal::from_f64_retain(raw_fees.get("gst").unwrap_or(0.0)).unwrap_or_default(),
-        );
-        let stamp_duty = Money::inr(
-            Decimal::from_f64_retain(raw_fees.get("stamp_duty").unwrap_or(0.0)).unwrap_or_default(),
-        );
-        let sebi_charges = Money::inr(
-            Decimal::from_f64_retain(raw_fees.get("sebi_fee").unwrap_or(0.0)).unwrap_or_default(),
-        );
-
-        let fee_breakdown = tantra_core::FeeBreakdown {
-            brokerage,
-            stt,
-            exchange_charges,
-            gst,
-            stamp_duty,
-            sebi_charges,
-        };
-        let total_fee = fee_breakdown.total();
-
-        // Deduct statutory fees from cash
-        self.cash -= total_fee.amount;
-
-        // Deterministic fill identity: a per-venue monotonic sequence (same
-        // convention as exchange-provided fill numbers). No random UUIDs and
-        // no wall-clock queries here — replaying the same timestamped order
-        // sequence must reproduce this fill byte-for-byte.
-        let order_id = format!("{prefix}-{}", order.client_order_id);
-        let fill = FillReport {
-            fill_id: format!("FILL-{:04}", self.fills.len() + 1),
-            order_id: order_id.clone(),
-            client_order_id: order.client_order_id,
-            instrument: order.instrument.clone(),
-            side: order.side,
-            price: Price(fill_price),
-            quantity: order.quantity,
-            algo_id: order.algo_id.clone(),
-            timestamp: now,
-            correlation_id: order.correlation_id,
-            client_id: order.client_id.clone(),
-            account_id: None,
-            fee: total_fee,
-            fee_breakdown: Some(fee_breakdown),
-            trace_context: order.trace_context,
-        };
-
-        self.fills.push(fill);
-        self.orders.insert(order_id.clone(), order.clone());
-        Ok(order_id)
-    }
-
-    fn cancel_order(&mut self, broker_order_id: &str) -> Result<(), String> {
-        if self.orders.contains_key(broker_order_id) {
-            self.cancelled_orders.push(broker_order_id.to_string());
-            Ok(())
-        } else {
-            Err(format!("order '{broker_order_id}' not found"))
-        }
-    }
-
-    fn equity(&self) -> Decimal {
-        let mut total = self.cash;
-        for (inst, qty) in &self.positions {
-            if let Some(price) = self.market_prices.get(inst) {
-                total += *qty * *price;
-            }
-        }
-        total
-    }
-
-    fn equity_with_prices(&self, prices: &HashMap<InstrumentId, Decimal>) -> Decimal {
-        let mut total = self.cash;
-        for (inst, qty) in &self.positions {
-            let price = prices
-                .get(inst)
-                .or_else(|| self.market_prices.get(inst))
-                .copied()
-                .unwrap_or(Decimal::ZERO);
-            total += *qty * price;
-        }
-        total
+        let raw_fees = schedule.compute_costs(&seg, side, notional_f64);
+        let total_f64 = [
+            "brokerage",
+            "stt",
+            "exchange_fee",
+            "gst",
+            "stamp_duty",
+            "sebi_fee",
+        ]
+        .into_iter()
+        .map(|key| raw_fees.get(key).unwrap_or(0.0))
+        .sum::<f64>();
+        Decimal::from_f64_retain(total_f64).unwrap_or(Decimal::ZERO)
     }
 }
 
+/// Builds a paper exchange seeded with the given cash and the real NSE
+/// cash-equity delivery cost model.
+fn exchange_with_fees(initial_cash: Decimal) -> PaperExchange {
+    PaperExchange::new(initial_cash).with_cost_fn(Box::new(NseDeliveryFillCost))
+}
+
+/// Submits an order through the shared paper venue.
+///
+/// When the adapter holds a reference price for the instrument, the exchange
+/// is primed with it: the last price is set and (only when no depth exists
+/// yet) synthetic depth is seeded at the reference price via a synthetic tick,
+/// so a market order fills fully at the reference price and a limit order
+/// rests until the market crosses it. Orders without a reference price pass
+/// through untouched (a market order then fails with `NoMarketPrice`; a limit
+/// order rests `Working`).
+fn submit_to_venue(
+    venue: &Mutex<PaperVenue>,
+    order: &OrderRequest,
+    now: DateTime<Utc>,
+) -> Result<String, String> {
+    let mut guard = venue.lock().expect("poisoned lock");
+
+    if let Some(px) = guard.market_prices.get(&order.instrument).copied() {
+        let price = Price::new(px);
+        guard
+            .exchange
+            .set_market_price(order.instrument.clone(), price);
+        // Seed synthetic depth on both sides at the reference price once per
+        // instrument. `feed_tick` never sets avg daily volume, so the
+        // participation cap is off and market orders fill in full.
+        if guard.exchange.depth(&order.instrument).is_none() {
+            guard.exchange.feed_tick(&Tick::Ltp {
+                instrument: order.instrument.clone(),
+                price,
+                volume: Quantity::from_u64(1_000_000),
+                exchange_ts: now,
+                receive_ts: now,
+            });
+        }
+        guard.last_prices.insert(order.instrument.clone(), px);
+    }
+
+    let broker_id = guard
+        .exchange
+        .submit_order(order.clone(), now)
+        .map_err(|e| e.to_string())?;
+    guard.orders.insert(broker_id.clone(), order.clone());
+    Ok(broker_id)
+}
+
+/// Cancels an order through the shared paper venue.
+fn cancel_on_venue(
+    venue: &Mutex<PaperVenue>,
+    broker_order_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), String> {
+    venue
+        .lock()
+        .expect("poisoned lock")
+        .exchange
+        .cancel_order(broker_order_id, now)
+        .map_err(|e| e.to_string())
+}
+
+/// Sets/updates the adapter reference price, the equity price mirror, and the
+/// exchange last price for an instrument. Depth is seeded lazily at submit.
+fn venue_set_market_price(venue: &Mutex<PaperVenue>, instrument: InstrumentId, price: Decimal) {
+    let mut guard = venue.lock().expect("poisoned lock");
+    let px = Price::new(price);
+    guard.market_prices.insert(instrument.clone(), price);
+    guard.last_prices.insert(instrument.clone(), price);
+    guard.exchange.set_market_price(instrument, px);
+}
+
+/// Returns the current cash balance in INR.
+fn venue_cash(venue: &Mutex<PaperVenue>) -> Decimal {
+    venue.lock().expect("poisoned lock").exchange.cash()
+}
+
+/// Returns the current open positions.
+fn venue_positions(venue: &Mutex<PaperVenue>) -> HashMap<InstrumentId, Decimal> {
+    venue
+        .lock()
+        .expect("poisoned lock")
+        .exchange
+        .positions()
+        .clone()
+}
+
+/// Returns all execution fills recorded by the venue.
+///
+/// The exchange stamps fills with its own `algo_id`/`account_id`; rewrite
+/// `algo_id` from the submitted request (looked up by broker id) and report
+/// `account_id` as `None`, matching the adapter boundary contract.
+fn venue_fills(venue: &Mutex<PaperVenue>) -> Vec<FillReport> {
+    let guard = venue.lock().expect("poisoned lock");
+    let orders = &guard.orders;
+    guard
+        .exchange
+        .fills()
+        .iter()
+        .map(|fill| {
+            let mut fill = fill.clone();
+            if let Some(order) = orders.get(&fill.order_id) {
+                fill.algo_id = order.algo_id.clone();
+            }
+            fill.account_id = None;
+            fill
+        })
+        .collect()
+}
+
+/// Returns all orders submitted to the venue.
+fn venue_orders(venue: &Mutex<PaperVenue>) -> HashMap<String, OrderRequest> {
+    venue.lock().expect("poisoned lock").orders.clone()
+}
+
+/// Computes current total portfolio equity (cash + mark-to-market positions).
+fn venue_equity(venue: &Mutex<PaperVenue>) -> Decimal {
+    venue.lock().expect("poisoned lock").exchange.equity()
+}
+
+/// Computes portfolio equity using an explicit set of market prices, falling
+/// back to the venue's last-seen reference price per position.
+fn venue_equity_with_prices(
+    venue: &Mutex<PaperVenue>,
+    prices: &HashMap<InstrumentId, Decimal>,
+) -> Decimal {
+    let guard = venue.lock().expect("poisoned lock");
+    let mut total = guard.exchange.cash();
+    for (inst, qty) in guard.exchange.positions() {
+        let price = prices
+            .get(inst)
+            .or_else(|| guard.last_prices.get(inst))
+            .copied()
+            .unwrap_or(Decimal::ZERO);
+        total += *qty * price;
+    }
+    total
+}
+
 /// In-memory paper trading broker adapter.
-#[derive(Debug, Clone)]
+///
+/// A thin driver over the shared [`tantra_exec_paper::PaperExchange`] venue;
+/// all fill math lives in the exchange (T14.6, plan 0005 D2).
+#[derive(Clone)]
 pub struct PaperAdapter {
-    state: Arc<Mutex<AdapterState>>,
+    venue: Arc<Mutex<PaperVenue>>,
+}
+
+impl std::fmt::Debug for PaperAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PaperAdapter")
+            .field("venue", &"paper-exchange")
+            .finish()
+    }
 }
 
 impl PaperAdapter {
     /// Creates a new [`PaperAdapter`] with the specified initial cash balance in INR.
     pub fn new(initial_cash: Decimal) -> Self {
         Self {
-            state: Arc::new(Mutex::new(AdapterState::new(initial_cash))),
+            venue: Arc::new(Mutex::new(PaperVenue {
+                exchange: exchange_with_fees(initial_cash),
+                market_prices: HashMap::new(),
+                last_prices: HashMap::new(),
+                orders: HashMap::new(),
+            })),
         }
     }
 
     /// Sets or updates the market price for an instrument.
     pub fn set_market_price(&self, instrument: InstrumentId, price: Decimal) {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .set_market_price(instrument, price);
+        venue_set_market_price(&self.venue, instrument, price);
     }
 
     /// Returns the current cash balance in INR.
     pub fn cash(&self) -> Decimal {
-        self.state.lock().expect("poisoned lock").cash
+        venue_cash(&self.venue)
     }
 
     /// Returns the current open positions.
     pub fn positions(&self) -> HashMap<InstrumentId, Decimal> {
-        self.state.lock().expect("poisoned lock").positions.clone()
+        venue_positions(&self.venue)
     }
 
     /// Returns all execution fills recorded by this adapter.
     pub fn fills(&self) -> Vec<FillReport> {
-        self.state.lock().expect("poisoned lock").fills.clone()
+        venue_fills(&self.venue)
     }
 
     /// Returns all orders submitted to this adapter.
     pub fn orders(&self) -> HashMap<String, OrderRequest> {
-        self.state.lock().expect("poisoned lock").orders.clone()
+        venue_orders(&self.venue)
     }
 
     /// Computes current total portfolio equity (cash + mark-to-market positions).
     pub fn equity(&self) -> Decimal {
-        self.state.lock().expect("poisoned lock").equity()
+        venue_equity(&self.venue)
     }
 
     /// Computes portfolio equity using an explicit set of market prices.
     pub fn equity_with_prices(&self, prices: &HashMap<InstrumentId, Decimal>) -> Decimal {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .equity_with_prices(prices)
+        venue_equity_with_prices(&self.venue, prices)
     }
 }
 
@@ -436,17 +473,11 @@ impl BrokerAdapter for PaperAdapter {
     }
 
     fn submit_order(&self, order: &OrderRequest, now: DateTime<Utc>) -> Result<String, String> {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .execute_order("PAPER", order, now)
+        submit_to_venue(&self.venue, order, now)
     }
 
-    fn cancel_order(&self, broker_order_id: &str, _now: DateTime<Utc>) -> Result<(), String> {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .cancel_order(broker_order_id)
+    fn cancel_order(&self, broker_order_id: &str, now: DateTime<Utc>) -> Result<(), String> {
+        cancel_on_venue(&self.venue, broker_order_id, now)
     }
 }
 
@@ -455,7 +486,7 @@ impl BrokerAdapter for PaperAdapter {
 pub struct ZerodhaKiteAdapter {
     api_key: Option<String>,
     access_token: Option<String>,
-    state: Arc<Mutex<AdapterState>>,
+    venue: Arc<Mutex<PaperVenue>>,
     /// Live Kite Connect executor, only present when credentials are supplied.
     /// When `None` the adapter runs in simulation/scaffold mode.
     executor: Option<Arc<ZerodhaExecutor>>,
@@ -469,7 +500,7 @@ impl std::fmt::Debug for ZerodhaKiteAdapter {
         f.debug_struct("ZerodhaKiteAdapter")
             .field("api_key", &self.api_key)
             .field("access_token", &self.access_token)
-            .field("state", &self.state)
+            .field("venue", &"paper-exchange")
             .field(
                 "executor",
                 &self.executor.as_ref().map(|_| "ZerodhaExecutor"),
@@ -488,7 +519,12 @@ impl ZerodhaKiteAdapter {
         Self {
             api_key: None,
             access_token: None,
-            state: Arc::new(Mutex::new(AdapterState::new(initial_cash))),
+            venue: Arc::new(Mutex::new(PaperVenue {
+                exchange: exchange_with_fees(initial_cash),
+                market_prices: HashMap::new(),
+                last_prices: HashMap::new(),
+                orders: HashMap::new(),
+            })),
             executor: None,
             runtime: None,
         }
@@ -532,7 +568,12 @@ impl ZerodhaKiteAdapter {
         Self {
             api_key: Some(key),
             access_token: Some(token),
-            state: Arc::new(Mutex::new(AdapterState::new(initial_cash))),
+            venue: Arc::new(Mutex::new(PaperVenue {
+                exchange: exchange_with_fees(initial_cash),
+                market_prices: HashMap::new(),
+                last_prices: HashMap::new(),
+                orders: HashMap::new(),
+            })),
             executor: Some(Arc::new(exec)),
             runtime: Some(Arc::new(runtime)),
         }
@@ -550,43 +591,37 @@ impl ZerodhaKiteAdapter {
 
     /// Sets or updates the market price for an instrument.
     pub fn set_market_price(&self, instrument: InstrumentId, price: Decimal) {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .set_market_price(instrument, price);
+        venue_set_market_price(&self.venue, instrument, price);
     }
 
     /// Returns the current cash balance in INR.
     pub fn cash(&self) -> Decimal {
-        self.state.lock().expect("poisoned lock").cash
+        venue_cash(&self.venue)
     }
 
     /// Returns the current open positions.
     pub fn positions(&self) -> HashMap<InstrumentId, Decimal> {
-        self.state.lock().expect("poisoned lock").positions.clone()
+        venue_positions(&self.venue)
     }
 
     /// Returns all execution fills recorded by this adapter.
     pub fn fills(&self) -> Vec<FillReport> {
-        self.state.lock().expect("poisoned lock").fills.clone()
+        venue_fills(&self.venue)
     }
 
     /// Returns all orders submitted to this adapter.
     pub fn orders(&self) -> HashMap<String, OrderRequest> {
-        self.state.lock().expect("poisoned lock").orders.clone()
+        venue_orders(&self.venue)
     }
 
     /// Computes current total portfolio equity (cash + mark-to-market positions).
     pub fn equity(&self) -> Decimal {
-        self.state.lock().expect("poisoned lock").equity()
+        venue_equity(&self.venue)
     }
 
     /// Computes portfolio equity using an explicit set of market prices.
     pub fn equity_with_prices(&self, prices: &HashMap<InstrumentId, Decimal>) -> Decimal {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .equity_with_prices(prices)
+        venue_equity_with_prices(&self.venue, prices)
     }
 }
 
@@ -605,7 +640,7 @@ impl BrokerAdapter for ZerodhaKiteAdapter {
         // When a live ZerodhaExecutor is configured (credentials supplied),
         // place the order on the real Kite Connect wire transport, delegating
         // auth/session/rate-limiting to `tantra-exec`. Otherwise fall back to
-        // the in-process simulation scaffold (preserving determinism and
+        // the shared paper-exchange venue (preserving determinism and
         // paper/live economic parity for the sim path).
         if let Some(exec) = &self.executor {
             let runtime = self
@@ -622,13 +657,10 @@ impl BrokerAdapter for ZerodhaKiteAdapter {
                 .map_err(map_broker_error)?;
             return Ok(ack.order_id);
         }
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .execute_order("KITE", order, now)
+        submit_to_venue(&self.venue, order, now)
     }
 
-    fn cancel_order(&self, broker_order_id: &str, _now: DateTime<Utc>) -> Result<(), String> {
+    fn cancel_order(&self, broker_order_id: &str, now: DateTime<Utc>) -> Result<(), String> {
         if let Some(exec) = &self.executor {
             let runtime = self
                 .runtime
@@ -638,10 +670,7 @@ impl BrokerAdapter for ZerodhaKiteAdapter {
                 .block_on(exec.cancel_order(broker_order_id))
                 .map_err(map_broker_error);
         }
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .cancel_order(broker_order_id)
+        cancel_on_venue(&self.venue, broker_order_id, now)
     }
 }
 
@@ -653,12 +682,23 @@ impl BrokerAdapter for ZerodhaKiteAdapter {
 /// remains a simulation/scaffold identical in economics to [`PaperAdapter`].
 /// The real SmartAPI wire transport belongs in `tantra-exec`/`tantra-adapters`
 /// and will plug into this same [`BrokerAdapter`] boundary once available.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AngelOneSmartApiAdapter {
     api_key: Option<String>,
     client_code: Option<String>,
     jwt_token: Option<String>,
-    state: Arc<Mutex<AdapterState>>,
+    venue: Arc<Mutex<PaperVenue>>,
+}
+
+impl std::fmt::Debug for AngelOneSmartApiAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AngelOneSmartApiAdapter")
+            .field("api_key", &self.api_key)
+            .field("client_code", &self.client_code)
+            .field("jwt_token", &self.jwt_token)
+            .field("venue", &"paper-exchange")
+            .finish()
+    }
 }
 
 impl AngelOneSmartApiAdapter {
@@ -668,7 +708,12 @@ impl AngelOneSmartApiAdapter {
             api_key: None,
             client_code: None,
             jwt_token: None,
-            state: Arc::new(Mutex::new(AdapterState::new(initial_cash))),
+            venue: Arc::new(Mutex::new(PaperVenue {
+                exchange: exchange_with_fees(initial_cash),
+                market_prices: HashMap::new(),
+                last_prices: HashMap::new(),
+                orders: HashMap::new(),
+            })),
         }
     }
 
@@ -683,7 +728,12 @@ impl AngelOneSmartApiAdapter {
             api_key: Some(api_key.into()),
             client_code: Some(client_code.into()),
             jwt_token: Some(jwt_token.into()),
-            state: Arc::new(Mutex::new(AdapterState::new(initial_cash))),
+            venue: Arc::new(Mutex::new(PaperVenue {
+                exchange: exchange_with_fees(initial_cash),
+                market_prices: HashMap::new(),
+                last_prices: HashMap::new(),
+                orders: HashMap::new(),
+            })),
         }
     }
 
@@ -704,43 +754,37 @@ impl AngelOneSmartApiAdapter {
 
     /// Sets or updates the market price for an instrument.
     pub fn set_market_price(&self, instrument: InstrumentId, price: Decimal) {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .set_market_price(instrument, price);
+        venue_set_market_price(&self.venue, instrument, price);
     }
 
     /// Returns the current cash balance in INR.
     pub fn cash(&self) -> Decimal {
-        self.state.lock().expect("poisoned lock").cash
+        venue_cash(&self.venue)
     }
 
     /// Returns the current open positions.
     pub fn positions(&self) -> HashMap<InstrumentId, Decimal> {
-        self.state.lock().expect("poisoned lock").positions.clone()
+        venue_positions(&self.venue)
     }
 
     /// Returns all execution fills recorded by this adapter.
     pub fn fills(&self) -> Vec<FillReport> {
-        self.state.lock().expect("poisoned lock").fills.clone()
+        venue_fills(&self.venue)
     }
 
     /// Returns all orders submitted to this adapter.
     pub fn orders(&self) -> HashMap<String, OrderRequest> {
-        self.state.lock().expect("poisoned lock").orders.clone()
+        venue_orders(&self.venue)
     }
 
     /// Computes current total portfolio equity (cash + mark-to-market positions).
     pub fn equity(&self) -> Decimal {
-        self.state.lock().expect("poisoned lock").equity()
+        venue_equity(&self.venue)
     }
 
     /// Computes portfolio equity using an explicit set of market prices.
     pub fn equity_with_prices(&self, prices: &HashMap<InstrumentId, Decimal>) -> Decimal {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .equity_with_prices(prices)
+        venue_equity_with_prices(&self.venue, prices)
     }
 }
 
@@ -756,17 +800,11 @@ impl BrokerAdapter for AngelOneSmartApiAdapter {
     }
 
     fn submit_order(&self, order: &OrderRequest, now: DateTime<Utc>) -> Result<String, String> {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .execute_order("SMARTAPI", order, now)
+        submit_to_venue(&self.venue, order, now)
     }
 
-    fn cancel_order(&self, broker_order_id: &str, _now: DateTime<Utc>) -> Result<(), String> {
-        self.state
-            .lock()
-            .expect("poisoned lock")
-            .cancel_order(broker_order_id)
+    fn cancel_order(&self, broker_order_id: &str, now: DateTime<Utc>) -> Result<(), String> {
+        cancel_on_venue(&self.venue, broker_order_id, now)
     }
 }
 

@@ -16,6 +16,7 @@ tantra-risk.workspace = true
 tantra-market-indicators.workspace = true
 tantra-market-finance.workspace = true
 tantra-exec-core.workspace = true
+tantra-exec-paper.workspace = true
 tantra-exec-zerodha.workspace = true
 tokio.workspace = true
 serde.workspace = true
