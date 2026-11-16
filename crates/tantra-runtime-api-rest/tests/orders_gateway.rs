@@ -1,4 +1,4 @@
-//! The REST order routes against the real embedded `NextOpenSim` (ADR 0016, E3-S7).
+//! The REST order routes against the shared `tantra-exec-paper` exchange (plan 0005 D1, T14.5).
 //!
 //! # Rebuilt on this migration, not a rename
 //!
@@ -6,36 +6,18 @@
 //! `AppState::with_execution_gateway` — a `Fake` test double recording `submit`/`cancel` calls,
 //! and an `L2Venue` wrapping `tantra_sim::L2Sim` — so the order-route plumbing could be tested
 //! independently of whatever venue was behind it, including synthetic partial fills and
-//! depth-level matching. `exec.rs`'s module doc explains why none of that survives: there is no
-//! generic venue trait any more (only one concrete simulator, `NextOpenSim`, built directly on
-//! `tantra_core` types with no injectable seam), and `tantra_sim` is gone from the workspace with
-//! no L2 successor.
+//! depth-level matching. `exec.rs`'s module doc explains why none of that survives: the shared
+//! paper exchange is the one venue, injected by value through `AppState::with_execution_sim`.
 //!
-//! `tests/orders_exec.rs` already covers the straightforward submit/fill/reject paths through
-//! the real simulator, so this file keeps only what that one doesn't: that a cancel actually
-//! withdraws the order from the simulator's own working set (not just flips the ledger's status
-//! label), and that `/positions/close` reaches the simulator with a second, real order.
-//!
-//! Dropped outright, with no replacement, because `NextOpenSim` has nothing equivalent to
-//! exercise:
-//! - `gateway_events_update_ledger_status`,
-//!   `partial_fills_update_filled_qty_and_the_average_incrementally`, and
-//!   `a_rejected_remainder_after_a_partial_fill_keeps_the_fill_and_records_why` drove the `Fake`
-//!   venue with hand-built `ExecutionEvent`s (arbitrary partial fills, arbitrary rejection
-//!   strings). `NextOpenSim` only ever fills a market order in full, at the next bar's open, and
-//!   only ever rejects with its own two fixed reasons (`unsupported_order_type`, `no_position`);
-//!   there is no way to make it report a partial fill or an arbitrary rejection, so nothing
-//!   equivalent can be exercised.
-//! - `venue_rejections_carry_the_code_when_the_reason_is_one_else_order_rejected` tested the old
-//!   async gateway's string-reason-to-`ErrorCode` fallback mapping. `NextOpenSim` sets its own
-//!   `ErrorCode` directly when it rejects (see `exec.rs::submit`); there is no string-to-code
-//!   mapping step left anywhere on this path.
-//! - `l2sim_partial_fills_report_cumulative_qty_and_the_weighted_average` tested
-//!   `tantra_sim::L2Sim`'s depth-level partial fills directly. `tantra_sim` is gone with no
-//!   successor.
+//! `tests/orders_exec.rs` and `tests/paper_orders_tests.rs` cover the straightforward
+//! submit/fill/reject paths through the real exchange, so this file keeps only what those
+//! don't: that a cancel actually withdraws the order from the exchange's own book (not just
+//! flips the ledger's status label), and that `/positions/close` reaches the exchange with a
+//! second, real order.
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
+use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use tantra_core::{Currency, InstrumentKind};
 use tantra_runtime_api_rest::market_feed::wire::{
@@ -43,8 +25,23 @@ use tantra_runtime_api_rest::market_feed::wire::{
 };
 use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
 use tantra_runtime_api_rest::{AppState, api_router_with};
-use tantra_runtime_testing::fixtures::{any_instrument, flat_bar};
+use tantra_runtime_testing::fixtures::any_instrument;
 use tower::util::ServiceExt;
+
+/// A flat bar on `X.NSE` at event time `ts`, close `open`, volume 1000 — a book the exchange
+/// can actually fill against (the `flat_bar` fixture's volume-1 book participates up to zero).
+fn bar(ts: u64, open: f64) -> tantra_core::Bar {
+    let px = tantra_core::Price::new(Decimal::from_f64_retain(open).unwrap());
+    tantra_core::Bar {
+        instrument: any_instrument(),
+        open: px,
+        high: px,
+        low: px,
+        close: px,
+        volume: tantra_core::Quantity::from_u64(1000),
+        timestamp: chrono::DateTime::from_timestamp_nanos(ts as i64),
+    }
+}
 
 fn state() -> AppState {
     let id = any_instrument();
@@ -89,13 +86,17 @@ fn status_of(st: &AppState, id: &str) -> String {
 }
 
 #[tokio::test]
-async fn delete_order_withdraws_it_from_the_simulators_working_set() {
+async fn delete_order_withdraws_it_from_the_paper_exchange_book() {
     let st = state();
+    // A resting limit is acknowledged as working on the exchange's book.
+    let mut body = order("buy", 25.0, "o1");
+    body["order_type"] = json!("limit");
+    body["price"] = json!(99.0);
     assert_eq!(
-        call(&st, Method::POST, "/orders", Some(order("buy", 25.0, "o1"))).await,
+        call(&st, Method::POST, "/orders", Some(body)).await,
         StatusCode::OK
     );
-    assert_eq!(status_of(&st, "o1"), "submitted");
+    assert_eq!(status_of(&st, "o1"), "accepted");
 
     assert_eq!(
         call(&st, Method::DELETE, "/orders/o1", None).await,
@@ -103,19 +104,19 @@ async fn delete_order_withdraws_it_from_the_simulators_working_set() {
     );
     assert_eq!(status_of(&st, "o1"), "cancelled");
 
-    // If the cancel only flipped the ledger's label and left the order working in the
-    // simulator, this bar would fill it. It must not: the row stays cancelled (terminal, so
-    // `apply_fill` is a no-op) and the ledger's position stays flat.
-    st.advance_market(&[flat_bar("X", 101.0, 1_000)]).unwrap();
+    // If the cancel only flipped the ledger's label and left the order resting in the
+    // exchange, this bar (which crosses the limit) would fill it. It must not: the row stays
+    // cancelled (terminal, so `apply_fill` is a no-op) and the ledger's position stays flat.
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     assert_eq!(status_of(&st, "o1"), "cancelled");
     assert!(st.orders.positions().is_empty());
 }
 
 #[tokio::test]
-async fn close_positions_reaches_the_simulator_with_a_second_real_order() {
+async fn close_positions_reaches_the_exchange_with_a_second_real_order() {
     let st = state();
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     call(&st, Method::POST, "/orders", Some(order("buy", 25.0, "o1"))).await;
-    st.advance_market(&[flat_bar("X", 101.0, 1_000)]).unwrap();
     assert_eq!(status_of(&st, "o1"), "filled");
 
     assert_eq!(
@@ -123,17 +124,15 @@ async fn close_positions_reaches_the_simulator_with_a_second_real_order() {
         StatusCode::OK
     );
 
-    // The close order is submitted to the simulator at once (not merely queued): one more row,
-    // already working.
+    // The close order is submitted to the exchange too (not merely queued): one more row,
+    // already filled against the depth the seed bar left resting.
     let rows = st.orders.list();
     assert_eq!(rows.len(), 2, "the closing order is recorded alongside o1");
-    let closing_submitted = rows
+    let closing_filled = rows
         .iter()
-        .any(|o| serde_json::to_value(o).unwrap()["status"] == "submitted");
-    assert!(closing_submitted, "the closing order reached the simulator");
+        .any(|o| serde_json::to_value(o).unwrap()["status"] == "filled");
+    assert!(closing_filled, "the closing order reached the exchange");
 
-    // Once that order fills too, the ledger's position is flat again.
-    st.advance_market(&[flat_bar("X", 103.0, 2_000)]).unwrap();
     assert!(st.orders.positions().is_empty());
     assert!(
         st.orders

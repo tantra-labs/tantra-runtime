@@ -81,7 +81,8 @@ pub struct AppState {
     /// The write ledger every risk-approved placement lands in (E11-S7, ADR 0019
     /// decision 3). `GET /orders` reads it; a restart empties it.
     pub orders: OrderLedger,
-    /// The embedded `NextOpenSim` approved orders are submitted to (ADR 0016).
+    /// The shared `tantra-exec-paper` exchange approved orders are submitted to (plan 0005 D1,
+    /// T14.5; ADR 0016's simulator is gone).
     pub(crate) exec: crate::exec::ExecGateway,
     /// The writable store behind `quotes`, when the state was built by `from_reader`.
     live: Option<Arc<LiveQuoteStore>>,
@@ -221,19 +222,20 @@ impl AppState {
         self
     }
 
-    /// Replaces the embedded execution simulator with a fresh one (clears whatever it was
-    /// tracking as working orders and simulated holdings).
-    pub fn with_execution_sim(mut self, sim: crate::NextOpenSim) -> Self {
-        self.exec = crate::exec::ExecGateway::new(sim);
+    /// Replaces the paper exchange behind the order routes with `exchange` (clears whatever it
+    /// was tracking as working orders and simulated holdings).
+    pub fn with_execution_sim(mut self, exchange: tantra_exec_paper::PaperExchange) -> Self {
+        self.exec = crate::exec::ExecGateway::with_exchange(exchange);
         self
     }
 
-    /// Advances the market: feeds `bars` (ascending `ts_event`) to the embedded simulator.
+    /// Advances the market: feeds `bars` (ascending `ts_event`) to the paper exchange.
     ///
-    /// Market orders submitted earlier fill at the open of their instrument's first bar in a
-    /// later session, and each fill, rejection or cancel updates the matching ledger row (so
-    /// [`OrderLedger::position`] follows). This is the hook a live bar feed calls; event time is
-    /// the bars' `ts_event`, never the wall clock. An out-of-order bar is an error.
+    /// Market orders fill when the exchange has feed depth (from a bar or a resting
+    /// participant), resting limits fill once a bar crosses them, and armed stops trigger on
+    /// last-price breach; each fill, rejection or cancel updates the matching ledger row (so
+    /// [`OrderLedger::position`] follows). This is the hook a live bar feed calls; event time
+    /// is the bars' `ts_event`, never the wall clock.
     pub fn advance_market(&self, bars: &[tantra_core::Bar]) -> Result<(), ErrorDetail> {
         self.exec.advance(&self.orders, &self.shared_ledger, bars)
     }

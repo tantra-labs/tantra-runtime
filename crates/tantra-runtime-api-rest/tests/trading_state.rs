@@ -199,9 +199,13 @@ async fn the_order_gate_follows_the_runtime_state() {
 async fn close_is_allowed_when_reducing() {
     let st = state();
     let app = api_router_with(st.clone());
-    let (status, _) = call(&app, Method::POST, "/orders", Some(order("buy", "o5"))).await;
+    // A resting limit at 102 is filled when the next bar prints at 101 (marketable); the
+    // ledger position follows.
+    let mut body = order("buy", "o5");
+    body["order_type"] = json!("limit");
+    body["price"] = json!(102.0);
+    let (status, _) = call(&app, Method::POST, "/orders", Some(body)).await;
     assert_eq!(status, StatusCode::OK);
-    // The buy fills at the next bar open; the ledger position follows.
     st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     assert_eq!(st.orders.position(&iid()), dec!(25.0));
 

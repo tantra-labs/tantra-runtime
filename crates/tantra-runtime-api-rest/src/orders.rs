@@ -1,5 +1,5 @@
 //! The `POST /orders` risk gate (ADR 0018 decision 7): approval queue (E5-S4) ->
-//! risk stage -> embedded simulator ([`crate::exec`]).
+//! risk stage -> paper exchange ([`crate::exec`]).
 //!
 //! The handler parses the request body, confirms the instrument exists, then runs the risk
 //! gate: the operator's [`AppState::trading_state`] (default `Active`; seeded via
@@ -7,10 +7,11 @@
 //! for every request) is checked first (`Halted` refuses every placement, `Reducing` only those
 //! that reduce the ledger's existing opposite position), then `tantra-mon`'s [`RiskEngine`] runs
 //! its own structural/SEBI/limit checks ([`check_risk`]). Approved orders are recorded in the
-//! write ledger ([`OrderLedger`]) and submitted to the embedded simulator ([`crate::exec`]);
+//! write ledger ([`OrderLedger`]) and submitted to the shared paper exchange ([`crate::exec`]);
 //! fills arrive when the market advances ([`AppState::advance_market`]) and move the ledger row
-//! to `Filled`. Known limits: the simulator handles market orders only (a limit order is
-//! `Rejected`) and is long-only (a sell with no simulated holding is `Rejected`). Rows report
+//! to `Filled` (plan 0005 D1). The exchange owns the lifecycle: a limit rests until the market
+//! crosses it, a stop arms until its trigger is breached, and a market order with no feed depth
+//! is refused (`no market price`). Rows report
 //! `filled_qty` / `avg_fill_price` from the simulator's fills and `reject_reason` (a stable
 //! `ErrorCode` plus message) from its refusals (ADR 0030). A risk refusal is still the 422
 //! below; when the request carries a `client_order_id` it is also recorded as a `Rejected` row
@@ -117,15 +118,30 @@ impl OrderStatus {
     }
 }
 
-/// Local order-type tag. No embedded limit price (unlike `tantra_core::OrderType::Limit`): the
-/// ledger row tracks price separately, as `Option<Decimal>`.
+/// Local order-type tag. `Limit` carries no embedded price (unlike `tantra_core::OrderType`):
+/// the ledger row tracks price separately, as `Option<Decimal>`. The stop variants carry their
+/// own trigger (and, for a stop-limit, the limit) because `parse_order` needs them and the
+/// wire has only the one `price` field (plan 0005 D1 keeps `limit = trigger`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OrderType {
-    /// Fills at the simulator's next bar open.
+    /// Fills against the exchange's feed depth or a resting contra order; refused (`no market
+    /// price`) when neither exists.
     Market,
-    /// Not supported by the embedded simulator (`Rejected`, `unsupported_order_type`).
+    /// Rests on the book; fills once the market crosses the limit price.
     Limit,
+    /// Arms until the last price breaches `trigger`, then executes as a market order.
+    StopMarket {
+        /// The last price that arms the stop into a market order.
+        trigger: Decimal,
+    },
+    /// Arms until the last price breaches `trigger`, then executes as a limit order.
+    StopLimit {
+        /// The last price that arms the stop into a limit order.
+        trigger: Decimal,
+        /// The limit price the converted order executes at (the wire's single `price` today).
+        limit: Decimal,
+    },
 }
 
 /// A ledger-row rejection: a stable [`ErrorCode`] plus the refusing party's own text.
@@ -206,6 +222,11 @@ impl Order {
     /// The idempotency key this row is stored under.
     pub fn order_id(&self) -> &str {
         &self.order_id
+    }
+
+    /// The event time the row was created (the REST edge's wall clock at placement).
+    pub(crate) fn created_at(&self) -> DateTime<Utc> {
+        self.created_at
     }
 
     /// The traded instrument.
@@ -817,7 +838,7 @@ fn invalid(message: impl Into<String>) -> ErrorDetail {
 
 fn parse_order(
     req: &OrdersRequest,
-) -> Result<(InstrumentId, OrderSide, Decimal, Option<Decimal>), ErrorDetail> {
+) -> Result<(InstrumentId, OrderSide, OrderType, Decimal, Option<Decimal>), ErrorDetail> {
     let instrument_id = req.instrument_id.clone().ok_or_else(|| {
         ErrorDetail::new(
             ErrorCode::ValidationInvalidRequest,
@@ -844,19 +865,37 @@ fn parse_order(
     let order_type = match req.order_type.as_deref() {
         None | Some("market") => OrderType::Market,
         Some("limit") => OrderType::Limit,
+        Some("stop_market") => OrderType::StopMarket {
+            trigger: req
+                .price
+                .ok_or_else(|| invalid("stop_market orders need price (trigger)"))?,
+        },
+        Some("stop_limit") => OrderType::StopLimit {
+            trigger: req
+                .price
+                .ok_or_else(|| invalid("stop_limit orders need price (trigger)"))?,
+            // note: the wire carries a single `price` field (the trigger); plan 0005 D1 keeps
+            // the stop-limit limit equal to the trigger until the wire struct gains a second
+            // price field (it is `deny_unknown_fields` and cannot be extended in this task).
+            limit: req
+                .price
+                .ok_or_else(|| invalid("stop_limit orders need price (trigger)"))?,
+        },
         Some(other) => {
             return Err(invalid(format!("unsupported order_type {other:?}")));
         }
     };
-    let price = if order_type == OrderType::Limit {
-        match req.price {
+    // The row carries the stop trigger as its `price`, so the collar/tick checks and the wire
+    // row see it; a market order carries none.
+    let price = match order_type {
+        OrderType::Market => None,
+        OrderType::Limit => match req.price {
             Some(px) => Some(px),
             None => return Err(invalid("limit orders need price")),
-        }
-    } else {
-        None
+        },
+        OrderType::StopMarket { trigger } | OrderType::StopLimit { trigger, .. } => Some(trigger),
     };
-    Ok((instrument_id, side, quantity, price))
+    Ok((instrument_id, side, order_type, quantity, price))
 }
 
 /// The `ErrorCode` a `RiskRefusal` is reported under. The operator-state rules have dedicated
@@ -914,6 +953,13 @@ fn record_into_shared(state: &AppState, order: &Order) {
             OrderType::Limit => {
                 tantra_core::OrderType::Limit(order.price().map(Price::new).unwrap_or(Price::ZERO))
             }
+            OrderType::StopMarket { trigger } => {
+                tantra_core::OrderType::StopLoss(Price::new(trigger))
+            }
+            OrderType::StopLimit { trigger, limit } => tantra_core::OrderType::StopLimit {
+                trigger: Price::new(trigger),
+                limit: Price::new(limit),
+            },
         },
         time_in_force: order.time_in_force(),
         price: order.price().map(Price::new),
@@ -927,7 +973,7 @@ fn record_into_shared(state: &AppState, order: &Order) {
 }
 
 /// Maps a ledger-row status onto the canonical wire status the chat portfolio reader reports.
-fn to_core_status(status: OrderStatus) -> tantra_core::OrderStatus {
+pub(crate) fn to_core_status(status: OrderStatus) -> tantra_core::OrderStatus {
     match status {
         OrderStatus::Initialized | OrderStatus::Submitted => tantra_core::OrderStatus::PendingNew,
         OrderStatus::Accepted => tantra_core::OrderStatus::New,
@@ -951,7 +997,7 @@ pub(crate) async fn post_orders(
     crate::ApiJson(req): crate::ApiJson<OrdersRequest>,
     order_id: OrderId,
 ) -> Response {
-    let (instrument_id, side, quantity, price) = match parse_order(&req) {
+    let (instrument_id, side, order_type, quantity, price) = match parse_order(&req) {
         Ok(v) => v,
         Err(detail) => {
             return failure(StatusCode::UNPROCESSABLE_ENTITY, detail);
@@ -998,7 +1044,7 @@ pub(crate) async fn post_orders(
                 ledger_id,
                 instrument_id,
                 side,
-                order_type_of(&req),
+                order_type,
                 quantity,
                 price,
                 TimeInForce::Day,
@@ -1007,7 +1053,9 @@ pub(crate) async fn post_orders(
             .with_status(OrderStatus::Submitted);
             state.orders.record(order.clone());
             record_into_shared(&state, &order);
-            state.exec.submit(&state.orders, order.clone());
+            state
+                .exec
+                .submit(&state.orders, &state.shared_ledger, order.clone());
             success(order_json(
                 &state.orders.get(order.order_id()).unwrap_or(order),
             ))
@@ -1018,7 +1066,7 @@ pub(crate) async fn post_orders(
                     ledger_id,
                     instrument_id,
                     side,
-                    order_type_of(&req),
+                    order_type,
                     quantity,
                     price,
                     TimeInForce::Day,
@@ -1027,13 +1075,6 @@ pub(crate) async fn post_orders(
             });
             refuse(&state, record, &detail)
         }
-    }
-}
-
-fn order_type_of(req: &OrdersRequest) -> OrderType {
-    match req.order_type.as_deref() {
-        Some("limit") => OrderType::Limit,
-        _ => OrderType::Market,
     }
 }
 
@@ -1177,7 +1218,7 @@ async fn gate_and_record(
     order_id: OrderId,
     record_refusal: bool,
 ) -> Result<Order, Response> {
-    let (instrument_id, side, quantity, price) =
+    let (instrument_id, side, order_type, quantity, price) =
         parse_order(req).map_err(|detail| failure(StatusCode::UNPROCESSABLE_ENTITY, detail))?;
     match check_risk(state, &instrument_id, side, quantity, price).await {
         Ok(()) => {
@@ -1185,7 +1226,7 @@ async fn gate_and_record(
                 order_id,
                 instrument_id,
                 side,
-                order_type_of(req),
+                order_type,
                 quantity,
                 price,
                 TimeInForce::Day,
@@ -1194,7 +1235,9 @@ async fn gate_and_record(
             .with_status(OrderStatus::Submitted);
             state.orders.record(order.clone());
             record_into_shared(state, &order);
-            state.exec.submit(&state.orders, order.clone());
+            state
+                .exec
+                .submit(&state.orders, &state.shared_ledger, order.clone());
             Ok(state.orders.get(order.order_id()).unwrap_or(order))
         }
         Err(detail) => {
@@ -1203,7 +1246,7 @@ async fn gate_and_record(
                     order_id,
                     instrument_id,
                     side,
-                    order_type_of(req),
+                    order_type,
                     quantity,
                     price,
                     TimeInForce::Day,

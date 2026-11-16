@@ -24,6 +24,21 @@ fn instrument_id() -> InstrumentId {
     InstrumentId::new(Exchange::Nse, "X")
 }
 
+/// A flat bar on `X.NSE` at event time `ts`, close `close`, volume 1000. Feeding it to the
+/// state seeds the paper exchange's feed depth (plan 0005 D1): market orders fill against it.
+fn bar(ts: u64, close: f64) -> tantra_core::Bar {
+    let px = tantra_core::Price::new(Decimal::from_f64_retain(close).unwrap());
+    tantra_core::Bar {
+        instrument: instrument_id(),
+        open: px,
+        high: px,
+        low: px,
+        close: px,
+        volume: tantra_core::Quantity::from_u64(1000),
+        timestamp: chrono::DateTime::from_timestamp_nanos(ts as i64),
+    }
+}
+
 /// One instrument `X.NSE` (INR equity, lot 25, tick 0.05) with one bar closing at
 /// 100; the bar store derives bid = ask = 100, so `reference_price` is 100.
 fn state() -> AppState {
@@ -119,14 +134,17 @@ async fn order_refused_by_risk() {
 #[tokio::test]
 async fn post_order_flows_to_sim_only() {
     // An approved order answers with its ledger row and is recorded, so
-    // `GET /orders` reads it back with the rest of the ledger.
-    let app = api_router_with(state());
+    // `GET /orders` reads it back with the rest of the ledger. A market order fills as soon
+    // as the exchange has feed depth, so the row reads `filled`.
+    let st = state();
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
+    let app = api_router_with(st.clone());
     let mut placed = order("X", "NSE", "buy", 25.0, None);
     placed["client_order_id"] = json!("post-flow");
     let (status, body) = call(app.clone(), Method::POST, "/orders", Some(placed)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["order_id"], json!("post-flow"));
-    assert_eq!(body["data"]["status"], json!("submitted"));
+    assert_eq!(body["data"]["status"], json!("filled"));
 
     let (status, body) = call(app, Method::GET, "/orders", None).await;
     assert_eq!(status, StatusCode::OK);
@@ -139,19 +157,21 @@ async fn post_order_flows_to_sim_only() {
     );
     assert_eq!(orders[0]["side"], json!("buy"));
     assert_eq!(orders[0]["quantity"], json!(25.0));
-    assert_eq!(orders[0]["status"], json!("submitted"));
+    assert_eq!(orders[0]["status"], json!("filled"));
 }
 
 #[tokio::test]
 async fn a_repeated_idempotency_key_returns_the_first_row_and_adds_nothing() {
-    let app = api_router_with(state());
+    let st = state();
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
+    let app = api_router_with(st.clone());
     let mut placed = order("X", "NSE", "buy", 25.0, None);
     placed["client_order_id"] = json!("dup-key");
     for _ in 0..2 {
         let (status, body) = call(app.clone(), Method::POST, "/orders", Some(placed.clone())).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["data"]["order_id"], json!("dup-key"));
-        assert_eq!(body["data"]["status"], json!("submitted"));
+        assert_eq!(body["data"]["status"], json!("filled"));
     }
 
     let (status, body) = call(app, Method::GET, "/orders", None).await;
@@ -261,8 +281,10 @@ async fn approval_queue_holds_placements() {
 #[tokio::test]
 async fn approve_flows_through_risk_to_sim() {
     // Approve a queued order: it re-enters the risk stage, lands in the ledger
-    // and answers with its row.
-    let app = api_router_with(state().with_approval_queue(10));
+    // and answers with its row. It fills at once (the exchange already has depth).
+    let st = state().with_approval_queue(10);
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
+    let app = api_router_with(st);
     let mut placed = order("X", "NSE", "buy", 25.0, None);
     placed["client_order_id"] = json!("approve-flow");
     let (status, body) = call(app.clone(), Method::POST, "/orders", Some(placed)).await;
@@ -273,7 +295,7 @@ async fn approve_flows_through_risk_to_sim() {
     let (status, body) = call(app.clone(), Method::POST, "/approval/approve", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["order_id"], json!("approve-flow"));
-    assert_eq!(body["data"]["status"], json!("submitted"));
+    assert_eq!(body["data"]["status"], json!("filled"));
 
     // Queue is now empty
     let (status, body) = call(app, Method::GET, "/approval/queue", None).await;
@@ -467,6 +489,8 @@ fn close_orders(state: &AppState) -> Vec<Order> {
 async fn close_of_a_long_position_sells_the_full_quantity() {
     let st = state();
     seed(&st, "seed-1", OrderSide::Buy, 50.0);
+    // The closing market sell needs exchange depth (plan 0005 D1): seed a bar first.
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     let (status, body) = call(
         api_router_with(st.clone()),
         Method::POST,
@@ -488,6 +512,8 @@ async fn close_of_a_long_position_sells_the_full_quantity() {
 async fn close_of_a_short_position_buys_the_full_quantity() {
     let st = state();
     seed(&st, "seed-1", OrderSide::Sell, 25.0);
+    // The closing market buy needs exchange depth (plan 0005 D1): seed a bar first.
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     let (status, _) = call(
         api_router_with(st.clone()),
         Method::POST,
@@ -694,7 +720,9 @@ async fn a_keyed_risk_refusal_is_a_rejected_row_and_a_repeat_returns_the_same_42
 /// refusal under it would poison every later keyless order: such a refusal stays unrecorded.
 #[tokio::test]
 async fn a_keyless_risk_refusal_leaves_no_row_and_does_not_poison_later_orders() {
-    let app = api_router_with(state());
+    let st = state();
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
+    let app = api_router_with(st.clone());
     let (status, _) = call(
         app.clone(),
         Method::POST,
@@ -714,7 +742,7 @@ async fn a_keyless_risk_refusal_leaves_no_row_and_does_not_poison_later_orders()
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["status"], json!("submitted"));
+    assert_eq!(body["data"]["status"], json!("filled"));
 }
 
 /// A refused order moves no exposure: the rejected row is outside `OrderLedger::position`.

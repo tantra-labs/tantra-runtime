@@ -312,12 +312,14 @@ fn serve_runs_backtests_into_the_journals_dir_and_stops_with_no_open_run() {
 fn trading_state_gates_post_orders() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = data_dir(tmp.path(), "trading-state");
-    let order = r#"{"instrument_id":{"symbol":"TCS","exchange":"NSE"},"side":"buy","qty":1.0}"#;
+    // A resting limit: the paper exchange acknowledges it (`accepted`) without needing any
+    // feed depth, so the assertion is about the gate, not the venue's liquidity.
+    let order = r#"{"instrument_id":{"symbol":"TCS","exchange":"NSE"},"side":"buy","qty":1.0,"order_type":"limit","price":100.0}"#;
 
     let srv = RunningServer::start(base_config(&dir));
     let (status, body) = post(srv.addr, "/orders", order);
     assert_eq!(status, 200, "{body}");
-    assert_eq!(body["data"]["status"], Value::from("submitted"));
+    assert_eq!(body["data"]["status"], Value::from("accepted"));
     srv.shutdown();
 
     let mut halted = base_config(&dir);

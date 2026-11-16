@@ -73,24 +73,20 @@ async fn call(app: Router, method: Method, uri: &str, body: Option<Value>) -> (S
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
-fn order(side: &str, qty: f64, id: &str) -> Value {
-    json!({
-        "instrument_id": {"symbol": "X", "exchange": "NSE"},
-        "side": side,
-        "qty": qty,
-        "client_order_id": id,
-    })
-}
-
 #[tokio::test]
 async fn order_flow_populates_the_shared_ledger_and_tax_reader() {
     let st = state();
-    // Buy 25, filled at the next bar open (101).
+    // Buy 25 at a resting limit, filled when the next bar prints at 101 (marketable).
+    let buy = json!({
+        "instrument_id": {"symbol": "X", "exchange": "NSE"},
+        "side": "buy", "qty": 25.0, "client_order_id": "o1",
+        "order_type": "limit", "price": 101.0,
+    });
     let (s, _) = call(
         api_router_with(st.clone()),
         Method::POST,
         "/orders",
-        Some(order("buy", 25.0, "o1")),
+        Some(buy),
     )
     .await;
     assert_eq!(s, StatusCode::OK);
@@ -113,13 +109,19 @@ async fn order_flow_populates_the_shared_ledger_and_tax_reader() {
     let orders = st.shared_ledger.closed_lots(&acct); // (empty — no sells yet)
     assert!(orders.is_empty());
 
-    // Sell the full position (the 25-lot size): FIFO match realizes (103 - 101) × 25 = 50,
-    // visible through the tax reader.
+    // Sell the full position (the 25-lot size) at a resting limit above the market; the next
+    // bar at 103 fills it, so the FIFO match realizes (103 - 101) × 25 = 50, visible through
+    // the tax reader.
+    let sell = json!({
+        "instrument_id": {"symbol": "X", "exchange": "NSE"},
+        "side": "sell", "qty": 25.0, "client_order_id": "s1",
+        "order_type": "limit", "price": 103.0,
+    });
     let (s, _) = call(
         api_router_with(st.clone()),
         Method::POST,
         "/orders",
-        Some(order("sell", 25.0, "s1")),
+        Some(sell),
     )
     .await;
     assert_eq!(s, StatusCode::OK);

@@ -1,226 +1,335 @@
-//! The embedded execution simulator behind the order routes (ADR 0016, E3-S7).
+//! The execution gateway behind the order routes: a thin adapter over the shared
+//! `tantra-exec-paper` exchange (plan 0005 D1, T14.5).
 //!
 //! A risk-approved order is recorded in the [`OrderLedger`] as `Submitted` and handed to
-//! [`ExecGateway`]'s [`NextOpenSim`]. It fills market orders at the open of the instrument's
-//! first bar in a later session, so a fill needs the market to advance: the composition root
-//! (or a test) pushes bars with [`AppState::advance_market`](crate::AppState::advance_market).
-//! Event time is the bar's own `timestamp`; nothing here reads the wall clock.
+//! [`ExecGateway`], which converts the ledger row into a canonical [`OrderRequest`] and submits
+//! it to the shared [`PaperExchange`]. The exchange owns the order lifecycle — resting limits,
+//! armed stops, fills, cancellations, rejections — and is the single source of fills. The
+//! gateway drains the exchange's fill and lifecycle-event streams back into the ledger (and the
+//! shared ledger repositories, docs/gaps/0006) on every submit and market advance, so the
+//! ledger row follows whatever the exchange did: a marketable order fills immediately, a
+//! market order with no contra liquidity is refused (`no market price`), a limit rests as
+//! `Accepted` until a bar crosses it, and a stop arms until its trigger is breached.
 //!
-//! Scope: market orders only. A limit order is refused (`unsupported_order_type`) and its
-//! ledger row becomes `Rejected`. The simulator is long-only (it tracks its own simulated
-//! holding per instrument, plus the ledger's working long exposure, so a sell may reduce a
-//! working buy that has not filled yet); a sell beyond both is `Rejected` (`no_position`). No
-//! real broker gateway is wired into `tantra serve` (E3-S7).
+//! Event time is the ledger row's `created_at` and the bars' `timestamp` — nothing here reads
+//! the wall clock except the cancel path (this crate is the I/O edge; the no-clock rule binds
+//! the zero-I/O domain crates, not this adapter).
 //!
 //! # Rebuilt on this migration, not a rename
 //!
-//! This used to wrap `tantra_sim::NextOpenSim` behind a crate-local `ExecutionVenue` trait
-//! extending `tantra_engine::ExecutionEngine`, dispatching `tantra_entities::ExecutionEvent`
-//! (`Fill`/`Rejected`/`Cancelled` variants carrying their own instrument/side/quantity) into the
-//! ledger. `tantra_engine`, `tantra_sim` and `tantra_entities` are gone from the workspace with no
-//! successor (`tantra-ya-backtest::sim` only absorbed part of `tantra-ya-sim` — it has no
-//! `NextOpenSim`-equivalent bar-driven market-order simulator), and `tantra_core::ExecutionEvent`
-//! is a different, much leaner cross-subsystem audit event (`Submitted`/`RiskRefused`/
-//! `Order(OrderEvent)`) with no `Fill`/`Rejected`/`Cancelled` variants carrying their own
-//! instrument/side/quantity. There was also a second, dead implementor of the old
-//! `ExecutionVenue` trait (`GatewayVenue`, bridging to an async execution-gateway port) that
-//! nothing in this crate ever constructed — see the removed `gateway_venue.rs`'s history for
-//! that gap, which this migration pass did not attempt to restore since it was unreachable.
-//!
-//! So this file is now a small, self-contained simulator built directly on `tantra_core` types
-//! (`Bar`, `Price`, `Quantity`) and this crate's own ledger row (`crate::orders::Order`), with
-//! no generic venue trait at all (there is only ever one simulator; a generic trait added
-//! complexity for a second implementor that was never reachable).
+//! This file used to embed `NextOpenSim`, a crate-local bar-driven market-order simulator
+//! (long-only, market orders only, filling at the next bar's open). `tantra-exec-paper` is now a
+//! workspace dependency with a full matching engine (participant orders + feed-book depth,
+//! stops, partial fills, cancels), so the embedded simulator is deleted and this file is the
+//! adapter that stands between the REST ledger and that shared exchange.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use chrono::Utc;
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal_macros::dec;
 use tantra_core::rust_decimal::Decimal;
-use tantra_core::{Bar, FillReport, InstrumentId, OrderSide, Price, Quantity};
+use tantra_core::{
+    Bar, OrderRequest, OrderSide, OrderType as CoreOrderType, Price, Quantity, TimeInForce,
+};
+use tantra_exec_paper::{ExchangeError, ExchangeEvent, FillCostFn, OrderState, PaperExchange};
+use tantra_market_finance::india::costs::NseCashEquitySchedule;
+use tantra_market_finance::{CostSchedule, MarketSegment};
 use tantra_runtime_api::{ErrorCode, ErrorDetail, SharedLedger};
 
 use crate::OrderLedger;
-use crate::orders::{Order, OrderStatus, OrderType, RejectReason};
+use crate::orders::{Order, OrderStatus, OrderType, REST_ALGO_ID, RejectReason, to_core_status};
 
-/// One order the simulator is holding, keyed by its ledger order id.
-struct Working {
-    instrument_id: InstrumentId,
-    side: OrderSide,
-    quantity: Decimal,
-}
+/// The real NSE cash-equity delivery schedule as the exchange's [`FillCostFn`]: per-fill fees
+/// are the schedule's total across its charge lines, converted from the fee table's `f64` to
+/// `Decimal` at this boundary (mirroring `dispatch.rs`'s `f64` fee path — the exchange itself
+/// stays exact).
+#[derive(Clone)]
+struct NseCashEquityFillCost(NseCashEquitySchedule);
 
-/// A simple bar-driven market-order simulator: a market order fills in full at the open of the
-/// next bar seen for its instrument. Long-only: tracks its own simulated holding per instrument
-/// (independent of the ledger's own signed position), and refuses a sell beyond it.
-#[derive(Default)]
-pub struct NextOpenSim {
-    working: HashMap<String, Working>,
-    holdings: HashMap<InstrumentId, Decimal>,
-}
-
-impl NextOpenSim {
-    /// A simulator with nothing working and no simulated holdings.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Accepts `order` as working, or immediately rejects it onto `ledger` (a non-market order,
-    /// or a sell beyond the simulated holding).
-    fn submit(&mut self, ledger: &OrderLedger, order: &Order) {
-        if order.order_type() != OrderType::Market {
-            ledger.reject(
-                order.order_id(),
-                RejectReason::new(
-                    ErrorCode::NotImplemented,
-                    "unsupported_order_type: only market orders are simulated",
-                ),
-            );
-            return;
-        }
-        if order.side() == OrderSide::Sell {
-            // The simulated holding plus the ledger's working long exposure (submitted buys
-            // that may still fill) is what a sell may reduce; a close of a working position
-            // therefore passes the long-only gate, while a naked short still cannot.
-            let simulated = self
-                .holdings
-                .get(order.instrument_id())
-                .copied()
-                .unwrap_or(Decimal::ZERO);
-            let working_long: Decimal = ledger
-                .list()
-                .iter()
-                .filter(|o| {
-                    o.instrument_id() == order.instrument_id() && o.side() == OrderSide::Buy
-                })
-                .map(crate::orders::exposure)
-                .sum();
-            if simulated + working_long < order.quantity() {
-                ledger.reject(
-                    order.order_id(),
-                    RejectReason::new(
-                        ErrorCode::Conflict,
-                        "no_position: the simulator is long-only",
-                    ),
-                );
-                return;
-            }
-        }
-        self.working.insert(
-            order.order_id().to_owned(),
-            Working {
-                instrument_id: order.instrument_id().clone(),
-                side: order.side(),
-                quantity: order.quantity(),
-            },
+impl FillCostFn for NseCashEquityFillCost {
+    fn compute(&self, side: OrderSide, notional: Decimal) -> Decimal {
+        let costs = self.0.compute_costs(
+            &MarketSegment::from("equity"),
+            side,
+            notional.to_f64().unwrap_or(0.0),
         );
-    }
-
-    /// Fills every working order on `bar.instrument` in full, at `bar.open`.
-    fn on_bar(&mut self, ledger: &OrderLedger, shared: &SharedLedger, bar: &Bar) {
-        let matching: Vec<String> = self
-            .working
-            .iter()
-            .filter(|(_, w)| w.instrument_id == bar.instrument)
-            .map(|(id, _)| id.clone())
-            .collect();
-        for order_id in matching {
-            let Some(w) = self.working.remove(&order_id) else {
-                continue;
-            };
-            let instrument = w.instrument_id.clone();
-            let signed = match w.side {
-                OrderSide::Buy => w.quantity,
-                OrderSide::Sell => -w.quantity,
-            };
-            let entry = self
-                .holdings
-                .entry(w.instrument_id)
-                .or_insert(Decimal::ZERO);
-            *entry += signed;
-            ledger.apply_fill(
-                &order_id,
-                w.quantity,
-                bar.open.0,
-                w.quantity,
-                bar.timestamp,
-                OrderStatus::Filled,
-            );
-            // The fill also lands in the shared ledger repositories (docs/gaps/0006 design
-            // decision): FIFO lot matching + realized P&L + cash for the chat portfolio/tax
-            // tools, and the order row's fill state so `orders` stays accurate.
-            let fill = FillReport::new(
-                format!("{order_id}-fill"),
-                &order_id,
-                uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, order_id.as_bytes()),
-                instrument,
-                w.side,
-                Price::new(bar.open.0),
-                Quantity::new(w.quantity),
-                crate::orders::REST_ALGO_ID,
-                bar.timestamp,
-                crate::orders::REST_ALGO_ID,
-            );
-            shared.record_fill(&fill);
-            shared.update_order_fill(
-                &order_id,
-                Quantity::new(w.quantity),
-                Price::new(bar.open.0),
-                tantra_core::OrderStatus::Filled,
-                bar.timestamp,
-            );
-        }
-    }
-
-    /// Drops `order_id` from the working set, if present.
-    fn cancel(&mut self, order_id: &str) {
-        self.working.remove(order_id);
+        Decimal::from_f64_retain(costs.total()).unwrap_or_default()
     }
 }
 
-/// Shared handle on the embedded simulator.
+/// Shared handle on the paper exchange.
 #[derive(Clone)]
 pub(crate) struct ExecGateway {
-    sim: Arc<Mutex<NextOpenSim>>,
+    exchange: Arc<Mutex<PaperExchange>>,
+    /// Ledger order id -> broker order id (`PAPER-0001`-style) as returned by the exchange.
+    ledger_to_broker: Arc<Mutex<HashMap<String, String>>>,
+    /// Cumulative filled quantity per ledger order id, so partial fills report a running
+    /// cumulative quantity to the ledger.
+    cum_qty: Arc<Mutex<HashMap<String, Decimal>>>,
+    /// How many of the exchange's fills and events have already been drained into the ledger.
+    /// The exchange appends monotonically to both streams, so the drained count is just the
+    /// length seen at the last drain.
+    last_seen_fills: Arc<Mutex<usize>>,
+    last_seen_events: Arc<Mutex<usize>>,
 }
 
 impl ExecGateway {
-    /// Wraps `sim` behind a shared, lockable handle.
-    pub(crate) fn new(sim: NextOpenSim) -> Self {
+    /// Wraps `exchange` behind a shared, lockable handle.
+    pub(crate) fn new(exchange: PaperExchange) -> Self {
         Self {
-            sim: Arc::new(Mutex::new(sim)),
+            exchange: Arc::new(Mutex::new(exchange)),
+            ledger_to_broker: Arc::default(),
+            cum_qty: Arc::default(),
+            last_seen_fills: Arc::default(),
+            last_seen_events: Arc::default(),
         }
     }
 
-    /// A fresh simulator with nothing working and no simulated holdings.
+    /// A fresh exchange with a ₹10,00,000 account and the real NSE cash-equity delivery fee
+    /// schedule charging per fill.
     pub(crate) fn default_sim() -> Self {
-        Self::new(NextOpenSim::new())
+        Self::new(PaperExchange::new(dec!(1_000_000)).with_cost_fn(Box::new(
+            NseCashEquityFillCost(NseCashEquitySchedule::delivery()),
+        )))
     }
 
-    /// Hands `order` to the simulator; a rejection (unsupported type, or `no_position`) is
-    /// applied to `ledger` immediately.
-    pub(crate) fn submit(&self, ledger: &OrderLedger, order: Order) {
-        let mut sim = self.sim.lock().unwrap_or_else(PoisonError::into_inner);
-        sim.submit(ledger, &order);
+    /// A gateway over an explicitly-built exchange (tests inject `ZeroFillCost` for exact cash
+    /// this way).
+    pub(crate) fn with_exchange(exchange: PaperExchange) -> Self {
+        Self::new(exchange)
     }
 
-    /// Feeds `bars` (ascending event time) to the simulator and applies any resulting fills.
+    /// Converts the ledger row into a canonical [`OrderRequest`] and submits it to the
+    /// exchange, applying any immediate fill or rejection to `ledger` (and the shared ledger).
+    pub(crate) fn submit(&self, ledger: &OrderLedger, shared: &SharedLedger, order: Order) {
+        let ledger_id = order.order_id().to_owned();
+        let instrument = order.instrument_id().clone();
+        let side = order.side();
+        let order_type = order.order_type();
+        let quantity = order.quantity();
+        let tif = order.time_in_force();
+        let created_at = order.created_at();
+        let client_order_id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, ledger_id.as_bytes());
+        let core_type = match order_type {
+            OrderType::Market => CoreOrderType::Market,
+            // The local `Limit` carries no embedded price (the row tracks it separately).
+            OrderType::Limit => {
+                CoreOrderType::Limit(order.price().map(Price::new).unwrap_or(Price::ZERO))
+            }
+            OrderType::StopMarket { trigger } => CoreOrderType::StopLoss(Price::new(trigger)),
+            OrderType::StopLimit { trigger, limit } => CoreOrderType::StopLimit {
+                trigger: Price::new(trigger),
+                limit: Price::new(limit),
+            },
+        };
+        let mut request = OrderRequest::with_id(
+            client_order_id,
+            instrument,
+            side,
+            core_type,
+            Quantity::new(quantity),
+            REST_ALGO_ID,
+        );
+        // The canonical TIF is `Day | Ioc | Gtc`; the row's own `Day`/`Gtc` both read as a Day
+        // order on the exchange (GTD expiry is not modeled by the wire yet).
+        request.tif = match tif {
+            TimeInForce::Ioc => TimeInForce::Ioc,
+            TimeInForce::Day | TimeInForce::Gtc => TimeInForce::Day,
+        };
+        let result = self
+            .exchange
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .submit_order(request, created_at);
+        match result {
+            Ok(broker_id) => {
+                self.ledger_to_broker
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(ledger_id.clone(), broker_id.clone());
+                // A marketable order fills on submit; a resting one (or an armed stop) must at
+                // least read as `Accepted` in the ledger.
+                self.drain_fills(ledger, shared);
+                let resting = self
+                    .exchange
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .order(&broker_id)
+                    .is_some_and(|w| {
+                        matches!(
+                            w.state,
+                            OrderState::New | OrderState::Working | OrderState::StopTriggered
+                        )
+                    });
+                if resting {
+                    ledger.set_status(&ledger_id, OrderStatus::Accepted);
+                }
+            }
+            Err(ExchangeError::NoMarketPrice(instrument)) => {
+                ledger.reject(
+                    &ledger_id,
+                    RejectReason::new(
+                        ErrorCode::Conflict,
+                        format!("no market price available for market order on {instrument}"),
+                    ),
+                );
+            }
+            Err(e) => {
+                ledger.reject(
+                    &ledger_id,
+                    RejectReason::new(ErrorCode::NotImplemented, e.to_string()),
+                );
+            }
+        }
+    }
+
+    /// Feeds `bars` (ascending event time) to the exchange and drains any fills/events into the
+    /// ledger and the shared ledger repositories.
     pub(crate) fn advance(
         &self,
         ledger: &OrderLedger,
         shared: &SharedLedger,
         bars: &[Bar],
     ) -> Result<(), ErrorDetail> {
-        let mut sim = self.sim.lock().unwrap_or_else(PoisonError::into_inner);
-        for bar in bars {
-            sim.on_bar(ledger, shared, bar);
+        {
+            let mut exchange = self.exchange.lock().unwrap_or_else(PoisonError::into_inner);
+            for bar in bars {
+                exchange.feed_bar(bar);
+            }
         }
+        self.drain_fills(ledger, shared);
         Ok(())
     }
 
-    /// Withdraws a working order from the simulator (the ledger row's own cancellation is the
+    /// Withdraws a working order from the exchange (the ledger row's own cancellation is the
     /// caller's job; see `orders::delete_order`).
-    pub(crate) fn cancel(&self, _ledger: &OrderLedger, order_id: &str) {
-        let mut sim = self.sim.lock().unwrap_or_else(PoisonError::into_inner);
-        sim.cancel(order_id);
+    pub(crate) fn cancel(&self, ledger: &OrderLedger, order_id: &str) {
+        let Some(broker_id) = self
+            .ledger_to_broker
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(order_id)
+            .cloned()
+        else {
+            return;
+        };
+        let now = ledger
+            .get(order_id)
+            .map(|o| o.created_at())
+            .unwrap_or_else(Utc::now);
+        let result = self
+            .exchange
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .cancel_order(&broker_id, now);
+        match result {
+            Ok(()) => {}
+            // The ledger row is already terminal (the caller cancelled it); a terminal exchange
+            // order or an unknown id is nothing to do.
+            Err(ExchangeError::OrderNotFound(_)) | Err(ExchangeError::Terminal(_)) => {}
+            Err(e) => {
+                tracing::warn!(order_id, error = %e, "paper exchange cancel failed");
+            }
+        }
+        self.ledger_to_broker
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(order_id);
+    }
+
+    /// Drains the exchange's new fills and lifecycle events (since the last drain) into the
+    /// ledger and, for fills, the shared ledger repositories. Called on submit (immediate
+    /// fills of marketable orders) and on advance (bar-driven fills).
+    fn drain_fills(&self, ledger: &OrderLedger, shared: &SharedLedger) {
+        let exchange = self.exchange.lock().unwrap_or_else(PoisonError::into_inner);
+        let mapping = self
+            .ledger_to_broker
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        // The exchange streams fills/events keyed by broker order id; the ledger is keyed by
+        // the REST id, so look the other way.
+        let broker_to_ledger: HashMap<&str, &str> = mapping
+            .iter()
+            .map(|(ledger_id, broker_id)| (broker_id.as_str(), ledger_id.as_str()))
+            .collect();
+        let mut cum = self.cum_qty.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut fills_cursor = self
+            .last_seen_fills
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let mut events_cursor = self
+            .last_seen_events
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+
+        let fills = exchange.fills();
+        for fill in &fills[*fills_cursor..] {
+            let Some(ledger_id) = broker_to_ledger.get(fill.order_id.as_str()) else {
+                continue;
+            };
+            let ledger_id = ledger_id.to_string();
+            let entry = cum.entry(ledger_id.clone()).or_default();
+            *entry += fill.quantity.0;
+            let cumulative = *entry;
+            let state = exchange.order(&fill.order_id).map(|w| w.state);
+            let status = match state {
+                Some(OrderState::Filled) => OrderStatus::Filled,
+                _ => OrderStatus::PartiallyFilled,
+            };
+            ledger.apply_fill(
+                &ledger_id,
+                fill.quantity.0,
+                fill.price.0,
+                cumulative,
+                fill.timestamp,
+                status,
+            );
+            // Mirror the fill into the shared ledger repositories under the REST account and
+            // the ledger order id (the exchange's broker id would not match the order row).
+            let mut mirrored = fill.clone();
+            mirrored.order_id = ledger_id.clone();
+            mirrored.account_id = Some(REST_ALGO_ID.to_string());
+            mirrored.algo_id = REST_ALGO_ID.to_string();
+            shared.record_fill(&mirrored);
+            shared.update_order_fill(
+                &ledger_id,
+                fill.quantity,
+                fill.price,
+                to_core_status(status),
+                fill.timestamp,
+            );
+        }
+        *fills_cursor = fills.len();
+
+        let events = exchange.events();
+        for event in &events[*events_cursor..] {
+            match event {
+                ExchangeEvent::Cancelled {
+                    broker_order_id, ..
+                } => {
+                    if let Some(ledger_id) = broker_to_ledger.get(broker_order_id.as_str()) {
+                        // The ledger row is already `Cancelled` when this came from
+                        // `DELETE /orders/{id}`; set_status is a no-op on a terminal row.
+                        ledger.set_status(ledger_id, OrderStatus::Cancelled);
+                    }
+                }
+                ExchangeEvent::Rejected {
+                    broker_order_id,
+                    reason,
+                    ..
+                } => {
+                    if let Some(ledger_id) = broker_to_ledger.get(broker_order_id.as_str()) {
+                        ledger.reject(
+                            ledger_id,
+                            RejectReason::new(ErrorCode::Conflict, reason.clone()),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        *events_cursor = events.len();
     }
 }

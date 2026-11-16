@@ -48,6 +48,7 @@ tantra-market-indicators = { path = "../tantra-market/crates/tantra-market-indic
 tantra-market-signals = { path = "../tantra-market/crates/tantra-market-signals" }
 tantra-market-finance = { path = "../tantra-market/crates/tantra-market-finance" }
 tantra-exec-core = { path = "../tantra-exec/crates/tantra-exec-core" }
+tantra-exec-paper = { path = "../tantra-exec/crates/tantra-exec-paper" }
 tantra-exec-auth = { path = "../tantra-exec/crates/tantra-exec-auth" }
 tantra-exec-router = { path = "../tantra-exec/crates/tantra-exec-router" }
 tantra-exec-slicer = { path = "../tantra-exec/crates/tantra-exec-slicer" }

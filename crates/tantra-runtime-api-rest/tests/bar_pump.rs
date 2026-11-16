@@ -72,9 +72,12 @@ async fn call(
 }
 
 async fn place(st: &AppState, id: &str) {
+    // A resting limit just above the first bar's print: the pumped bar crosses it (a market
+    // order would instead need depth to exist before it can fill at all).
     let body = json!({
         "instrument_id": {"symbol": "X", "exchange": "NSE"},
         "side": "buy", "qty": 25.0, "client_order_id": id,
+        "order_type": "limit", "price": 102.0,
     });
     let (s, _) = call(st, Method::POST, "/orders", Some(body)).await;
     assert_eq!(s, StatusCode::OK);
@@ -95,7 +98,7 @@ async fn order_status(st: &AppState, id: &str) -> String {
 async fn bars_through_the_pump_fill_an_order_and_move_the_position() {
     let st = state();
     place(&st, "o1").await;
-    assert_eq!(order_status(&st, "o1").await, "submitted");
+    assert_eq!(order_status(&st, "o1").await, "accepted");
 
     let (tx, rx) = tokio::sync::mpsc::channel::<tantra_core::Bar>(8);
     let pump = st.spawn_bar_pump(rx);

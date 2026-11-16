@@ -1,6 +1,7 @@
-//! Approved orders reach the embedded `NextOpenSim` (ADR 0016): a market order stays
-//! `submitted` until the market advances, then fills at the next bar open and the
-//! ledger position follows. No network, no wall clock: event time is the bar's `ts_event`.
+//! Approved orders reach the shared `tantra-exec-paper` exchange (plan 0005 D1, T14.5): a
+//! market order needs feed depth to fill (with none, it is refused `no market price`), a
+//! resting limit fills once a bar crosses it, and the ledger position follows. No network, no
+//! wall clock: event time is the bar's `ts_event`.
 
 use axum::Router;
 use axum::body::Body;
@@ -83,8 +84,11 @@ fn status_of(state: &AppState, id: &str) -> String {
 }
 
 #[tokio::test]
-async fn market_order_is_unfilled_until_the_market_advances() {
+async fn market_order_fills_immediately_when_depth_exists() {
     let st = state();
+    // The market needs feed depth first: with none, a market order is refused. Once the
+    // first bar has printed, a market order fills at once.
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     let (s, _) = call(
         api_router_with(st.clone()),
         Method::POST,
@@ -93,32 +97,45 @@ async fn market_order_is_unfilled_until_the_market_advances() {
     )
     .await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(status_of(&st, "o1"), "submitted");
-
-    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     assert_eq!(status_of(&st, "o1"), "filled");
     assert_eq!(st.orders.position(&iid()), dec!(25.0));
 }
 
 #[tokio::test]
-async fn order_placed_after_a_bar_fills_on_the_next_one() {
+async fn limit_order_fills_when_a_bar_crosses_the_limit() {
+    let st = state();
+    call(
+        api_router_with(st.clone()),
+        Method::POST,
+        "/orders",
+        Some(order("buy", 25.0, "l1", Some(99.0))),
+    )
+    .await;
+    assert_eq!(status_of(&st, "l1"), "accepted");
+    st.advance_market(&[bar(1_000, 90.0)]).unwrap();
+    assert_eq!(status_of(&st, "l1"), "filled");
+    assert_eq!(st.orders.position(&iid()), dec!(25.0));
+}
+
+#[tokio::test]
+async fn short_sell_fills_against_depth() {
     let st = state();
     st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     call(
         api_router_with(st.clone()),
         Method::POST,
         "/orders",
-        Some(order("buy", 25.0, "o1", None)),
+        Some(order("sell", 25.0, "s1", None)),
     )
     .await;
-    assert_eq!(status_of(&st, "o1"), "submitted");
-    st.advance_market(&[bar(2_000, 102.0)]).unwrap();
-    assert_eq!(status_of(&st, "o1"), "filled");
+    assert_eq!(status_of(&st, "s1"), "filled");
+    assert_eq!(st.orders.position(&iid()), dec!(-25.0));
 }
 
 #[tokio::test]
 async fn close_after_a_fill_flattens_the_position() {
     let st = state();
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     call(
         api_router_with(st.clone()),
         Method::POST,
@@ -126,7 +143,6 @@ async fn close_after_a_fill_flattens_the_position() {
         Some(order("buy", 25.0, "o1", None)),
     )
     .await;
-    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     let (s, _) = call(
         api_router_with(st.clone()),
         Method::POST,
@@ -135,8 +151,7 @@ async fn close_after_a_fill_flattens_the_position() {
     )
     .await;
     assert_eq!(s, StatusCode::OK);
-    // The close order is still working: position is the (conservative) sum.
-    st.advance_market(&[bar(2_000, 103.0)]).unwrap();
+    // The close sell squares the position against the depth the seed bar left resting.
     assert!(st.orders.positions().is_empty());
     assert!(
         st.orders
@@ -147,38 +162,10 @@ async fn close_after_a_fill_flattens_the_position() {
 }
 
 #[tokio::test]
-async fn limit_orders_are_not_filled() {
+async fn approval_queue_approve_submits_to_the_exchange() {
     let st = state();
-    call(
-        api_router_with(st.clone()),
-        Method::POST,
-        "/orders",
-        Some(order("buy", 25.0, "l1", Some(99.0))),
-    )
-    .await;
-    st.advance_market(&[bar(1_000, 90.0)]).unwrap();
-    assert_eq!(status_of(&st, "l1"), "rejected");
-    assert_eq!(st.orders.position(&iid()), dec!(0.0));
-}
-
-#[tokio::test]
-async fn sell_without_a_position_is_rejected_by_the_sim() {
-    let st = state();
-    call(
-        api_router_with(st.clone()),
-        Method::POST,
-        "/orders",
-        Some(order("sell", 25.0, "s1", None)),
-    )
-    .await;
     st.advance_market(&[bar(1_000, 101.0)]).unwrap();
-    assert_eq!(status_of(&st, "s1"), "rejected");
-    assert_eq!(st.orders.position(&iid()), dec!(0.0));
-}
-
-#[tokio::test]
-async fn approval_queue_approve_submits_to_the_sim() {
-    let st = state().with_approval_queue(10);
+    let st = st.with_approval_queue(10);
     call(
         api_router_with(st.clone()),
         Method::POST,
@@ -193,7 +180,6 @@ async fn approval_queue_approve_submits_to_the_sim() {
         None,
     )
     .await;
-    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     assert_eq!(status_of(&st, "q1"), "filled");
 }
 
@@ -214,6 +200,7 @@ fn num(v: &Value) -> f64 {
 #[tokio::test]
 async fn a_filled_market_order_reports_filled_qty_and_the_fill_price() {
     let st = state();
+    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
     call(
         api_router_with(st.clone()),
         Method::POST,
@@ -221,19 +208,14 @@ async fn a_filled_market_order_reports_filled_qty_and_the_fill_price() {
         Some(order("buy", 25.0, "o1", None)),
     )
     .await;
-    // Unfilled rows carry neither field (additive wire).
-    let before = row(&st, "o1");
-    assert_eq!(num(&before["filled_qty"]), 0.0);
-    assert!(before["avg_fill_price"].is_null() || before.get("avg_fill_price").is_none());
-    assert!(before["filled_at"].is_null() || before.get("filled_at").is_none());
 
-    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
+    // The market order filled against the seeded depth at 101.
     let after = row(&st, "o1");
     assert_eq!(after["status"], "filled");
     assert_eq!(num(&after["filled_qty"]), 25.0);
     assert!((num(&after["avg_fill_price"]) - 101.0).abs() < 0.5);
     assert!(after["reject_reason"].is_null() || after.get("reject_reason").is_none());
-    // `filled_at` is the fill's event time: the bar the simulator filled on.
+    // `filled_at` is the fill's event time: the order's submission (a marketable fill).
     assert!(!after["filled_at"].is_null() && after.get("filled_at").is_some());
 
     // GET /orders serves the same fields.
@@ -244,31 +226,35 @@ async fn a_filled_market_order_reports_filled_qty_and_the_fill_price() {
 #[tokio::test]
 async fn simulator_rejections_carry_a_stable_code_and_the_reason() {
     let st = state();
-    for (id, side, limit) in [("l1", "buy", Some(99.0)), ("s1", "sell", None)] {
-        call(
-            api_router_with(st.clone()),
-            Method::POST,
-            "/orders",
-            Some(order(side, 25.0, id, limit)),
-        )
-        .await;
-    }
-    st.advance_market(&[bar(1_000, 101.0)]).unwrap();
-    let limit = row(&st, "l1");
-    assert_eq!(limit["status"], "rejected");
-    assert_eq!(limit["reject_reason"]["code"], "not_implemented");
+    // A market order with no feed depth is refused by the paper exchange.
+    call(
+        api_router_with(st.clone()),
+        Method::POST,
+        "/orders",
+        Some(order("buy", 25.0, "m1", None)),
+    )
+    .await;
+    let market = row(&st, "m1");
+    assert_eq!(market["status"], "rejected");
+    assert_eq!(market["reject_reason"]["code"], "conflict");
     assert!(
-        limit["reject_reason"]["message"]
+        market["reject_reason"]["message"]
             .as_str()
             .unwrap()
-            .contains("unsupported_order_type")
+            .contains("no market price")
     );
-    let sell = row(&st, "s1");
-    assert_eq!(sell["reject_reason"]["code"], "conflict");
-    assert!(
-        sell["reject_reason"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("no_position")
-    );
+
+    // A non-positive quantity never reaches the exchange: `parse_order` refuses it.
+    let (status, body) = call(
+        api_router_with(st.clone()),
+        Method::POST,
+        "/orders",
+        Some(json!({
+            "instrument_id": {"symbol": "X", "exchange": "NSE"},
+            "side": "buy", "qty": 0.0, "client_order_id": "q0",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "validation_invalid_request");
 }

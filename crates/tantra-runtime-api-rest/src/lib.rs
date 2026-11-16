@@ -89,7 +89,6 @@ pub use bootstrap::{
 pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog};
 pub use chat::{ChatRuntime, chat_ws_handler};
 pub use dispatch::{DispatchError, build_target, dispatch, dispatch_stream};
-pub use exec::NextOpenSim;
 pub use executor::BacktestExecutor;
 pub use journal::{FileJournalWriter, NdjsonJournal, recover_interrupted_runs};
 pub use market::{ApiQuery, ApiQueryRejection, MAX_BAR_ROWS};
