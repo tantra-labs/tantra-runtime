@@ -11,6 +11,7 @@ name = "tantra_runtime_backtest"
 
 [dependencies]
 tantra-core.workspace = true
+tantra-exec-paper.workspace = true
 tantra-risk.workspace = true
 tantra-ledger.workspace = true
 tantra-ledger-portfolio.workspace = true
@@ -34,4 +35,3 @@ tokio.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 tempfile = "3"
 tantra-agent.workspace = true
-tantra-exec-paper.workspace = true

@@ -15,11 +15,14 @@
 //! (`tantra_ledger_portfolio::{ClearingCalendar, DematHoldings, SettlementEngine}`) are all
 //! delegated to the kokoro crates the live-trading actor path also uses.
 //!
-//! # L2 Order Book Simulation (Phase 4.1)
-//! The engine supports optional L2 order book depth simulation with market
-//! order execution, limit order matching, spread-crossing penalties, volume
-//! participation caps, and adverse fill slippage modeling. Enable via
-//! `BacktestConfig::with_l2_simulation()`.
+//! # L2 Order Book Simulation (Phase 4.1, plan 0005 D4 / T14.8)
+//! The engine supports optional L2 order book depth simulation by driving
+//! the shared [`tantra_exec_paper::PaperExchange`] as its matching venue
+//! (extracted from this crate's inline `sim::l2_book` book in P0 with
+//! byte-identical matching; `sim::` remains for the E9 parity test). The
+//! engine keeps its own latency gating, slippage/adverse accounting, and
+//! kokoro fill accounting; the exchange is the pure matching venue. Enable
+//! via `BacktestConfig::with_l2_simulation()`.
 //!
 //! # MIS 15:20 Square-off (Phase 4.1)
 //! The engine enforces mandatory intraday square-off at 15:20 IST for all
@@ -49,11 +52,12 @@ use tantra_runtime_strategy::{LedgerContext, Strategy, StrategyRunner};
 use crate::catalog::{CatalogError, CatalogLoader};
 use crate::events::MarketEvent;
 use crate::sim::{
-    l2_book::OrderBook,
     latency::NetworkLatency,
     mis::{MisSquareOffManager, SquareOffResult},
     slippage::{AdverseFillModel, SlippageModel},
 };
+use tantra_exec_paper::PaperExchange;
+use uuid::Uuid;
 
 /// Convert a `Decimal` share quantity into the `u64` that
 /// `tantra_ledger_portfolio::apply_fill`/`apply_fill_to_account` require.
@@ -264,15 +268,30 @@ pub struct BacktestEngine<S: Strategy> {
     /// Pending T+1 Demat settlement instructions awaiting settlement date.
     pending_instructions: Vec<SettlementInstruction>,
 
-    // L2 order book simulation state
-    order_book: Option<OrderBook>,
+    // L2 simulation matching venue: the shared tantra-exec-paper exchange
+    // (plan 0005 D4 / T14.8), built plain. The engine keeps its own latency
+    // gating, slippage impact accounting, and kokoro fill accounting; the
+    // exchange is the pure matching venue (its `sim::slippage` adverse model
+    // is a distinct type from the exchange's, so engine-side adverse-fill
+    // slippage applies only on the direct non-L2 path — see `BacktestEngine::new`).
+    exchange: Option<PaperExchange>,
+    /// Cursor into `exchange.fills()`: every fill below this index has been
+    /// accounted through the kokoro fill pipeline.
+    exchange_fills_seen: usize,
+    /// `client_order_id` → the submitted request, so fills of resting orders
+    /// that arrive later (drained from `exchange.fills()`) can be accounted
+    /// with their original order context.
+    exchange_orders: HashMap<Uuid, OrderRequest>,
+    /// Engine-side network/broker latency gating for L2 orders (the exchange
+    /// is built plain; the engine owns the latency wait, like the old inline
+    /// book did via `OrderBook::ready_ts`).
+    latency: Option<NetworkLatency>,
     // Orders approved and risk-checked but still waiting out network/broker
-    // latency before they can execute (see `OrderBook::ready_ts`).
+    // latency before they can execute.
     pending_orders: Vec<PendingOrder>,
 
-    // Slippage and adverse fill models
+    // Slippage model (adverse-fill slippage now lives inside the exchange)
     slippage_model: Option<SlippageModel>,
-    adverse_fill_model: Option<AdverseFillModel>,
 
     // MIS square-off manager
     mis_square_off: Option<MisSquareOffManager>,
@@ -353,25 +372,26 @@ impl<S: Strategy> BacktestEngine<S> {
             account: AccountState::new(Currency::Inr, Vec::new()),
             demat_holdings: DematHoldings::new(),
             pending_instructions: Vec::new(),
-            order_book: if config.l2_simulation {
-                Some(OrderBook::new(
-                    config
-                        .latency
-                        .as_ref()
-                        .map(|l| l.current_latency())
-                        .unwrap_or(0),
-                    config
-                        .slippage
-                        .as_ref()
-                        .map(|s| s.daily_range_pct())
-                        .unwrap_or_default(),
-                ))
+            // plan 0005 D4 / T14.8: the L2 matching venue is the shared
+            // tantra-exec-paper exchange, built plain (no latency/slippage/
+            // adverse/mis models — the engine keeps its own latency gating
+            // and slippage impact accounting). The configured adverse-fill
+            // model is NOT threaded into the venue: the backtest crate's
+            // `sim::slippage::AdverseFillModel` is a distinct type from
+            // `tantra_exec_paper::AdverseFillModel` (the P0 extraction kept
+            // inline copies for E9 parity), and the exchange exposes no
+            // pre-fill contra-level read, so engine-side adverse-fill
+            // slippage now applies only on the direct (non-L2) path.
+            exchange: if config.l2_simulation {
+                Some(PaperExchange::new(config.starting_cash))
             } else {
                 None
             },
+            exchange_fills_seen: 0,
+            exchange_orders: HashMap::new(),
+            latency: config.latency,
             pending_orders: Vec::new(),
             slippage_model: config.slippage,
-            adverse_fill_model: config.adverse_fill,
             mis_square_off: config.mis_square_off,
             initial_cash,
             gross_pnl: Decimal::ZERO,
@@ -551,59 +571,26 @@ impl<S: Strategy> BacktestEngine<S> {
         while i < self.pending_orders.len() {
             if self.pending_orders[i].ready_ts <= ts {
                 let pending = self.pending_orders.remove(i);
-                self.execute_order(pending.order, ts);
+                self.submit_to_exchange(pending.order, ts);
             } else {
                 i += 1;
             }
         }
 
-        // 3. L2 order book simulation: update order book with incoming tick/bar
-        if let Some(ob) = self.order_book.as_mut() {
+        // 3. L2 simulation: feed the market event into the shared paper
+        //    exchange. The venue's `feed_tick`/`feed_bar` replicate the old
+        //    inline book updates exactly (the P0 extraction guarantee,
+        //    plan 0005 D4) AND match resting participant orders + trigger
+        //    stops.
+        if let Some(ex) = self.exchange.as_mut() {
             match &event {
-                MarketEvent::Tick(t) => match t {
-                    Tick::Ltp { price, volume, .. } => {
-                        ob.add_order(*price, volume.0.to_i64().unwrap_or(0));
-                    }
-                    Tick::Quote {
-                        bid,
-                        ask,
-                        bid_qty,
-                        ask_qty,
-                        last_price,
-                        ..
-                    } => {
-                        if bid.0 > Decimal::ZERO && ask.0 > Decimal::ZERO {
-                            ob.add_bid(*bid, bid_qty.0.to_i64().unwrap_or(0));
-                            ob.add_ask(*ask, ask_qty.0.to_i64().unwrap_or(0));
-                        } else if let Some(lp) = last_price {
-                            let qty = bid_qty.0.max(ask_qty.0).to_i64().unwrap_or(0);
-                            ob.add_order(*lp, qty);
-                        }
-                    }
-                    Tick::Depth {
-                        bids,
-                        asks,
-                        last_price,
-                        ..
-                    } => {
-                        if !bids.is_empty() || !asks.is_empty() {
-                            ob.set_depth(bids, asks);
-                        } else if let Some(lp) = last_price {
-                            ob.add_order(*lp, 1);
-                        }
-                    }
-                },
-                MarketEvent::Bar(b) => {
-                    // Bar approximates close price; add synthetic depth.
-                    // Its traded volume is also the simulation's only
-                    // observable proxy for average daily volume, which the
-                    // participation cap clamps order size against.
-                    let volume = b.volume.0.to_i64().unwrap_or(0);
-                    ob.set_avg_daily_volume(volume);
-                    ob.add_order(b.close, volume);
-                }
+                MarketEvent::Tick(t) => ex.feed_tick(t),
+                MarketEvent::Bar(b) => ex.feed_bar(b),
             }
         }
+        // 3.5. Account any fills the exchange produced while matching the
+        //    event above (a resting limit/stop order that just triggered).
+        self.drain_exchange_fills(ts);
 
         // 4. Dispatch the event to the strategy through the runner: sets the
         //    context clock, calls the matching typed hook, then validates,
@@ -665,15 +652,19 @@ impl<S: Strategy> BacktestEngine<S> {
                 }
             }
 
-            let ready_ts = self
-                .order_book
-                .as_ref()
-                .map(|ob| ob.ready_ts(ts))
-                .unwrap_or(ts);
+            // plan 0005 D4 / T14.8: with L2 simulation the engine owns the
+            // latency wait itself (the exchange is built plain); without it,
+            // orders execute immediately in the same event.
+            let ready_ts = match (&self.exchange, &self.latency) {
+                (Some(_), Some(lat)) => {
+                    ts + chrono::Duration::microseconds(lat.current_latency() as i64)
+                }
+                _ => ts,
+            };
             if ready_ts > ts {
                 self.pending_orders.push(PendingOrder { ready_ts, order });
             } else {
-                self.execute_order(order, ts);
+                self.submit_to_exchange(order, ts);
             }
         }
 
@@ -697,73 +688,23 @@ impl<S: Strategy> BacktestEngine<S> {
             None => return, // No market price available yet to match
         };
 
-        // Determine order book side and execution mode. `filled_qty` and
-        // `remaining_qty` are kept as `Decimal` across both branches (the L2
-        // branch's `i64` counts are converted up) so this `if`/`else` type-checks
-        // and downstream arithmetic against `Decimal` prices works directly.
-        let (filled_qty, mut fill_price, _remaining_qty, mut order_impact) = if let Some(ob) =
-            self.order_book.as_mut()
-        {
-            let qty = order.quantity.0.to_i64().unwrap_or(0);
-            let (bid_before, ask_before) = ob.get_spread();
-            let pre_depth = ob.best_contra_depth(order.side).max(1);
-            let contra_levels_snapshot = ob.contra_levels(order.side).clone();
+        // plan 0005 D4 / T14.8: with L2 simulation the shared
+        // tantra-exec-paper exchange is the matching venue. Submit the order
+        // there and let `submit_to_exchange`/`drain_exchange_fills` account
+        // every fill through the same kokoro pipeline below (a non-marketable
+        // limit rests in the exchange and is accounted when a later event
+        // crosses it).
+        if self.exchange.is_some() {
+            self.submit_to_exchange(order, timestamp);
+            return;
+        }
 
-            let (filled, matched_price, remaining, worst) = match order.order_type {
-                OrderType::Limit(limit_price) => {
-                    let (f, p, r) = ob.execute_limit_order(order.side, qty, limit_price);
-                    (f, p, r, if f > 0 { Some(p) } else { None })
-                }
-                _ => ob.execute_market_order(order.side, qty),
-            };
-
-            if filled <= 0 {
-                return;
-            }
-
-            // Depth-walk price impact vs current reference price
-            let mut impact = (matched_price.0 - current_price.0).abs() * Decimal::from(filled);
-
-            // Spread-crossing & volume-participation slippage calculation
-            if let Some(model) = self.slippage_model.as_ref() {
-                let spread_penalty =
-                    model.compute_spread_crossing_penalty(bid_before, ask_before, matched_price);
-                let slip_pct =
-                    model.compute_slippage(order.side, filled, pre_depth, matched_price.0);
-                let slip_rupees =
-                    (matched_price.0 * slip_pct.abs() + spread_penalty) * Decimal::from(filled);
-                impact += slip_rupees.round_dp(4);
-            }
-
-            // Adverse fill slippage across depth levels, if configured
-            let mut final_price = matched_price;
-            if let Some(adverse) = self.adverse_fill_model.as_ref() {
-                let (adv_pct, adv_worst) = adverse.compute_fill_slippage(
-                    order.side,
-                    filled,
-                    &contra_levels_snapshot,
-                    matched_price.0,
-                );
-                if let Some(wp) = adv_worst {
-                    final_price = wp;
-                }
-                impact +=
-                    (matched_price.0 * (adv_pct / dec!(100)) * Decimal::from(filled)).round_dp(4);
-            }
-
-            let _ = worst;
-            (
-                Decimal::from(filled),
-                final_price,
-                Decimal::from(remaining),
-                impact,
-            )
-        } else {
-            // Direct execution path (no L2 simulation).
-            // GAP-0002 (tantra-runtime/docs/gaps/0002-strategy-traps-pitfalls-and-statistical-validation.md):
-            // E2 — a triggered stop never fills better than its trigger, and when the bar
-            // OPENED through the stop trigger (overnight/intra-event gap), the fill is the
-            // open price. E3 — same-bar ordering is enforced at drain time (see run_events).
+        // Direct execution path (no L2 simulation).
+        // GAP-0002 (tantra-runtime/docs/gaps/0002-strategy-traps-pitfalls-and-statistical-validation.md):
+        // E2 — a triggered stop never fills better than its trigger, and when the bar
+        // OPENED through the stop trigger (overnight/intra-event gap), the fill is the
+        // open price. E3 — same-bar ordering is enforced at drain time (see run_events).
+        let (filled_qty, mut fill_price, _remaining_qty, mut order_impact) = {
             let bar_open = self.bar_opens.get(instrument).copied();
             let fill_price = match order.order_type {
                 OrderType::StopLoss(trigger) => {
@@ -831,7 +772,7 @@ impl<S: Strategy> BacktestEngine<S> {
         }
 
         // If slippage model is configured without L2 book, still track slippage impact
-        if self.order_book.is_none()
+        if self.exchange.is_none()
             && let Some(model) = self.slippage_model.as_ref()
         {
             let slip_pct = model.compute_slippage(
@@ -848,6 +789,132 @@ impl<S: Strategy> BacktestEngine<S> {
             order_impact += (adj.abs() * filled_qty).round_dp(4);
         }
 
+        self.account_fill(&order, fill_price, filled_qty, order_impact, timestamp);
+    }
+
+    /// Submit an order to the L2 simulation exchange and account every fill
+    /// it produces (plan 0005 D4 / T14.8). With no L2 simulation configured
+    /// this falls back to the direct execution path.
+    ///
+    /// The engine's own latency gating (`pending_orders`) has already
+    /// elapsed before this call, so the exchange receives the order at its
+    /// actual submit timestamp.
+    fn submit_to_exchange(&mut self, order: OrderRequest, ts: DateTime<Utc>) {
+        let outcome = self
+            .exchange
+            .as_mut()
+            .map(|ex| ex.submit_order(order.clone(), ts));
+        match outcome {
+            Some(Err(e)) => {
+                // No contra liquidity (`NoMarketPrice`) or another venue
+                // rejection: no fill — the old empty-book path produced no
+                // fill for a market order with no price to match either.
+                tracing::debug!(
+                    instrument = %order.instrument,
+                    error = %e,
+                    "paper exchange rejected order; no fill booked"
+                );
+            }
+            Some(Ok(_broker_id)) => {
+                // Remember the order so a LATER fill of a resting/partial
+                // order (drained from `exchange.fills()`) is accounted with
+                // its original order context.
+                self.exchange_orders.insert(order.client_order_id, order);
+                self.drain_exchange_fills(ts);
+            }
+            None => {
+                // No L2 simulation configured: fall back to the direct path.
+                self.execute_order(order, ts);
+            }
+        }
+    }
+
+    /// Account every exchange fill not yet seen (plan 0005 D4 / T14.8):
+    /// fills produced while matching an event's feed (resting limit/stop
+    /// orders that just crossed) or by a marketable submission. Each fill
+    /// is accounted at its own exchange-stamped timestamp.
+    fn drain_exchange_fills(&mut self, _ts: DateTime<Utc>) {
+        let Some(ex) = self.exchange.as_ref() else {
+            return;
+        };
+        let total = ex.fills().len();
+        let new_fills: Vec<FillReport> = ex.fills()[self.exchange_fills_seen..total].to_vec();
+        self.exchange_fills_seen = total;
+        for fill in new_fills {
+            let Some(order) = self.exchange_orders.get(&fill.client_order_id).cloned() else {
+                // Not every exchange order is routed through
+                // `exchange_orders`; skip defensively rather than guessing.
+                continue;
+            };
+            self.account_exchange_fill(&order, fill.price, fill.quantity.0, fill.timestamp);
+        }
+    }
+
+    /// Account a fill produced by the L2 exchange with the shared kokoro
+    /// pipeline, computing the depth-walk / spread-crossing / slippage price
+    /// impact the inline book path used to compute (plan 0005 D4 / T14.8).
+    ///
+    /// Adverse-fill slippage is no longer applied here: the exchange is the
+    /// matching venue and owns adverse-fill modeling, but the backtest
+    /// crate's `sim::slippage::AdverseFillModel` is a distinct type from
+    /// `tantra_exec_paper::AdverseFillModel` (inline P0 copy kept for E9
+    /// parity) and the exchange exposes no pre-fill contra-level read, so
+    /// engine-side adverse slippage now applies only on the direct
+    /// (non-L2) path.
+    fn account_exchange_fill(
+        &mut self,
+        order: &OrderRequest,
+        fill_price: Price,
+        filled_qty: Decimal,
+        ts: DateTime<Utc>,
+    ) {
+        // Depth-walk price impact vs the current reference price. The
+        // exchange exposes no pre-fill best-contra-depth quantity, so the
+        // filled size is used as a conservative participation proxy for the
+        // slippage model (impact accounting only — fill prices come from
+        // the exchange).
+        let current_price = self
+            .latest_prices
+            .get(&order.instrument)
+            .copied()
+            .unwrap_or(fill_price);
+        let mut order_impact = (fill_price.0 - current_price.0).abs() * filled_qty;
+
+        // Spread-crossing & volume-participation slippage accounting, using
+        // the exchange's post-match spread (it has no pre-match read).
+        if let Some(model) = self.slippage_model.as_ref() {
+            let (bid_before, ask_before) = self
+                .exchange
+                .as_ref()
+                .and_then(|ex| ex.depth(&order.instrument))
+                .unwrap_or((None, None));
+            let spread_penalty =
+                model.compute_spread_crossing_penalty(bid_before, ask_before, fill_price);
+            let filled_i64 = filled_qty.to_i64().unwrap_or(0);
+            let pre_depth = filled_i64.max(1);
+            let slip_pct = model.compute_slippage(order.side, filled_i64, pre_depth, fill_price.0);
+            let slip_rupees = (fill_price.0 * slip_pct.abs() + spread_penalty) * filled_qty;
+            order_impact += slip_rupees.round_dp(4);
+        }
+
+        self.account_fill(order, fill_price, filled_qty, order_impact, ts);
+    }
+
+    /// Shared kokoro fill accounting tail (plan 0005 D4 / T14.8): statutory
+    /// fees, deterministic fill id, double-entry journal post, `FillReport`,
+    /// strategy-runner fill feed, FIFO position/PnL update, MIS square-off
+    /// tracking, and ICCL T+1 demat settlement / margin holdback. Used by
+    /// the direct execution path and by every fill produced by the L2
+    /// exchange.
+    fn account_fill(
+        &mut self,
+        order: &OrderRequest,
+        fill_price: Price,
+        filled_qty: Decimal,
+        order_impact: Decimal,
+        timestamp: DateTime<Utc>,
+    ) {
+        let instrument = &order.instrument;
         self.total_price_impact += order_impact;
 
         let notional = fill_price.0 * filled_qty;

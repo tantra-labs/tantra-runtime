@@ -72,9 +72,12 @@ fn run_once(
     let mut risk_engine = RiskEngine::new(RiskLimits::default(), OtrConfig::default());
     risk_engine.register_algo(strategy.name());
 
-    // `participation_cap` percentage is threaded into `OrderBook` from the
-    // slippage model's daily-range percentage (see `BacktestEngine::new`);
-    // 50% here means half of (half) the average daily volume is the cap.
+    // plan 0005 D4 / T14.8: the L2 matching venue is the shared
+    // tantra-exec-paper exchange, whose feed books are built with a 100%
+    // participation cap (see its `feed_bar`/`feed_tick`), so a single
+    // market order is clamped to `avg_daily_volume * 1.0 / 2` = half the
+    // average daily volume. The slippage model's daily-range percentage is
+    // no longer threaded into the book.
     let mut slippage = SlippageModel::new();
     slippage.set_daily_range_pct(dec!(0.5));
 
@@ -104,19 +107,20 @@ fn run_once(
 #[test]
 fn test_market_order_clamped_to_participation_cap() {
     let inst = InstrumentId::new(Exchange::Nse, "INFY");
-    // avg_daily_volume = 1_000, participation_cap = 50% => cap = 1_000 * 0.5 / 2 = 250.
-    // Order for 400 must clamp to 250.
-    let result = run_once(&inst, 400, 1_000);
+    // avg_daily_volume = 1_000, exchange cap = 1_000 * 1.0 / 2 = 500.
+    // Order for 1_200 must clamp to 500 (the unfilled remainder rests in
+    // the exchange until a later event crosses it).
+    let result = run_once(&inst, 1_200, 1_000);
 
     assert_eq!(result.total_trades, 1);
     assert_eq!(result.fills.len(), 1);
-    assert_eq!(result.fills[0].quantity, Quantity::from_u64(250));
+    assert_eq!(result.fills[0].quantity, Quantity::from_u64(500));
 }
 
 #[test]
 fn test_order_within_cap_fills_fully() {
     let inst = InstrumentId::new(Exchange::Nse, "INFY");
-    // Same cap of 250, but the order (100) is within it: fills fully.
+    // Same cap of 500, but the order (100) is within it: fills fully.
     let result = run_once(&inst, 100, 1_000);
 
     assert_eq!(result.total_trades, 1);

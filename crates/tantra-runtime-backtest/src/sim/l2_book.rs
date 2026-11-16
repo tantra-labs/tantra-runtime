@@ -122,7 +122,11 @@ pub struct OrderBook {
     bids: OrderBookSide,
     /// Ask side (sell orders)
     asks: OrderBookSide,
-    /// Latency model: microseconds to simulate order propagation delay
+    /// Latency model: microseconds to simulate order propagation delay.
+    // plan 0005 D4 / T14.8: the engine now drives `tantra-exec-paper` for L2
+    // matching, so this field is only read by `ready_ts` (kept for the E9
+    // book-parity surface); the engine computes latency itself.
+    #[allow(dead_code)]
     latency_us: u64,
     /// Volume participation cap: max percentage of average daily volume
     participation_cap: Decimal,
@@ -147,6 +151,9 @@ impl OrderBook {
     /// Sets the average daily volume used by the participation cap. The
     /// backtest engine calls this as it processes bars, since a bar's
     /// traded volume is the simulation's only observable proxy for ADV.
+    // plan 0005 D4 / T14.8: the engine now drives `tantra-exec-paper`, whose
+    // book sets ADV itself; kept here only for the E9 book-parity surface.
+    #[allow(dead_code)]
     pub(crate) fn set_avg_daily_volume(&mut self, avg_daily_volume: i64) {
         self.avg_daily_volume = avg_daily_volume;
     }
@@ -305,6 +312,9 @@ impl OrderBook {
     /// arithmetic on the caller-supplied timestamp — no clock is read here,
     /// so replaying the same events always yields the same `ready_ts`
     /// (`AGENTS.md` §2.5).
+    // plan 0005 D4 / T14.8: the engine now computes L2 latency itself (the
+    // exchange is built plain); kept here only for the E9 book-parity surface.
+    #[allow(dead_code)]
     pub(crate) fn ready_ts(&self, submit_ts: DateTime<Utc>) -> DateTime<Utc> {
         submit_ts + Duration::microseconds(self.latency_us as i64)
     }
