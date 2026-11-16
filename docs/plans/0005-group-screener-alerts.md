@@ -10,7 +10,7 @@ consecutive result sets to emit Enter/Exit events, and fans them out to notifica
 composition wires the MCP ports for [tantra-agent 0013](../../../tantra-agent/docs/plans/0013-screener-mcp-tools.md) (agent rule R4).
 
 References: research [`trendlyne-screener-alerts-mcp.md`](../../../docs/research/trendlyne-screener-alerts-mcp.md) (F7 engine, F8 wiring);
-root roadmap [`0007`](../../../docs/plans/0007-screener-taxonomy-and-alerts.md).
+root roadmap [`0010`](../../../docs/plans/0010-screener-taxonomy-and-alerts.md).
 Depends on: [tantra-core 0004](../../../tantra-core/docs/plans/0004-classification-and-alert-wire-types.md),
 [tantra-data 0007](../../../tantra-data/docs/plans/0007-instrument-master-index-membership.md).
 

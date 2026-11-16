@@ -9,7 +9,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
-| [0005](0005-group-screener-alerts.md) | Group Screener Alerts Engine (AlertRule store, scheduler, edge detection, sinks, `/v1/alerts/*`, MCP port wiring) | `tantra-runtime-persistence`, `tantra-runtime-api(-rest)` | Proposed — research `docs/research/trendlyne-screener-alerts-mcp.md`; root plan `docs/plans/0007` (F7, F8 wiring) |
+| [0005](0005-group-screener-alerts.md) | Group Screener Alerts Engine (AlertRule store, scheduler, edge detection, sinks, `/v1/alerts/*`, MCP port wiring) | `tantra-runtime-persistence`, `tantra-runtime-api(-rest)` | Proposed — research `docs/research/trendlyne-screener-alerts-mcp.md`; root plan `docs/plans/0010` (F7, F8 wiring) |
 | [0006](0006-trade-manager-backtest-and-synthetic-brackets.md) | TradeManager in Backtest, Synthetic Brackets, `/v1/trade-plan` | `tantra-runtime-backtest`, `tantra-runtime-actors`, `tantra-runtime-api-rest` | Proposed — root plan `docs/plans/0008` |
 
 ## Implemented Plans
