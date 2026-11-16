@@ -52,6 +52,7 @@ pub mod market_feed;
 pub mod openapi;
 mod operator_journal;
 pub mod orders;
+pub mod paper_serve;
 mod portfolio;
 mod portfolio_store;
 mod profile;

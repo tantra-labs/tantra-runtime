@@ -26,7 +26,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal_macros::dec;
 use tantra_core::rust_decimal::Decimal;
@@ -283,6 +283,71 @@ impl ExecGateway {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(order_id);
+    }
+
+    /// Total fills recorded by the exchange, drained or not (the `paper serve` daemon's exit
+    /// report, plan 0005 D5).
+    pub(crate) fn fill_count(&self) -> usize {
+        self.exchange
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .fills()
+            .len()
+    }
+
+    /// Squares off every non-zero exchange position with an opposite-side market order (the
+    /// `paper serve` MIS close, plan 0005 D5).
+    ///
+    /// Submits directly to the exchange — the daemon's own close path, not the REST risk gate
+    /// — then drains fills/events so the ledger and `/ws/live` subscribers see the closes
+    /// exactly as any other fill. Returns the number of close orders submitted.
+    pub(crate) fn mis_square_off(
+        &self,
+        ledger: &OrderLedger,
+        shared: &SharedLedger,
+        at: DateTime<Utc>,
+    ) -> usize {
+        let positions: Vec<(tantra_core::InstrumentId, Decimal)> = {
+            let exchange = self.exchange.lock().unwrap_or_else(PoisonError::into_inner);
+            exchange
+                .positions()
+                .iter()
+                .map(|(id, qty)| (id.clone(), *qty))
+                .collect()
+        };
+        let mut submitted = 0;
+        for (instrument, qty) in positions {
+            if qty.is_zero() {
+                continue;
+            }
+            let side = if qty.is_sign_negative() {
+                OrderSide::Buy
+            } else {
+                OrderSide::Sell
+            };
+            // Deterministic client order id (no wall clock, no RNG): a v5 hash of the
+            // instrument + square-off time, so replaying the same tape mints the same closes
+            // byte-for-byte (plan 0005 D5 keeps the daemon deterministic).
+            let key = format!("mis-close-{instrument}-{at}");
+            let request = OrderRequest::with_id(
+                uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, key.as_bytes()),
+                instrument,
+                side,
+                CoreOrderType::Market,
+                Quantity::new(qty.abs()),
+                REST_ALGO_ID,
+            );
+            let result = self
+                .exchange
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .submit_order(request, at);
+            if result.is_ok() {
+                submitted += 1;
+            }
+        }
+        self.drain_fills(ledger, shared);
+        submitted
     }
 
     /// Drains the exchange's new fills and lifecycle events (since the last drain) into the
