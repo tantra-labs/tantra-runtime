@@ -47,7 +47,7 @@ Price (daily change +/-5%/10%, week/52-wk/10-yr high-low cross, near 52-wk extre
 (golden/death cross, price vs SMA/EMA periods); volume and delivery (volume shockers, rising/high
 delivery %); breakouts (LTP vs pivot R1-R3/S1-S3); results (declared today, YoY/QoQ revenue/profit,
 post-result outperformance, upcoming results); corporate actions (dividend, bonus, split);
-big deals (>1% insider/SAST, blocked on tantra-data gap 0023); QVM transitions (momentum trap, falling
+big deals (>1% insider/SAST, blocked on tantra-data gap 0024); QVM transitions (momentum trap, falling
 comet, rising momentum, strong performer getting expensive); screener enter/exit; email digests.
 
 ### Phase F — MCP port wiring (R4)
