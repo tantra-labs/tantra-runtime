@@ -53,16 +53,17 @@ enter/exit edge detection, no event alerts, and no digests.
     - `ScreenEdge { screen: ScreenSource (PresetId | Inline(ScreenerFilterGroup)), trigger: EdgeTrigger (Enter | Exit | Both | Level) }`
     - `EventMatch { event_kinds: Vec<AlertEventKind>, filters: EventFilterSpec }` (`ResultsDeclared`, `UpcomingResults`, `CorporateAction`, `CorporateAnnouncement`, `EarningsCall`, `ResearchReport`, `BlockBulkDeal`, `InsiderSastDeal`, `QvmTransition`)
   - `DeliveryPolicy`: `{ mode: Live | HourlyDigest | DailyDigest | EodSummary, channels: Vec<NotificationChannel>, quiet_hours?: SessionPolicy, priority: AlertPriority }`.
-  - `AlertRule`: `{ id, owner, name, universes: Vec<UniverseTarget>, condition: AlertCondition, frequency: AlertFrequency, delivery: DeliveryPolicy, cooldown_secs, enabled, snoozed_until?, created_at, updated_at }`.
-  - `AlertEvent`: `{ id, rule_id, owner, instrument, matched_universes: Vec<UniverseTarget>, trigger_kind, summary, payload, metrics: BTreeMap<String, Decimal>, observed_at, delivered_at? }`.
-- **SQLx tables (`tantra-runtime-persistence`)**: `alert_rules`, `alert_rule_state` (last-matched instrument set snapshot per rule for restart-safe edge diffing), `alert_events`, `alert_digest_queue`, and `alert_notification_prefs` — all keyed by `(owner_id, id)`.
-- **Migration of `ProfileStore` `PriceAlert`s**: idempotent migration into `alert_rules` as `Level` rules. Provide a read-through compatibility view on `/profile` `alerts` (removing `ProfileStore`'s sync write contention) until `tantra-ui-web` (`alerts-store.ts`) migrates to `/v1/alerts/*`.
+  - `AlertRule`: `{ id, owner, workspace_id?: Option<String>, name, universes: Vec<UniverseTarget>, condition: AlertCondition, frequency: AlertFrequency, delivery: DeliveryPolicy, cooldown_secs, enabled, snoozed_until?, created_at, updated_at }`.
+    - *Scoping rule*: `owner` is authoritative for tenant isolation and evaluation (all enabled rules for `owner` run 24/7 regardless of which workspace is open in the UI). `workspace_id` is **optional UI-context metadata** (set for Chart Dock / Watchlist / Portfolio rules, `None` for user-global `/alerts` or broad index/sector rules) so the UI can filter by workspace and deep-link alerts back to the right workspace.
+  - `AlertEvent`: `{ id, rule_id, owner, workspace_id?: Option<String>, instrument, matched_universes: Vec<UniverseTarget>, trigger_kind, summary, payload, metrics: BTreeMap<String, Decimal>, observed_at, delivered_at? }` (`workspace_id` copied from the rule or resolved from matched workspace-scoped portfolio/watchlist metadata).
+- **SQLx tables (`tantra-runtime-persistence`)**: `alert_rules` (indexed by `(owner_id, workspace_id)`), `alert_rule_state` (last-matched instrument set snapshot per rule for restart-safe edge diffing), `alert_events` (indexed by `(owner_id, workspace_id, observed_at)`), `alert_digest_queue`, and `alert_notification_prefs` — all keyed by `(owner_id, id)`.
+- **Migration of `ProfileStore` `PriceAlert`s**: idempotent migration into `alert_rules` as `Level` rules **preserving `PriceAlert.workspace_id`** into `AlertRule.workspace_id`. Provide a read-through compatibility view on `/profile` `alerts` (removing `ProfileStore`'s sync write contention) until `tantra-ui-web` (`alerts-store.ts`) migrates to `/v1/alerts/*`.
 
 ### Phase B — Hybrid Evaluator & Scheduler (`ScreenEdge` + `EventMatch`)
 - **L3 ↔ L6 evaluation split (no duplicate query semantics)**:
   - Bar/technical/price/MA/breakout `ScreenEdge` rules run natively in Rust over `tantra-market-store` + `tantra-data` Parquet projections (`catalog/{instruments,classification,index_membership}`).
   - Fundamental, peer-relative (`RelativeTo`), QVM, and catalog-preset `ScreenEdge` rules evaluate via an injected `ScreenerEvaluatorPort` backed by `tantra-data` (`0008` Phase B) or a unified Parquet/DataFusion reader — one authoritative semantics, no silent drift.
-- **Scheduler**: per-frequency bar-close triggers (`15m`, `30m`, `1h`, `daily`), honoring `check_scan_budget`, resolving all `UniverseTarget`s as of the evaluation timestamp, deduplicating instruments across overlapping universes while preserving `matched_universes` attribution.
+- **Scheduler**: per-frequency bar-close triggers (`15m`, `30m`, `1h`, `daily`), honoring `check_scan_budget`, resolving all `UniverseTarget`s as of the evaluation timestamp, deduplicating instruments across overlapping universes while preserving `matched_universes` attribution. Evaluated per `(owner_id, rule_id)` unconditionally (never gated by active UI workspace).
 - **Edge detection & dedupe**: diff current vs persisted `alert_rule_state` set -> emit `Enter` / `Exit` (`Both` emits both; `Level` fires while true subject to `cooldown_secs`). Dedupe key: `(rule_id, instrument, trigger_kind, bar_ts_or_event_id)`. Skip rules where `enabled == false` or `now < snoozed_until`.
 - **Event stream evaluator (`EventMatch`)**: subscribes to ingested event feeds (corporate actions, filings/announcements, block/bulk deals, results, QVM transitions, and — once `tantra-data` gap 0024 closes — insider/SAST & analyst reports), matching against active `EventMatch` rules scoped to the user's `UniverseTarget`s.
 - **Clock purity**: inject runtime clock port (`now: DateTime<Utc>`); zero `Instant::now()` / `Utc::now()` in domain logic.
@@ -73,9 +74,9 @@ enter/exit edge detection, no event alerts, and no digests.
 - Bounded `tokio::sync::mpsc` channels with explicit `BackpressurePolicy` (`DropOldest` / overflow log); slow sinks never stall rule evaluation.
 
 ### Phase D — REST Surface (`/v1/alerts/*`, Caller-scoped, versioned)
-- `/v1/alerts/rules` (`POST`, `GET`, `PATCH`, `DELETE`, `POST /{id}/snooze`)
-- `/v1/alerts/presets` (`GET` catalog of Alpha-Alert packs, `POST /subscribe` one-click bind to portfolio/watchlist)
-- `/v1/alerts/events` (`GET` paged, filter by rule/universe/unread/category) & `/v1/alerts/digests` (`GET`, `POST /preferences`)
+- `/v1/alerts/rules` (`POST`, `GET` with optional `?workspace_id=&enabled=`, `PATCH`, `DELETE`, `POST /{id}/snooze`)
+- `/v1/alerts/presets` (`GET` catalog of Alpha-Alert packs, `POST /subscribe` one-click bind to portfolio/watchlist with optional `workspace_id`)
+- `/v1/alerts/events` (`GET` paged, filter by `rule_id`/`workspace_id`/universe/unread/category) & `/v1/alerts/digests` (`GET`, `POST /preferences`)
 - Strictly keyed by `(caller_id, rule_id)`, bounded body sizes, OpenAPI 3.1 schemas generated from `tantra-runtime-api`.
 
 ### Phase E — Built-In Alpha-Alert Rule & Event Packs
@@ -100,7 +101,7 @@ In `crates/*/tests/`:
 - Edge-detection golden sequences (`Enter`, `Exit`, `Both`, `Level`), restart recovery of `alert_rule_state`, cooldown/snooze/dedupe key tests.
 - `EventMatch` matching tests (corporate actions, block deals, results) + digest batching/grouping tests (`HourlyDigest` / `DailyDigest`).
 - Budget rejection (`check_scan_budget`), Caller tenant-isolation negatives, backpressure on slow `NotificationSink`.
-- `ProfileStore` `PriceAlert` migration + `/profile` read-through parity tests.
+- `ProfileStore` `PriceAlert` migration (verifying `workspace_id` preservation) + `/profile` read-through parity tests, plus `?workspace_id=` filter coverage & verifying rules fire regardless of `workspace_id`.
 - Preset template validity (every `ScreenEdge` preset parses and passes converged DSL validation).
 
 ## 4. Dependencies & Tier Notes
