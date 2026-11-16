@@ -7,14 +7,13 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 ## Open Gaps
 
-| # | Title | Target Scope | Status |
-|---|-------|--------------|--------|
-| [0008](0008-broker-adapter-boundary.md) | Dual execution-port boundary (`BrokerAdapter` sync sim port vs `tantra_exec_core::BrokerExecutor` async wire port) — keep-or-lift decision documented | `tantra-runtime-strategy::dispatch` | Open (documented decision — **option 1 keep chosen**, recorded in the gap doc + `docs/design/code-strategy.md` §8.2; closes when option 2 lands) |
+*(none)*
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |
 |---|-------|--------------|-----------|
 | 0001 | Jobs, Runner Lifecycle, and Strategy Dispatch Architecture | `tantra-runtime-jobs`, `tantra-runtime-strategy`, `tantra-runtime-api-rest` | Closed in `60a5bd9` (Stage 1) + `46817a0` (Stages 2–4: pool, registry, budgeting/fencing, cron scheduler, typed manifests, broker dispatch; CLI half in the `tantra-ui` repo). Broker wire transports remain open as GAP-0003 |
+| 0008 | Dual execution-port boundary (`BrokerAdapter` sync sim port vs `tantra_exec_core::BrokerExecutor` async wire port) | `tantra-runtime-strategy::dispatch` | Closed 2026-11-16 — `SimExecutionPort` lifted to `tantra-exec-core` (T14.4, root plan 0007); runtime `BrokerAdapter` re-export; paper exchange implements it |
 | 0002 | Strategy Traps, Pitfalls, and Statistical Validation Coverage | `tantra-core::analytics`, `tantra-runtime-backtest`, `tantra-ui-core` | Closed in batch `GAP-0002` (pure-Decimal analytics kernel S1–S6, backtest stop-fill gap-through / same-bar ordering E2/E3, M5 freeze limits via `tantra-risk`, and UI six-gate audit card). |
 | 0003 | Broker Wire-Transport Scaffolds (Zerodha Kite, Angel One SmartAPI) | `tantra-runtime-strategy::dispatch` | Closed — Zerodha `ZerodhaKiteAdapter` wired to the real `tantra-exec-zerodha` Kite Connect transport (`POST /orders/regular`, `DELETE /orders/regular/{id}`) when credentials are configured, with `broker_name`/`submit_order`/`cancel_order` delegating to `tantra-exec`; statutory `fee_breakdown` computed on every sim fill via `tantra-market-finance::india::costs`; `BrokerError` normalized into `DispatchError` via `map_broker_error`; wire delegation, error-mapping (session/rate/network), and cancel tests added in `tests/zerodha_wire_tests.rs`; `test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone` now asserts real (non-zero) fees plus paper/zerodha/angelone parity. Angel One remains a simulation scaffold pending `tantra-exec-angelone` (upstream placeholder); golden-vector conformance over recorded broker sessions is follow-up. |
 | 0004 | Profile schema has no room for watchlists metadata, portfolios, risk profiles, or workspaces | `tantra-runtime-api::profile`, `tantra-runtime-api-rest::profile_store` | Closed in `53e917a` (T7.4) — `Profile.watchlists` values are now a `Watchlist { name, instrument_ids }` struct (legacy bare-array deserialization preserved), new opaque `portfolios`/`risk_profiles`/`workspaces` fields, `MAX_PORTFOLIOS`/`MAX_RISK_PROFILES`/`MAX_WORKSPACES` count limits, round-trip + limit tests |

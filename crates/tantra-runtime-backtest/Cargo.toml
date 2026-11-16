@@ -34,3 +34,4 @@ tokio.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 tempfile = "3"
 tantra-agent.workspace = true
+tantra-exec-paper.workspace = true

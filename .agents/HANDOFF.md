@@ -1,7 +1,53 @@
 # HANDOFF — tantra-runtime
 
-**Date**: 2026-11-14 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
+**Date**: 2026-11-16 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
+
+## Latest Batch — T14 Wave 3 (E9 parity test)
+
+Date: 2026-11-16. E9 of `tantra-exec/docs/plans/0003` (runtime plan 0005 D4) landed:
+- New `tests/paper_parity_tests.rs` (4 tests) driving the paper exchange
+  (`tantra-exec-paper`) and the backtest L2 book (`sim::l2_book`) from the same
+  golden tape and asserting byte-identical fills: `book_parity_price_time_priority`,
+  `book_parity_limit_walk`, `paper_exchange_fills_match_golden_tape`,
+  `paper_exchange_events_deterministic_golden`. 4/4 green on prod.
+- Workspace: `tantra-exec-paper` path dep added to `[workspace.dependencies]`
+  and as dev-dep of `tantra-runtime-backtest`.
+- Verified: `cargo fmt --all`, `cargo check --workspace --profile prod`, `cargo
+  test -p tantra-runtime-backtest --profile prod`, `cargo clippy --all-targets
+  -- -D warnings`, `make prod`.
+- Deviation vs plan-spec numbers (engine is authoritative, verified by the
+  tests): the golden tape produces **4** fill records (one per side per
+  participant fill), not 3; net position after the sell is **0** (sell nets the
+  resting buys), not +150; cash returns to 1,000,000 with `ZeroFillCost`. Plan
+  doc + tests updated to match engine behavior.
+
+## Latest Batch — T14 Wave 2 (sync port lift; gap 0008 closed)
+
+Date: 2026-11-16. T14.4 lifted the sync `BrokerAdapter` port into
+`tantra-exec-core` (executes runtime gap 0008 option 2):
+- `tantra-exec-core::sim::SimExecutionPort` is now the canonical sync
+  `now`-stamped execution port; `tantra-exec-paper::PaperExchangeExecutor`
+  implements it.
+- `tantra-runtime-strategy::dispatch::BrokerAdapter` is now a thin re-export
+  (`pub use tantra_exec_core::sim::SimExecutionPort as BrokerAdapter;`);
+  `PaperAdapter` / `ZerodhaKiteAdapter` / `AngelOneSmartApiAdapter` /
+  `Dispatcher` compile unchanged.
+- Gap 0008 closed; index moved to Closed. Verification green in both repos:
+  `cargo check --workspace --profile prod`, `cargo test
+  -p tantra-exec-core -p tantra-exec-paper --profile prod`, `cargo test
+  -p tantra-runtime-strategy --profile prod`, clippy `-D warnings`, `make prod`.
+
+## Latest Batch — T14 P1/P2 PLANNED (docs only; no development)
+
+Date: 2026-11-15. **Plan `docs/plans/0005-paper-exchange-runtime-wiring.md`** (Proposed, T14
+P1/P2): REST `/orders` + strategy dispatch switch from `NextOpenSim`/`PaperAdapter` fill math
+onto the shared `tantra-exec-paper` engine (limit/stop/short support, partial fills, cancel);
+`/ws/live` bidirectional push (orders/fills/depth/positions); backtest engine drives the
+exchange on historical bars → byte-identical fills vs paper (golden); standalone `paper serve`
+daemon (replay tape or live broker feed, NSE calendar + MIS 15:20). D2 lifts the sync
+`BrokerAdapter` port to `tantra-exec-core` → **closes gap 0008 (option 2)**. Index updated.
+Execution NOT started — awaits approval; TDD slices R1–R7 in the plan.
 
 ## Latest Batch — gap 0007 items 1–5, 11, 12 closed (upstream bridges landed)
 

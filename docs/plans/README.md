@@ -9,7 +9,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
-| _(none)_ | | | |
+| [0005](0005-paper-exchange-runtime-wiring.md) | Paper Exchange Runtime Wiring & Backtest Unification — REST `/orders` + strategy dispatch on the `tantra-exec-paper` engine (replaces `NextOpenSim`/`PaperAdapter`), `/ws/live` push, backtest drives the exchange (byte-identical fills), standalone `paper serve` daemon | `tantra-runtime-api-rest`, `tantra-runtime-strategy`, `tantra-runtime-backtest` | Proposed — T14 (P1/P2); master plan root `docs/plans/0007` |
 
 ## Implemented Plans
 
