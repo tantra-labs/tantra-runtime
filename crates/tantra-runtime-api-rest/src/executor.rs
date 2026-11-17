@@ -590,8 +590,11 @@ fn timeframe_from_bar_spec(bar_spec: &str) -> Result<Timeframe, ErrorDetail> {
         (15, BarAggregation::Minute) => Timeframe::M15,
         (30, BarAggregation::Minute) => Timeframe::M30,
         (1, BarAggregation::Hour) => Timeframe::H1,
+        (2, BarAggregation::Hour) => Timeframe::H2,
+        (4, BarAggregation::Hour) => Timeframe::H4,
         (1, BarAggregation::Day) => Timeframe::D1,
         (1, BarAggregation::Week) => Timeframe::W1,
+        (1, BarAggregation::Month) => Timeframe::Month1,
         _ => {
             return Err(invalid(
                 "bar_spec",

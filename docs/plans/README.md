@@ -4,12 +4,14 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 - Gaps are individual features (`docs/gaps/XXXX-*.md`).
 - Plans are collections of gaps (`docs/plans/XXXX-*.md`).
 - When implemented, plan documents are cleaned up from `docs/plans/` and recorded in this index.
+- Numbering is per-repo, sequential, never reused.
 
 ## Active Plans
 
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
-| *(none open)* | | |
+| [0007](0007-group-screener-alerts.md) | Alpha-Style Group & Event Alerts Engine (`ScreenEdge` + `EventMatch`, multi-universe scoping, live + hourly/daily digests, preset packs, `/v1/alerts/*`, MCP wiring) | `tantra-runtime-persistence`, `tantra-runtime-api(-rest)` | Proposed (revised 2026-11-16) — research `docs/research/trendlyne-screener-alerts-mcp.md`; root plan `docs/plans/0010` (F7, F8 wiring) |
+| [0006](0006-trade-manager-backtest-and-synthetic-brackets.md) | TradeManager in Backtest, Synthetic Brackets, `/v1/trade-plan` | `tantra-runtime-backtest`, `tantra-runtime-actors`, `tantra-runtime-api-rest` | Proposed — root plan `docs/plans/0008` |
 
 ## Implemented Plans
 

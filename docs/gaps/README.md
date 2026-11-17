@@ -7,11 +7,14 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 ## Open Gaps
 
-*(none)*
+| # | Title | Target Scope | Status |
+|---|-------|--------------|--------|
+| [0009](0009-chat-ws-model-override-and-multimodal-attachments.md) | `/ws/chat` WebSocket lacks native `model` override and multimodal image attachments (`ChatClientMessage` accepts only `{ text }`) | `tantra-runtime-api-rest::chat`, `tantra-agent-llm` | Open |
+| [0010](0010-quote-tick-day-high-low-fields.md) | `QuoteTick` (`GET /quotes`) missing session `day_high`, `day_low`, `prev_close`, and `volume` fields | `tantra-runtime-api::wire`, `tantra-runtime-api-rest` | Open |
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |
-|---|-------|--------------|-----------|
+|---|---|---|---|
 | 0001 | Jobs, Runner Lifecycle, and Strategy Dispatch Architecture | `tantra-runtime-jobs`, `tantra-runtime-strategy`, `tantra-runtime-api-rest` | Closed in `60a5bd9` (Stage 1) + `46817a0` (Stages 2–4: pool, registry, budgeting/fencing, cron scheduler, typed manifests, broker dispatch; CLI half in the `tantra-ui` repo). Broker wire transports remain open as GAP-0003 |
 | 0008 | Dual execution-port boundary (`BrokerAdapter` sync sim port vs `tantra_exec_core::BrokerExecutor` async wire port) | `tantra-runtime-strategy::dispatch` | Closed 2026-11-16 — `SimExecutionPort` lifted to `tantra-exec-core` (T14.4, root plan 0007); runtime `BrokerAdapter` re-export; paper exchange implements it |
 | 0002 | Strategy Traps, Pitfalls, and Statistical Validation Coverage | `tantra-core::analytics`, `tantra-runtime-backtest`, `tantra-ui-core` | Closed in batch `GAP-0002` (pure-Decimal analytics kernel S1–S6, backtest stop-fill gap-through / same-bar ordering E2/E3, M5 freeze limits via `tantra-risk`, and UI six-gate audit card). |
