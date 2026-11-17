@@ -20,7 +20,7 @@ pub mod engine;
 pub mod events;
 pub mod sim;
 
-pub use calendar::{NseTradingCalendar, SessionWindow};
+pub use calendar::{NseTradingCalendar, SessionWindow, TradingHolidayError};
 pub use catalog::{
     CatalogError, CatalogInstrumentSummary, CatalogLoader, CatalogVerificationReport,
     decimal_from_f64_lossless,
