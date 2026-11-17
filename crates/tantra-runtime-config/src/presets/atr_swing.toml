@@ -1,0 +1,30 @@
+# ATR-multiple swing: trend follower, runner-only (no fixed target legs).
+# Market entry; 2xATR initial stop; 3xATR trailing stop; position runs until
+# the trail or stop closes it; FixedFractional 1% risk. Version 1.
+preset_id = "atr_swing"
+version = 1
+
+[entry]
+kind = "market"
+
+[stop]
+kind = "atr_multiple"
+
+[stop.params]
+mult = "2.0"
+
+[trail]
+activation_after_r = "1.0"
+
+[trail.rule]
+kind = "atr"
+
+[trail.rule.params]
+mult = "3.0"
+
+[targets]
+runner = true
+legs = []
+
+[sizing]
+method = { type = "fixed_fractional", risk_pct = "0.01" }

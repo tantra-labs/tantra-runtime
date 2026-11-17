@@ -1,0 +1,44 @@
+{
+  "instrument": {
+    "exchange": "NSE",
+    "symbol": "RELIANCE"
+  },
+  "side": "BUY",
+  "entry": "1000.00",
+  "initial_stop": "980.00",
+  "risk_per_unit": "20.00",
+  "quantity": "50",
+  "risk_at_stake": {
+    "amount": "1000.00",
+    "currency": "Inr"
+  },
+  "targets": [
+    {
+      "price": "1060.00",
+      "qty": "25",
+      "reason": "target at 3.0R"
+    },
+    {
+      "price": "1100.00",
+      "qty": "25",
+      "reason": "target at 5.0R"
+    }
+  ],
+  "trail": {
+    "rule": {
+      "kind": "atr",
+      "params": {
+        "mult": "3.0"
+      }
+    },
+    "activation_after_r": "1.0",
+    "time_stop": {
+      "bars": 6,
+      "min_progress_r": "1.0",
+      "timeframe": "m5"
+    }
+  },
+  "reward_risk": "3",
+  "spec_version": 1,
+  "rationale": "stop=atr_multiple sizing=fixed_fractional(0.01)"
+}

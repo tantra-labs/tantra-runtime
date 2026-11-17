@@ -1,0 +1,33 @@
+# Qullamaggie swing breakout (root plan 0009, section 3.1).
+# Market entry; stop at the entry-day extreme (DayExtreme) with the fixed
+# 1xADR% max-stop-distance guard; SMA10 close-based trail; 1/2 at 2R + runner;
+# FixedFractional 0.5% risk; min_reward_risk 2.0. Version 1.
+preset_id = "qullamaggie"
+version = 1
+min_reward_risk = "2.0"
+
+[entry]
+kind = "market"
+
+[stop]
+kind = "day_extreme"
+
+[trail]
+activation_after_r = "1.0"
+
+[trail.rule]
+kind = "close_ma"
+
+[trail.rule.params]
+kind = "sma"
+period = 10
+
+[targets]
+runner = true
+
+[[targets.legs]]
+fraction = "0.5"
+trigger = { kind = "at_r", params = "2.0" }
+
+[sizing]
+method = { type = "fixed_fractional", risk_pct = "0.005" }

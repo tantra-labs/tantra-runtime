@@ -1,0 +1,39 @@
+# Chart-pattern breakout (plan 0005, section 2a).
+# Pattern-breakout entry (resting trigger 2 ticks beyond the breakout level);
+# pattern-invalidation stop buffered 0.5xATR; 1/2 at MeasuredMove(1.0) with an
+# AtR(2.0) fallback for targetless patterns (VCP/candlesticks), runner on a
+# 10-bar 3xATR Chandelier trail; FixedFractional 1% risk. Version 1.
+preset_id = "pattern_breakout"
+version = 1
+
+[entry]
+kind = "pattern_breakout"
+
+[entry.params]
+buffer_ticks = 2
+
+[stop]
+kind = "pattern_invalidation"
+
+[stop.params]
+buffer_atr = "0.5"
+
+[trail]
+activation_after_r = "1.0"
+
+[trail.rule]
+kind = "chandelier"
+
+[trail.rule.params]
+period = 10
+mult = "3.0"
+
+[targets]
+runner = true
+
+[[targets.legs]]
+fraction = "0.5"
+trigger = { kind = "measured_move", params = { fraction_of_height = "1.0", fallback = { kind = "at_r", params = "2.0" } } }
+
+[sizing]
+method = { type = "fixed_fractional", risk_pct = "0.01" }

@@ -1,0 +1,43 @@
+# EE+ intraday momentum (plan 0005, section 2).
+# Market entry; 2xATR initial stop; 3xATR trailing stop; 3R primary + 5R
+# runner targets; 6-bar (M5) time stop requiring 1R progress; FixedFractional
+# 1% risk. Version 1.
+preset_id = "ee_plus"
+version = 1
+
+[entry]
+kind = "market"
+
+[stop]
+kind = "atr_multiple"
+
+[stop.params]
+mult = "2.0"
+
+[trail]
+activation_after_r = "1.0"
+
+[trail.rule]
+kind = "atr"
+
+[trail.rule.params]
+mult = "3.0"
+
+[trail.time_stop]
+bars = 6
+min_progress_r = "1.0"
+timeframe = "m5"
+
+[targets]
+runner = true
+
+[[targets.legs]]
+fraction = "0.5"
+trigger = { kind = "at_r", params = "3.0" }
+
+[[targets.legs]]
+fraction = "0.5"
+trigger = { kind = "at_r", params = "5.0" }
+
+[sizing]
+method = { type = "fixed_fractional", risk_pct = "0.01" }

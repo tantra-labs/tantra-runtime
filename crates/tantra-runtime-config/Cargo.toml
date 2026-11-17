@@ -17,6 +17,9 @@ tantra-runtime-strategy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+rust_decimal.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -10,6 +10,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub mod presets;
+
 pub use tantra_risk::{OrderRateLimit, RiskLimits};
 use tantra_runtime_strategy::{StrategyManifest, Universe};
 
