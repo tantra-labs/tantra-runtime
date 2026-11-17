@@ -12,7 +12,7 @@ use rust_decimal::prelude::ToPrimitive;
 use tantra_core::uuid::Uuid;
 use tantra_core::{FillReport, InstrumentId, OrderRequest, OrderSide, Price, Quantity, Tick};
 use tantra_exec_core::{BrokerError, BrokerExecutor};
-use tantra_exec_paper::{FillCostFn, PaperExchange};
+use tantra_exec_paper::{FillCostFn, OrderState, PaperExchange};
 use tantra_exec_zerodha::ZerodhaExecutor;
 use tantra_market_finance::india::costs::NseCashEquitySchedule;
 use tantra_market_finance::{CostSchedule, MarketSegment};
@@ -20,6 +20,8 @@ use tantra_risk::{RiskEngine, RiskRefusal};
 use tokio::runtime::Runtime;
 
 use crate::intent::{IntentError, OrderIntent};
+use crate::synthetic_oco::SyntheticOco;
+use tantra_exec_core::bracket::BracketOrderSpec;
 
 /// Re-export of the deterministic simulation execution port (exec-core
 /// `SimExecutionPort`), lifted here per gap 0008 option 2; runtime's dual-port
@@ -56,6 +58,10 @@ pub enum DispatchError {
     /// Network connectivity or transport error.
     #[error("network error: {0}")]
     Network(String),
+
+    /// A synthetic bracket (OCO) spec or lifecycle rejection.
+    #[error("bracket rejection: {0}")]
+    Bracket(String),
 }
 
 impl From<RiskRefusal> for DispatchError {
@@ -200,6 +206,45 @@ impl Dispatcher {
 
         self.risk_engine.record_cancellation(&self.algo_id, now);
         Ok(())
+    }
+
+    /// Dispatch a synthetic OCO bracket (gap 0003 / T12.5 follow-on).
+    ///
+    /// Passes the bracket's entry leg through the SEBI pre-trade risk gate,
+    /// then constructs a [`SyntheticOco`] driver and submits the entry through
+    /// the broker adapter, returning the entry broker order id. The entry is
+    /// re-stamped with this dispatcher's registered SEBI algo id (the same way
+    /// [`Dispatcher::dispatch_intent`] stamps intents) so the pre-trade gate
+    /// passes. The bracket's entry must carry a deterministic
+    /// `client_order_id` (see [`crate::synthetic_oco::plan_to_spec_with_id`])
+    /// so the seed derived from it replays byte-identically.
+    ///
+    /// This is a thin convenience over constructing a [`SyntheticOco`] on top
+    /// of the dispatcher's broker; callers that want to drive the full bracket
+    /// lifecycle (fills, stops, targets) should construct and keep the
+    /// [`SyntheticOco`] themselves.
+    ///
+    /// # Errors
+    /// - [`DispatchError::RiskRefusal`] when the pre-trade risk gate rejects
+    ///   the entry leg.
+    /// - [`DispatchError::BrokerRejection`] when the broker refuses the entry.
+    /// - [`DispatchError::Bracket`] when the bracket spec is invalid or its
+    ///   lifecycle invariants fail.
+    pub fn dispatch_bracket(
+        &mut self,
+        mut spec: BracketOrderSpec,
+        now: DateTime<Utc>,
+    ) -> Result<String, DispatchError> {
+        spec.entry.algo_id = self.algo_id.clone();
+        self.risk_engine
+            .check_order(&spec.entry, now)
+            .map_err(DispatchError::from)?;
+
+        let seed = spec.entry.client_order_id.as_u128();
+        let mut oco = SyntheticOco::new(spec, self.broker.as_ref(), seed, now)
+            .map_err(DispatchError::Bracket)?;
+        oco.submit_entry(now)
+            .map_err(DispatchError::BrokerRejection)
     }
 }
 
@@ -371,6 +416,17 @@ fn venue_orders(venue: &Mutex<PaperVenue>) -> HashMap<String, OrderRequest> {
     venue.lock().expect("poisoned lock").orders.clone()
 }
 
+/// Returns the paper exchange's lifecycle state for a broker order id, when
+/// tracked (`OrderState::Cancelled` after a successful cancel).
+fn venue_order_state(venue: &Mutex<PaperVenue>, broker_order_id: &str) -> Option<OrderState> {
+    venue
+        .lock()
+        .expect("poisoned lock")
+        .exchange
+        .order(broker_order_id)
+        .map(|o| o.state)
+}
+
 /// Computes current total portfolio equity (cash + mark-to-market positions).
 fn venue_equity(venue: &Mutex<PaperVenue>) -> Decimal {
     venue.lock().expect("poisoned lock").exchange.equity()
@@ -448,6 +504,12 @@ impl PaperAdapter {
     /// Returns all orders submitted to this adapter.
     pub fn orders(&self) -> HashMap<String, OrderRequest> {
         venue_orders(&self.venue)
+    }
+
+    /// Returns the paper exchange's lifecycle state for a broker order id,
+    /// when tracked (e.g. `OrderState::Cancelled` after a successful cancel).
+    pub fn order_state(&self, broker_order_id: &str) -> Option<OrderState> {
+        venue_order_state(&self.venue, broker_order_id)
     }
 
     /// Computes current total portfolio equity (cash + mark-to-market positions).

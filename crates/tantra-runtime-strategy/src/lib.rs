@@ -30,6 +30,7 @@ pub mod runner;
 pub mod sma_crossover;
 pub mod step;
 pub mod strategy;
+pub mod synthetic_oco;
 
 pub mod order;
 pub mod pnl;
@@ -62,3 +63,8 @@ pub use step::{
     StepPipeline, StepRequires, StepShapeOrList,
 };
 pub use strategy::{Strategy, StrategyAdapter};
+pub use synthetic_oco::{
+    ArcBrokerAdapter, OcoAction, SyntheticBracket, SyntheticOco, child_client_id, entry_client_id,
+    plan_client_order_id, plan_to_entry_request, plan_to_spec, plan_to_spec_with_id,
+    stop_leg_client_id, target_leg_client_id,
+};

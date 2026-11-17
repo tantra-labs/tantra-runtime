@@ -1,7 +1,39 @@
 # HANDOFF — tantra-runtime
 
-**Date**: 2026-11-16 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
+**Date**: 2026-11-17 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
+
+## Latest Batch — T12.5 follow-on: synthetic-OCO bracket driver (exec `BracketTracker` wiring)
+
+Date: 2026-11-17. Executed the recorded T12.5 follow-on: runtime emulation of one-cancels-other
+(OCO) brackets on top of `tantra-exec-core`'s pure `BracketTracker`, so a strategy `TradePlan`
+(entry + stop + target ladder) is driven as a synthetic bracket until native broker/OMS brackets
+land (exec gap 0003 / ledger gap 0012 are closed upstream; the emulation is the runtime consumer).
+All in `tantra-runtime-strategy`:
+- **New module `src/synthetic_oco.rs`** — `SyntheticBracket` (wraps exec `BracketTracker` + broker
+  order-id bookkeeping: entry / resting stop / per-target ids; `open_qty` / `resting_stop` /
+  `closed` / `events` / order-id map reads) and `SyntheticOco` driver (`submit_entry`,
+  `on_entry_fill` — arms the `#stop` child + one limit child per target leg with deterministic
+  SHA-256-derived client ids, `on_bar` conservative stop-first stop-vs-target fills, `trail_stop`
+  never-widening cancel+resubmit with the same deterministic `#stop` id, `realized_pnl` exact
+  `Decimal`). `plan_to_spec`/`plan_to_entry_request` translate a `TradePlan`; `OcoAction` emitted
+  per fill. Zero-I/O, `Decimal`-only, timestamps injected.
+- **Dispatcher wiring (non-breaking)**: new `Dispatcher::dispatch_bracket` passes the entry
+  through the SEBI risk gate (re-stamped with the dispatcher's registered algo id) then constructs
+  and submits the `SyntheticOco` entry, returning the entry broker id. New `DispatchError::Bracket`
+  variant. Existing order paths untouched. `PaperAdapter` gained a read-only `order_state` so tests
+  assert OCO sibling cancels via broker state.
+- **Tests `tests/synthetic_oco_tests.rs`** (8): plan→spec translation + child-id keying; full long
+  lifecycle on `PaperAdapter` (arm → target fill → stop sibling cancelled → monotone trail → stop
+  trigger → closed, realized P&L exact); conservative stop-first bar; deterministic same-seed
+  client-id replay; short-side mirror; `dispatch_bracket` risk gate + halt refusal.
+- **Gate**: `cargo fmt --check` ✅, `cargo clippy --workspace --all-targets --profile prod
+  -- -D warnings` ✅, `cargo check --workspace --profile prod` ✅, `cargo test --profile prod
+  -p tantra-runtime-strategy` green (43 tests incl. 8 new). ⚠ Known env limit: a blanket
+  `cargo test --workspace --profile prod` still SIGKILLs at prod-LTO link on the unrelated heavy
+  `tantra-runtime-api-rest` / `tantra-runtime` test bins; targeted binaries link and pass.
+- **Immediate next step**: nothing runtime-side pending for this follow-on. The real wire-transport
+  native bracket path (BO/CO) stays an exec-side concern; this emulation is the consumer until then.
 
 ## Latest Batch — T14 P1 COMPLETE (plan 0005 D1–D5; T14.5–T14.9 done)
 
