@@ -8,9 +8,10 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 ## Open Gaps
 
 | # | Title | Target Scope | Status |
-|---|-------|--------------|--------|
+|---|---|---|---|
 | [0009](0009-chat-ws-model-override-and-multimodal-attachments.md) | `/ws/chat` WebSocket lacks native `model` override and multimodal image attachments (`ChatClientMessage` accepts only `{ text }`) | `tantra-runtime-api-rest::chat`, `tantra-agent-llm` | Open |
 | [0010](0010-quote-tick-day-high-low-fields.md) | `QuoteTick` (`GET /quotes`) missing session `day_high`, `day_low`, `prev_close`, and `volume` fields | `tantra-runtime-api::wire`, `tantra-runtime-api-rest` | Open |
+| [0011](0011-backtest-catalog-manifest-pinning.md) | `CatalogLoader` lacks `commit_sha`/`ref` snapshot pinning, `reference/aliases` symbology lookup, and `(instrument_uid, ts)` row-group pruning over Lakehouse v3 CAS manifests (root ADR `0004`, root plan `0011`) | `tantra-runtime-backtest` | Open (depends on `tantra-market` gap `0008`, `tantra-data` plan `0009`) |
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |
