@@ -71,11 +71,14 @@ gate.
 
 - The engine keeps its own latency gating (`pending_orders`), slippage-impact accounting, MIS,
   and kokoro settlement; the exchange is the pure matching venue.
-- **Recorded deviation**: adverse-fill slippage is no longer applied on the L2 path — the
-  crate-local `sim::slippage::AdverseFillModel` is a distinct type from the exchange's, and the
-  exchange exposes no pre-fill contra-level read; `BacktestConfig::with_adverse_fill` keeps
-  working on the direct (non-L2) path. Restore L2 adverse fill by threading the exchange's own
-  `AdverseFillModel` into `PaperExchange::with_adverse_fill` in a future batch.
+- **Recorded deviation — CLOSED (2026-11-16, `edeb0a8`)**: L2 adverse-fill is restored by
+  threading the configured `sim::slippage::AdverseFillModel` into the venue's own
+  `tantra_exec_paper::AdverseFillModel` (`PaperExchange::with_adverse_fill`) at engine
+  construction — the crate-local type gained `levels_per_round()` / `max_slippage_pct()` /
+  `compounding()` accessors so the engine can map it. `BacktestConfig::with_adverse_fill` now
+  applies on the L2 path too; `tests/adverse_fill_l2_tests.rs` proves the adverse fill is
+  worse than the best touch while the R5/E9 parity suites (default `adverse_fill: None`) stay
+  green.
 - E9 parity test `tests/paper_parity_tests.rs` (untouched) stays green; `sim/l2_book.rs` kept
   for it (now `#[allow(dead_code)]` for the engine-unused pieces).
 
@@ -88,8 +91,14 @@ Independent process mode (no broker credentials required):
 - Replay tape: replays a recorded bar stream at wall-clock speed (`--real-time`) or as fast as
   possible (default).
 - MIS 15:20-style square-off via `--mis-square-off` (IST clock on the tape's bar timestamps;
-  deterministic v5 close-order ids). NSE trading-calendar gate is a **documented follow-on**
-  (the tape's timeframe is not detected).
+  deterministic v5 close-order ids). NSE trading-calendar gate **closed (2026-11-16,
+  `3447cc7`)**: closes are only submitted on trading days (`NseTradingCalendar::is_trading_day`),
+  never on weekends/holidays.
+- **Live feed seam (2026-11-16, `3447cc7`)**: `PaperFeed::{Tape, Live}` selects the bar
+  source; `--feed live` consumes bars from an injected channel through the same advance /
+  square-off / pacing pipeline. **Outstanding**: a real `tantra-market` broker feed
+  (`tantra-market-dhan` / `tantra-market-zerodha`) plugging into the `Live` channel — blocked
+  on `tantra-market` gap 0003 (real broker WebSocket credentials).
 - Serves the same REST + `/ws/live` surface; a separate paper account is created per API token
   (single account today).
 - Tests: `tests/paper_serve.rs` (plan R6 acceptance: boots, fills a resting limit on the tape,

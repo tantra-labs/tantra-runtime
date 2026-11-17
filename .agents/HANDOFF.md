@@ -27,22 +27,28 @@ commits local, not pushed):
 - **D4 / T14.8 (`a1cbeda`)** — backtester drives the exchange for its L2 fills (inline
   `sim::l2_book` usage removed; engine keeps its own latency gating + slippage-impact + MIS +
   kokoro settlement; `account_fill` extracted for both immediate and later resting fills).
-  R5 golden parity `backtest_paper_parity_tests.rs` (40 backtest tests green; E9
-  `paper_parity_tests.rs` untouched). **Recorded deviation**: adverse-fill slippage no longer
-  applied on the L2 path (crate-local vs exchange model types differ, no contra-level read);
-  restore via `PaperExchange::with_adverse_fill` in a future batch.
+  R5 golden parity `backtest_paper_parity_tests.rs` green (E9 `paper_parity_tests.rs`
+  untouched). **D4 deviation closed (`edeb0a8`)**: the configured adverse-fill model is
+  threaded into `PaperExchange::with_adverse_fill` (crate-local accessors map it onto the
+  exchange's type), so L2 adverse-fill slippage is restored; `tests/adverse_fill_l2_tests.rs`
+  proves adverse fill > best touch vs touch without the model.
 - **D5 / T14.9 (`f70e0e2`)** — `paper-serve --tape <file> [--addr --cash --real-time
-  --mis-square-off HH:MM]` daemon bin + `src/paper_serve.rs` library core: replays a bar tape
-  into the exchange, serves REST + `/ws/live`, exits on tape end; MIS square-off via
-  `ExecGateway::mis_square_off` (deterministic v5 close ids); calendar gate = documented
-  follow-on. Tests `paper_serve.rs` (R6). Orchestrator fixed a random-v4 → deterministic-v5
+  --mis-square-off HH:MM --feed tape|live]` daemon bin + `src/paper_serve.rs` library core:
+  replays a bar tape into the exchange, serves REST + `/ws/live`, exits on feed end; MIS
+  square-off via `ExecGateway::mis_square_off` (deterministic v5 close ids). Tests
+  `paper_serve.rs` (R6). **D5 follow-ons closed (`3447cc7`)**: NSE trading-calendar gate (no
+  square-off on weekends/holidays) + `PaperFeed::Live` live-feed seam (`--feed live` channel,
+  same advance/square-off/pacing pipeline) + calendar-gate/Live tests. **Outstanding**: a real
+  `tantra-market` broker feed into the `Live` channel — blocked on `tantra-market` gap 0003
+  (real broker WebSocket credentials). Orchestrator fixed a random-v4 → deterministic-v5
   close id before commit.
 - Plan 0005 doc + plans README → Implemented (record of D4/D5 deviations); runtime gap 0008
   closed earlier (P0 wave 3, `a005141` — committed 2026-11-16 from the leftover P0 tree).
 - **Immediate next step**: T14 P2 — Python wheel `tantra.paper` (`tantra-ffi` plan 0003,
   T14.10/T14.11), then P3 (CSR/WASM, `tantra-ui` plan 0008), P4 (golden parity suite + docs).
-  Follow-on candidates recorded: L2 adverse-fill restore; `paper serve` live broker feed
-  (`tantra-market-dhan`/`zerodha`) + NSE trading-calendar gate.
+  Paper-trading follow-ons closed (`edeb0a8` L2 adverse-fill restore; `3447cc7` NSE
+  trading-calendar gate + live-feed seam). Remaining: a real broker WebSocket feed into the
+  `Live` seam (`tantra-market-dhan`/`zerodha`) — blocked on `tantra-market` gap 0003.
 
 ## Prior batch — T14 Wave 3 (E9 parity test)
 
