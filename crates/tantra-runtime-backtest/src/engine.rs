@@ -20,8 +20,10 @@
 //! the shared [`tantra_exec_paper::PaperExchange`] as its matching venue
 //! (extracted from this crate's inline `sim::l2_book` book in P0 with
 //! byte-identical matching; `sim::` remains for the E9 parity test). The
-//! engine keeps its own latency gating, slippage/adverse accounting, and
-//! kokoro fill accounting; the exchange is the pure matching venue. Enable
+//! engine keeps its own latency gating, slippage-impact accounting, and
+//! kokoro fill accounting; the exchange is the pure matching venue, with the
+//! configured adverse-fill model threaded into its own (structurally
+//! identical) `tantra_exec_paper::AdverseFillModel`. Enable
 //! via `BacktestConfig::with_l2_simulation()`.
 //!
 //! # MIS 15:20 Square-off (Phase 4.1)
@@ -269,11 +271,10 @@ pub struct BacktestEngine<S: Strategy> {
     pending_instructions: Vec<SettlementInstruction>,
 
     // L2 simulation matching venue: the shared tantra-exec-paper exchange
-    // (plan 0005 D4 / T14.8), built plain. The engine keeps its own latency
-    // gating, slippage impact accounting, and kokoro fill accounting; the
-    // exchange is the pure matching venue (its `sim::slippage` adverse model
-    // is a distinct type from the exchange's, so engine-side adverse-fill
-    // slippage applies only on the direct non-L2 path — see `BacktestEngine::new`).
+    // (plan 0005 D4 / T14.8), built with the configured adverse-fill model
+    // threaded in (see `BacktestEngine::new`). The engine keeps its own
+    // latency gating, slippage impact accounting, and kokoro fill accounting;
+    // the exchange is the pure matching venue.
     exchange: Option<PaperExchange>,
     /// Cursor into `exchange.fills()`: every fill below this index has been
     /// accounted through the kokoro fill pipeline.
@@ -372,18 +373,26 @@ impl<S: Strategy> BacktestEngine<S> {
             account: AccountState::new(Currency::Inr, Vec::new()),
             demat_holdings: DematHoldings::new(),
             pending_instructions: Vec::new(),
-            // plan 0005 D4 / T14.8: the L2 matching venue is the shared
-            // tantra-exec-paper exchange, built plain (no latency/slippage/
-            // adverse/mis models — the engine keeps its own latency gating
-            // and slippage impact accounting). The configured adverse-fill
-            // model is NOT threaded into the venue: the backtest crate's
-            // `sim::slippage::AdverseFillModel` is a distinct type from
-            // `tantra_exec_paper::AdverseFillModel` (the P0 extraction kept
-            // inline copies for E9 parity), and the exchange exposes no
-            // pre-fill contra-level read, so engine-side adverse-fill
-            // slippage now applies only on the direct (non-L2) path.
+            // plan 0005 D4 / T14.8 (L2 adverse-fill restore, follow-on closed):
+            // the L2 matching venue is the shared tantra-exec-paper exchange.
+            // The engine keeps its own latency gating and slippage-impact
+            // accounting; the configured adverse-fill model is threaded into
+            // the venue's own `tantra_exec_paper::AdverseFillModel` (mapped
+            // from the crate-local `sim::slippage::AdverseFillModel`, a
+            // structurally identical inline copy kept for E9 parity, via the
+            // new accessors), so the L2 matching path applies the same
+            // adverse-fill slippage as the direct path.
             exchange: if config.l2_simulation {
-                Some(PaperExchange::new(config.starting_cash))
+                Some(match &config.adverse_fill {
+                    Some(model) => PaperExchange::new(config.starting_cash).with_adverse_fill(
+                        tantra_exec_paper::AdverseFillModel::new(
+                            model.levels_per_round(),
+                            model.max_slippage_pct(),
+                            model.compounding(),
+                        ),
+                    ),
+                    None => PaperExchange::new(config.starting_cash),
+                })
             } else {
                 None
             },
@@ -854,13 +863,12 @@ impl<S: Strategy> BacktestEngine<S> {
     /// pipeline, computing the depth-walk / spread-crossing / slippage price
     /// impact the inline book path used to compute (plan 0005 D4 / T14.8).
     ///
-    /// Adverse-fill slippage is no longer applied here: the exchange is the
-    /// matching venue and owns adverse-fill modeling, but the backtest
-    /// crate's `sim::slippage::AdverseFillModel` is a distinct type from
-    /// `tantra_exec_paper::AdverseFillModel` (inline P0 copy kept for E9
-    /// parity) and the exchange exposes no pre-fill contra-level read, so
-    /// engine-side adverse slippage now applies only on the direct
-    /// (non-L2) path.
+    /// Adverse-fill slippage is not computed here: the exchange is the
+    /// matching venue and owns adverse-fill modeling (the configured model is
+    /// threaded into the venue's own `tantra_exec_paper::AdverseFillModel` at
+    /// construction — plan 0005 D4 follow-on, closed). This method only
+    /// accounts the spread-crossing / participation slippage-model impact on
+    /// top of the exchange's fill price.
     fn account_exchange_fill(
         &mut self,
         order: &OrderRequest,

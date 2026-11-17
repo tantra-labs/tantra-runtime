@@ -183,6 +183,25 @@ impl AdverseFillModel {
         }
     }
 
+    /// Number of book levels walked per fill round.
+    ///
+    /// Exposed so the L2 paper venue can be built from this model (mapped onto
+    /// `tantra_exec_paper::AdverseFillModel` at engine construction, plan 0005 D4
+    /// follow-on).
+    pub fn levels_per_round(&self) -> usize {
+        self.levels_per_round
+    }
+
+    /// Maximum slippage percentage cap applied to a fill.
+    pub fn max_slippage_pct(&self) -> Decimal {
+        self.max_slippage_pct
+    }
+
+    /// Whether slippage compounds across the levels walked.
+    pub fn compounding(&self) -> bool {
+        self.compounding
+    }
+
     /// Compute slippage percentage and adverse fill price given current book state.
     ///
     /// Walks `book_levels` in execution priority orders (ascending asks for `Buy`,
