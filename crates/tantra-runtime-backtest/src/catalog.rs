@@ -449,8 +449,11 @@ fn timeframe_to_catalog_str(tf: Timeframe) -> &'static str {
         Timeframe::M15 => "15M",
         Timeframe::M30 => "30M",
         Timeframe::H1 => "1H",
+        Timeframe::H2 => "2H",
+        Timeframe::H4 => "4H",
         Timeframe::D1 => "1D",
         Timeframe::W1 => "1W",
+        Timeframe::Month1 => "1MO",
     }
 }
 

@@ -502,8 +502,11 @@ fn to_feed_spec(timeframe: tantra_core::Timeframe) -> crate::market_feed::wire::
         tantra_core::Timeframe::M15 => (15, BarAggregation::Minute),
         tantra_core::Timeframe::M30 => (30, BarAggregation::Minute),
         tantra_core::Timeframe::H1 => (1, BarAggregation::Hour),
+        tantra_core::Timeframe::H2 => (2, BarAggregation::Hour),
+        tantra_core::Timeframe::H4 => (4, BarAggregation::Hour),
         tantra_core::Timeframe::D1 => (1, BarAggregation::Day),
         tantra_core::Timeframe::W1 => (1, BarAggregation::Week),
+        tantra_core::Timeframe::Month1 => (1, BarAggregation::Month),
     };
     crate::market_feed::wire::BarSpecification::new(step, aggregation, PriceType::Last)
 }
