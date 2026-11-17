@@ -4142,6 +4142,22 @@
             "type": "string",
             "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
           },
+          "day_high": {
+            "description": "Intraday session high, when a session aggregator tracks one. The store has no session high/low aggregator yet (broker protocols decode `day_high`/`day_low` — see `tantra-market` gaps — but the feed's wire `QuoteTick` and `LiveQuoteStore` do not carry them), so this stays `None` rather than being fabricated (gap 0010).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "day_low": {
+            "description": "Intraday session low; same sourcing caveat as [`QuoteTick::day_high`].",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
           "exchange_ts": {
             "description": "Exchange timestamp.",
             "type": "string",
@@ -4155,10 +4171,34 @@
               }
             ]
           },
+          "last_price": {
+            "description": "Last traded price of the current session, when a live trade print has been seen by the feed (gap 0010). Absent when the source has none.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "prev_close": {
+            "description": "The last close the store's dataset holds — the pre-live reference the price-collar gate reads through `LiveQuoteStore::read_fallback`; for a daily-bar catalog this is the previous session close. Absent when no dataset-backed quote exists (gap 0010).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
           "receive_ts": {
             "description": "Local ingestion receive timestamp.",
             "type": "string",
             "format": "date-time"
+          },
+          "volume": {
+            "description": "Session-day traded volume, when a live trade feed has printed for this session (the same day-volume accumulator the chat `quote` tool reads). Absent when no live print exists (gap 0010).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
           }
         }
       },
@@ -4890,6 +4930,221 @@
                 "type": "string",
                 "enum": [
                   "mis_leverage_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "A trade plan carries no initial stop, or a stop on the wrong side of the entry (mandatory stop-protection rule).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "description": "Explanation of why the stop protection is missing/invalid",
+                    "type": "string"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "missing_stop_protection"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Initial stop is closer to the entry than `min_sl_atr × ATR` (too tight to be a credible protective stop).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "min_sl_dist",
+                  "stop_dist"
+                ],
+                "properties": {
+                  "min_sl_dist": {
+                    "description": "Minimum permitted stop distance",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "stop_dist": {
+                    "description": "Entry-to-stop distance",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "stop_too_tight"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Initial stop is farther from the entry than the maximum stop distance band (`max_sl_pct` of entry or `max_stop_adr_mult × ADR%`).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "max_sl_dist",
+                  "stop_dist"
+                ],
+                "properties": {
+                  "max_sl_dist": {
+                    "description": "Maximum permitted stop distance",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "stop_dist": {
+                    "description": "Entry-to-stop distance",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "stop_too_wide"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Initial stop sits outside the reference ± price-collar band.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "collar_bps",
+                  "reference",
+                  "stop"
+                ],
+                "properties": {
+                  "collar_bps": {
+                    "description": "Configured collar in basis points (1 bp = 0.01%)",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "reference": {
+                    "description": "Band reference price the collar is anchored to",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "stop": {
+                    "description": "Stop price",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "stop_outside_price_collar"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Planned worst-case loss breaches the strategy's max-loss risk budget.",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "max_loss",
+                  "risk_at_stake"
+                ],
+                "properties": {
+                  "max_loss": {
+                    "description": "Configured maximum loss",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/Money"
+                      }
+                    ]
+                  },
+                  "risk_at_stake": {
+                    "description": "Planned capital at risk",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/Money"
+                      }
+                    ]
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "max_loss_exceeded"
+                ]
+              }
+            }
+          },
+          {
+            "description": "A trailing-stop update would widen the stop (loosen the protective stop).",
+            "type": "object",
+            "required": [
+              "details",
+              "reason"
+            ],
+            "properties": {
+              "details": {
+                "type": "object",
+                "required": [
+                  "current_stop",
+                  "new_stop"
+                ],
+                "properties": {
+                  "current_stop": {
+                    "description": "Current stop price",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "new_stop": {
+                    "description": "Requested new stop price",
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "stop_widening_denied"
                 ]
               }
             }

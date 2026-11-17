@@ -75,6 +75,53 @@ fn to_api_quote(quote: crate::market_feed::wire::QuoteTick) -> tantra_runtime_ap
     )
 }
 
+/// Fills a `GET /quotes` wire quote's optional session-summary fields (gap 0010,
+/// T17.3) from the live-quote store, when the state has one.
+///
+/// Honest sources only, never fabricated:
+/// - `last_price` and `volume` come from the store's live trade snapshot (the
+///   same T7.7 last-print/day-volume plumbing the chat `quote` tool reads
+///   through [`TradeReader`]): the latest print and the session-day volume.
+/// - `prev_close` is the store's dataset-backed reference quote
+///   ([`LiveQuoteStore::read_fallback`], the value the price-collar gate
+///   measures the live touch against); for a daily-bar catalog that is the
+///   previous session's close.
+/// - `day_high`/`day_low` have no aggregator in the store yet: broker
+///   protocols decode them (`tantra-market` `dhan`/`zerodha` quote payloads),
+///   but the feed wire `QuoteTick`/`LiveQuoteStore` do not carry them, so they
+///   stay `None` rather than being fabricated.
+///
+/// Every value is converted at the JSON boundary from the store's `f64` fields
+/// to exact `Decimal`s, exactly as [`to_api_quote`] does for the top of book.
+async fn with_session_summary(
+    mut api: tantra_runtime_api::wire::QuoteTick,
+    live: &crate::market_feed::LiveQuoteStore,
+    id: &InstrumentId,
+) -> tantra_runtime_api::wire::QuoteTick {
+    use crate::market_feed::ports::TradeReader;
+    match live.read_trade_snapshot(id).await {
+        Ok(Some(snapshot)) => {
+            api.last_price = Some(Price::new(
+                Decimal::from_f64_retain(snapshot.last.price()).unwrap_or_default(),
+            ));
+            api.volume = Some(Quantity::new(
+                Decimal::from_f64_retain(snapshot.day_volume).unwrap_or_default(),
+            ));
+        }
+        // No live print for this instrument yet: the summary fields stay `None`.
+        Ok(None) => {}
+        // A store read failure must not fail the whole quote answer; leave the
+        // summary absent and let the top-of-book quote stand alone.
+        Err(e) => tracing::debug!(instrument = %id, "session summary unavailable: {e}"),
+    }
+    if let Ok(Some(fallback)) = live.read_fallback(id).await {
+        api.prev_close = Some(Price::new(
+            Decimal::from_f64_retain(fallback.bid_price()).unwrap_or_default(),
+        ));
+    }
+    api
+}
+
 /// Converts a `tantra-feed` bar (`f64`-valued, dual `UnixNanos` timestamps) to the canonical
 /// `tantra_core::Bar` that `BarsResponse` serializes directly (ADR: the REST bars contract
 /// reuses the domain `Bar`, not a separate wire copy), at the JSON-response boundary.
@@ -309,6 +356,10 @@ pub(crate) async fn get_quotes(
     }
     wanted.sort();
     wanted.dedup();
+    // The live store (when this state has one) supplies the optional session
+    // summary fields; `as_of` queries are replay reads answered by the dataset
+    // and are never enriched with live data.
+    let live = state.live_quotes().cloned();
     let mut quotes = Vec::with_capacity(wanted.len());
     for id in wanted {
         match state
@@ -316,7 +367,15 @@ pub(crate) async fn get_quotes(
             .read_quote(id, resolved.as_of.map(UnixNanos::from_datetime))
             .await
         {
-            Ok(Some(quote)) => quotes.push(to_api_quote(quote)),
+            Ok(Some(quote)) => {
+                let mut api = to_api_quote(quote);
+                if resolved.as_of.is_none() {
+                    if let Some(live) = &live {
+                        api = with_session_summary(api, live, id).await;
+                    }
+                }
+                quotes.push(api);
+            }
             Ok(None) => {
                 return failure(
                     StatusCode::NOT_FOUND,

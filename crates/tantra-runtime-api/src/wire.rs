@@ -537,10 +537,35 @@ pub struct QuoteTick {
     pub exchange_ts: DateTime<Utc>,
     /// Local ingestion receive timestamp.
     pub receive_ts: DateTime<Utc>,
+    /// Last traded price of the current session, when a live trade print has
+    /// been seen by the feed (gap 0010). Absent when the source has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_price: Option<Price>,
+    /// Intraday session high, when a session aggregator tracks one. The store
+    /// has no session high/low aggregator yet (broker protocols decode
+    /// `day_high`/`day_low` — see `tantra-market` gaps — but the feed's wire
+    /// `QuoteTick` and `LiveQuoteStore` do not carry them), so this stays
+    /// `None` rather than being fabricated (gap 0010).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day_high: Option<Price>,
+    /// Intraday session low; same sourcing caveat as [`QuoteTick::day_high`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day_low: Option<Price>,
+    /// The last close the store's dataset holds — the pre-live reference the
+    /// price-collar gate reads through `LiveQuoteStore::read_fallback`; for a
+    /// daily-bar catalog this is the previous session close. Absent when no
+    /// dataset-backed quote exists (gap 0010).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev_close: Option<Price>,
+    /// Session-day traded volume, when a live trade feed has printed for this
+    /// session (the same day-volume accumulator the chat `quote` tool reads).
+    /// Absent when no live print exists (gap 0010).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<Quantity>,
 }
 
 impl QuoteTick {
-    /// A quote with both sides and both timestamps.
+    /// A quote with both sides and both timestamps and no session summary.
     pub fn new(
         instrument: InstrumentId,
         bid: Decimal,
@@ -558,7 +583,33 @@ impl QuoteTick {
             ask_qty,
             exchange_ts,
             receive_ts,
+            last_price: None,
+            day_high: None,
+            day_low: None,
+            prev_close: None,
+            volume: None,
         }
+    }
+
+    /// Returns `self` with the optional session-summary fields set (gap 0010).
+    ///
+    /// `None` fields are omitted from serialized output, so a quote built
+    /// without a session summary stays wire-compatible with the pre-summary
+    /// shape.
+    pub fn with_session_summary(
+        mut self,
+        last_price: Option<Price>,
+        day_high: Option<Price>,
+        day_low: Option<Price>,
+        prev_close: Option<Price>,
+        volume: Option<Quantity>,
+    ) -> Self {
+        self.last_price = last_price;
+        self.day_high = day_high;
+        self.day_low = day_low;
+        self.prev_close = prev_close;
+        self.volume = volume;
+        self
     }
 }
 

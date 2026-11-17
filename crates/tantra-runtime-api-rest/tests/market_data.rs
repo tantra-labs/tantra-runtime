@@ -17,7 +17,7 @@ use std::str::FromStr;
 use tantra_core::{Exchange, InstrumentId};
 use tantra_runtime_api_rest::market_feed::import::parquet_source::bar_schema;
 use tantra_runtime_api_rest::market_feed::wire::{
-    BarAggregation, BarSpecification, PriceType, UnixNanos,
+    AggressorSide, BarAggregation, BarSpecification, PriceType, TradeId, TradeTick, UnixNanos,
 };
 use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
 use tantra_runtime_api_rest::{AppState, api_router_with};
@@ -449,6 +449,95 @@ async fn quotes_are_deterministic() {
     let (_, first) = get(app(), "/quotes?symbols=TCS,INFY").await;
     let (_, second) = get(app(), "/quotes?symbols=TCS,INFY").await;
     assert_eq!(first["data"], second["data"]);
+}
+
+/// Builds the same three-slice dataset `app()` serves, exposing the state so a
+/// live trade can be seeded into the `LiveQuoteStore` before the router runs.
+fn app_with_live() -> (axum::Router, AppState) {
+    let dataset = Dataset::from_slices(vec![
+        slice("TCS", "NSE", 5),
+        slice("INFY", "NSE", 2),
+        slice("TCS", "BSE", 1),
+    ])
+    .unwrap();
+    let state = AppState::from_reader(DatasetReader::from_dataset(dataset));
+    let app = api_router_with(state.clone());
+    (app, state)
+}
+
+#[tokio::test]
+async fn a_live_trade_populates_last_price_and_volume_with_the_summary_fields() {
+    let (app, state) = app_with_live();
+    let live = state.live_quotes().unwrap().clone();
+    // Two prints on the same session day: the last one wins for the print,
+    // and the day volume accumulates across them (the T7.7 plumbing the chat
+    // `quote` tool also reads).
+    live.put_trade(TradeTick::new(
+        InstrumentId::new(Exchange::from_str("NSE").unwrap(), "TCS"),
+        104.5,
+        500.0,
+        AggressorSide::Buyer,
+        TradeId::new("t-1"),
+        UnixNanos::from_u64(T0 + 4 * MINUTE),
+        UnixNanos::from_u64(T0 + 4 * MINUTE),
+    ));
+    live.put_trade(TradeTick::new(
+        InstrumentId::new(Exchange::from_str("NSE").unwrap(), "TCS"),
+        104.75,
+        250.0,
+        AggressorSide::Seller,
+        TradeId::new("t-2"),
+        UnixNanos::from_u64(T0 + 4 * MINUTE + 1),
+        UnixNanos::from_u64(T0 + 4 * MINUTE + 1),
+    ));
+
+    let (status, body) = get(app.clone(), "/quotes?symbols=TCS&venue=NSE").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let quote = &body["data"]["quotes"][0];
+    // The last print and the accumulated session-day volume, as decimal strings.
+    assert_eq!(quote["last_price"], json!("104.75"), "{quote}");
+    assert_eq!(quote["volume"], json!("750"), "{quote}");
+    // `prev_close` is the dataset-backed reference close (the last TCS.NSE bar
+    // closes at 105), the same value the price-collar gate measures against.
+    assert_eq!(quote["prev_close"], json!("105"), "{quote}");
+    // No session high/low aggregator exists in the store yet (gap 0010); they
+    // must be absent, not fabricated.
+    assert!(quote.get("day_high").is_none(), "{quote}");
+    assert!(quote.get("day_low").is_none(), "{quote}");
+    // The untouched top-of-book fields still serialize exactly as before.
+    assert_eq!(quote["bid"], json!("105"), "{quote}");
+    assert_eq!(quote["ask"], json!("105"), "{quote}");
+
+    // An `as_of` replay is answered by the dataset and never enriched with live
+    // data, so the summary fields stay absent there.
+    let (status, as_of) = get(
+        app,
+        "/quotes?symbols=TCS&venue=NSE&as_of=2024-01-01T00:04:00Z",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{as_of}");
+    let replay = &as_of["data"]["quotes"][0];
+    assert!(replay.get("last_price").is_none(), "{replay}");
+    assert!(replay.get("volume").is_none(), "{replay}");
+    assert!(replay.get("day_high").is_none(), "{replay}");
+    assert!(replay.get("day_low").is_none(), "{replay}");
+    assert!(replay.get("prev_close").is_none(), "{replay}");
+}
+
+#[tokio::test]
+async fn without_a_live_trade_the_summary_fields_are_absent_not_fabricated() {
+    let (app, _state) = app_with_live();
+    let (status, body) = get(app, "/quotes?symbols=TCS&venue=NSE").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let quote = &body["data"]["quotes"][0];
+    for field in ["last_price", "day_high", "day_low", "volume"] {
+        assert!(
+            quote.get(field).is_none(),
+            "{field} must be absent: {quote}"
+        );
+    }
+    // The dataset-backed reference close is still served as `prev_close`.
+    assert_eq!(quote["prev_close"], json!("105"), "{quote}");
 }
 
 #[tokio::test]
