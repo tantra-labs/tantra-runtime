@@ -3,7 +3,51 @@
 **Date**: 2026-11-17 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
-## Latest Batch — T17.3: gap 0010 closed (`QuoteTick` session summary fields)
+## Latest Batch — T17.2: gap 0009 closed (`/ws/chat` per-turn `model` override + multimodal image attachments)
+
+Date: 2026-11-17. Gap 0009 closed across `tantra-runtime-api-rest::chat` (this repo) +
+`tantra-agent-chat` / `tantra-agent-llm` (the agent repo). Commits (local, not pushed):
+`tantra-runtime` + `tantra-agent` (see repo logs for the SHAs).
+- **Wire** (`chat.rs`): `ChatClientMessage` gained `model: Option<String>` +
+  `attachments: Option<Vec<ChatAttachmentInput>>` (`mime_type`/`data`, base64,
+  `image/png`/`image/jpeg`, `#[serde(default)]` — legacy `{ text }` payloads still parse with
+  both `None`). Types exported from the crate root for consumers/tests.
+- **Model routing**: new `LlmProviderRegistry` (default + named overrides). `from_env`
+  registers extra GGUF models via `TANTRA_GGUF_MODEL_<NAME>` and remote router models via
+  `TANTRA_LLM_MODELS`; a per-turn `model` that matches the default (or is absent) keeps the
+  byte-identical default path, a registered override routes the whole turn to that provider
+  (the client gets a `provider_changed` event), an unavailable model returns an explicit
+  `LlmError::Capability` notice streamed into the chat reply as a short assistant turn
+  (`send_capability_notice`; TurnId 0) — never a silent fallback. A configured
+  `TANTRA_LLM_BASE_URL` also serves any requested model by name.
+- **Multimodal**: `MessagePart::Image { mime_type, data }` added to `tantra-agent-llm`
+  (`ChatMessage.parts`, `#[serde(default, skip_serializing_if)]`; `ChatRequest::has_image_parts`);
+  OpenAI-compatible providers serialize the OpenAI multimodal content array and advertise
+  `supports("vision")`; the chat turn API carries attachments (`SessionHandle::submit_turn`
+  + `SessionCommand::Submit` attachments, persisted in the user-message JSON so resumed
+  sessions replay them); the turn gates image parts against `provider.supports("vision")` —
+  text-only providers (Candle-GGUF) answer the honest "model X does not support image
+  attachments" notice (streamed as text) instead of dropping bytes. `ChatAttachmentInput`
+  bytes stay base64-raw end-to-end.
+- **Tests** (all in `tests/`): `tests/chat_ws_gap0009.rs` (8 — legacy/new wire round-trip,
+  base64-safe, default path, override routing, unavailable-model notice, vision flow,
+  text-only notice, unsupported-MIME notice) over a real `/ws/chat` boot; agent-side
+  `tantra-agent-chat/tests/unit_tests.rs` +3 and `tantra-agent-llm/tests/openai_compat_tests.rs`
+  +1; existing chat/openapi/persistence tests stay green.
+- **Gate**: `cargo fmt --check` ✅ both repos; `cargo clippy --workspace --all-targets
+  --profile prod -- -D warnings` ✅ both repos; targeted prod test binaries green
+  (chat_ws_gap0009 8, agent chat unit 9, llm 7+4, checkpoint 4, dependency_rules 1,
+  openapi_conformance 3, session_persistence 2, runtime unit_tests 1). ⚠ Known env limit:
+  a blanket `cargo test --workspace --profile prod` still SIGKILLs at prod-LTO link on the
+  heavy api-rest test bins (unrelated); targeted binaries link and pass.
+- **Docs**: gap 0009 retired from `docs/gaps/`, closed row added to `docs/gaps/README.md`
+  (closing note incl. the env conventions and the ui-web follow-on).
+- **Deviation**: the `tantra-ui-web` half (send `model` per turn from the model dropdown)
+  cannot be done here — the web repo is not checked out on this machine; tracked in the root
+  task list (T17.2) and the gap README row. The wire accepts the ui-web model tags verbatim
+  (routed through the router when a base URL is configured).
+
+## Prior batch — T17.3: gap 0010 closed (`QuoteTick` session summary fields)
 
 Date: 2026-11-17. `0f5f4ac` extends the `GET /quotes` wire `QuoteTick` with five optional
 session-summary fields and populates the honest ones:

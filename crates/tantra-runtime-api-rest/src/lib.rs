@@ -89,7 +89,9 @@ pub use bootstrap::{
     run_server_blocking, to_api_trading_state,
 };
 pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog};
-pub use chat::{ChatRuntime, chat_ws_handler};
+pub use chat::{
+    ChatAttachmentInput, ChatClientMessage, ChatRuntime, LlmProviderRegistry, chat_ws_handler,
+};
 pub use dispatch::{DispatchError, build_target, dispatch, dispatch_stream};
 pub use executor::BacktestExecutor;
 pub use journal::{FileJournalWriter, NdjsonJournal, recover_interrupted_runs};
