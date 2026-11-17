@@ -3,6 +3,33 @@
 **Date**: 2026-11-17 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
+## Latest Batch — T17.3: gap 0010 closed (`QuoteTick` session summary fields)
+
+Date: 2026-11-17. `0f5f4ac` extends the `GET /quotes` wire `QuoteTick` with five optional
+session-summary fields and populates the honest ones:
+- **Wire** (`tantra-runtime-api::wire`): `last_price`/`day_high`/`day_low`/`prev_close`
+  (`Option<Price>`) + `volume` (`Option<Quantity>`), `#[serde(default, skip_serializing_if)]`
+  — absent from the wire when unset, so pre-summary consumers and payloads stay compatible.
+- **Handler** (`get_quotes`): `last_price`/`volume` come from the `LiveQuoteStore` trade
+  snapshot (the T7.7 last-print/day-volume plumbing the chat `quote` tool reads); `prev_close`
+  from `LiveQuoteStore::read_fallback` (the dataset-backed reference the price-collar gate
+  measures against — the previous close for a daily-bar catalog). `day_high`/`day_low` stay
+  `None` — no store session high/low aggregator yet (broker protocols decode them, the feed
+  wire `QuoteTick`/`LiveQuoteStore` do not carry them); never fabricated. `as_of` replays are
+  never enriched with live data.
+- **OpenAPI**: `schema/openapi.v2.json` regenerated from `OpenApiDocument::v2_json()` (gap
+  0005 process); `openapi_conformance.rs` green (artifact currency + schema registration).
+- **Tests**: `tantra-runtime-api/tests/quote_tick_wire.rs` (4: old-shape serialization, summary
+  round-trip as decimal strings, legacy payload parse, summary payload parse);
+  `tantra-runtime-api-rest/tests/market_data.rs` +2 (live-trade enrichment incl. day-volume
+  accumulation + `as_of` non-enrichment; absent-when-no-print). 29 market_data + 3 conformance
+  + 4 wire green on prod; `cargo fmt --check` + clippy `-D warnings` green for both crates.
+- **Docs**: gap 0010 retired from `docs/gaps/`, closed row added to `docs/gaps/README.md`;
+  `tantra-docs` `rest.md` `/quotes` row notes the summary fields.
+- **Deviation**: the `tantra-ui-web` half (`vyapaar-runtime-client.ts` `dayHigh`/`dayLow`
+  mapping) cannot be done here — the web repo is not checked out on this machine; tracked in
+  the root task list (T17.3) and the gap README row.
+
 ## Latest Batch — T12.5 follow-on: synthetic-OCO bracket driver (exec `BracketTracker` wiring)
 
 Date: 2026-11-17. Executed the recorded T12.5 follow-on: runtime emulation of one-cancels-other
