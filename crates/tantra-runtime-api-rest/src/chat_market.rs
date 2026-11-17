@@ -23,18 +23,20 @@ use crate::market_feed::ports::{
 };
 use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use async_trait::async_trait;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
     BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
     MacroSeries, MarketBar, MarketDepth, MarketDepthLevel, MarketHistory, MarketIndicators,
-    MarketQuote, MarketReader, OiBuildupSnapshot, OptionContract, OptionsChain,
+    MarketQuote, MarketReader, OiBuildupSnapshot, OiWallsSnapshot, OptionContract, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::DateRange;
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
-use tantra_core::{Bar, Currency, Exchange, InstrumentId, Money, Price, PriceBand, Quantity};
+use tantra_core::{
+    Bar, Currency, Exchange, InstrumentId, LevelMap, Money, Price, PriceBand, Quantity,
+};
 use tantra_market_indicators::adx::Adx;
 use tantra_market_indicators::{
     Atr, BollingerBands, Cmo, Ema, Indicator, Macd, Mfi, Obv, Roc, Rsi, Sma, Vwap,
@@ -838,6 +840,41 @@ impl MarketReader for FeedMarketReader {
             price_change_pct,
             classification: signal.class.to_string(),
         })
+    }
+
+    async fn level_map(
+        &self,
+        _instrument: &InstrumentId,
+        _date: Option<NaiveDate>,
+    ) -> Result<LevelMap, PortError> {
+        // No level-map source is served anywhere yet: the kernel wire types exist
+        // (`tantra-core` `levels`), but the Elephant-zone / OI-wall / gamma / order-block
+        // indicators are an open upstream gap
+        // (`tantra-market/docs/gaps/0005-elephant-zones-oi-levels-and-orderblock-indicators.md`)
+        // and no as-of level-map snapshot store exists
+        // (`tantra-data/docs/gaps/0016-intraday-option-chain-snapshot-lakehouse.md`). An
+        // explicit error, not an empty map, so the model can't mistake "not wired up" for
+        // "this instrument really has no levels."
+        Err(PortError::unavailable(
+            "level-map reader not wired; see tantra-market/docs/gaps/0005-elephant-zones-oi-levels-and-orderblock-indicators.md and tantra-data/docs/gaps/0016-intraday-option-chain-snapshot-lakehouse.md",
+        ))
+    }
+
+    async fn oi_walls(
+        &self,
+        _instrument: &InstrumentId,
+        _expiry: Option<NaiveDate>,
+    ) -> Result<OiWallsSnapshot, PortError> {
+        // No OI-wall source is served anywhere yet: the intraday option-chain snapshot
+        // lakehouse (OI/ΔOI/IV/delta/gamma point-in-time series) does not exist
+        // (`tantra-data/docs/gaps/0016-intraday-option-chain-snapshot-lakehouse.md`) and
+        // the per-strike indicator feeds remain an open `tantra-market` gap
+        // (`tantra-market/docs/gaps/0005-elephant-zones-oi-levels-and-orderblock-indicators.md`).
+        // An explicit error, not an empty snapshot, so the model can't mistake "not wired
+        // up" for "this chain really has no walls."
+        Err(PortError::unavailable(
+            "OI-wall reader not wired; see tantra-market/docs/gaps/0005-elephant-zones-oi-levels-and-orderblock-indicators.md and tantra-data/docs/gaps/0016-intraday-option-chain-snapshot-lakehouse.md",
+        ))
     }
 }
 

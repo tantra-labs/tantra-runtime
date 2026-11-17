@@ -7,13 +7,14 @@ use tantra_agent_chat_tools::ports::error::PortErrorKind;
 use tantra_agent_chat_tools::ports::market::{
     BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
     MacroSeries, MarketBar, MarketDepth, MarketDepthLevel, MarketQuote, MarketReader,
-    OiBuildupSnapshot, OptionContract, OptionsChain,
+    OiBuildupSnapshot, OiWall, OiWallsSnapshot, OptionContract, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::{DateRange, OrderFilter, PortfolioReader};
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
 use tantra_core::{
-    AccountId, AlgoId, ClientOrderId, Currency, Exchange, InstrumentId, Money, OrderSide,
-    OrderStatus, OrderType, PositionSide, Price, PriceBand, Quantity, TimeInForce,
+    AccountId, AlgoId, ClientOrderId, Currency, Exchange, InstrumentId, Level, LevelId, LevelKind,
+    LevelMap, LevelSide, Money, OrderSide, OrderStatus, OrderType, PositionSide, Price, PriceBand,
+    Quantity, TimeInForce,
 };
 use tantra_ledger::TaxLot;
 use tantra_ledger::repository::{
@@ -528,6 +529,71 @@ async fn test_runtime_market_reader() {
         .await
         .unwrap_err();
     assert_eq!(missing_buildup.kind, PortErrorKind::NotFound);
+
+    // 14. Level map — explicitly unavailable until seeded, then served (plan 0011).
+    let map_err = reader.level_map(&inst, None).await.unwrap_err();
+    assert_eq!(map_err.kind, PortErrorKind::Unavailable);
+
+    let level_map = LevelMap::new(vec![
+        Level::new(
+            LevelId(1),
+            LevelKind::ElephantResistance1,
+            LevelSide::Resistance,
+            (dec!(2515.0), dec!(2525.0)),
+            3,
+        )
+        .expect("valid level band and score"),
+        Level::new(
+            LevelId(2),
+            LevelKind::MaxPain,
+            LevelSide::Resistance,
+            (dec!(25000.0), dec!(25000.0)),
+            2,
+        )
+        .expect("valid level band and score"),
+    ]);
+    reader.set_level_map(level_map.clone());
+
+    let fetched_map = reader
+        .level_map(&inst, Some(now.date_naive()))
+        .await
+        .unwrap();
+    assert_eq!(fetched_map, level_map);
+    assert_eq!(fetched_map.levels.len(), 2);
+    assert_eq!(fetched_map.levels[0].kind, LevelKind::ElephantResistance1);
+    assert_eq!(fetched_map.levels[1].score, 2);
+
+    // 15. OI walls — explicitly unavailable until seeded, then served (plan 0011).
+    let walls_err = reader.oi_walls(&inst, None).await.unwrap_err();
+    assert_eq!(walls_err.kind, PortErrorKind::Unavailable);
+
+    let oi_walls = OiWallsSnapshot {
+        top_call_walls: vec![OiWall {
+            strike: Price::new(dec!(25000.0)),
+            oi: dec!(1250000.0),
+            delta_oi_score: dec!(0.82),
+        }],
+        top_put_walls: vec![OiWall {
+            strike: Price::new(dec!(24800.0)),
+            oi: dec!(980000.0),
+            delta_oi_score: dec!(0.64),
+        }],
+        local_pcr: dec!(0.78),
+        as_of: now,
+    };
+    reader.set_oi_walls(oi_walls.clone());
+
+    let fetched_walls = reader
+        .oi_walls(&inst, Some(now.date_naive()))
+        .await
+        .unwrap();
+    assert_eq!(fetched_walls, oi_walls);
+    assert_eq!(fetched_walls.top_call_walls.len(), 1);
+    assert_eq!(
+        fetched_walls.top_call_walls[0].strike,
+        Price::new(dec!(25000.0))
+    );
+    assert_eq!(fetched_walls.local_pcr, dec!(0.78));
 }
 
 #[tokio::test]

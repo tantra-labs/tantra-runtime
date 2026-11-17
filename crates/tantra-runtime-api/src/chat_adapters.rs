@@ -9,19 +9,19 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
     BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
     MacroSeries, MarketBar, MarketDepth, MarketHistory, MarketIndicators, MarketQuote,
-    MarketReader, OiBuildupSnapshot, OptionsChain,
+    MarketReader, OiBuildupSnapshot, OiWallsSnapshot, OptionsChain,
 };
 use tantra_agent_chat_tools::ports::portfolio::{
     AccountSummary, DateRange, OrderFilter, PortfolioReader,
 };
 use tantra_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
-use tantra_core::{AccountId, Currency, InstrumentId, Money, PriceBand};
+use tantra_core::{AccountId, Currency, InstrumentId, LevelMap, Money, PriceBand};
 use tantra_ledger::TaxLot;
 use tantra_ledger::repository::{
     AccountCode, AccountRepository, LedgerRepository, OrderRecord, OrderRepository, PositionRecord,
@@ -208,6 +208,8 @@ pub struct RuntimeMarketReader {
     institutional_flows: RwLock<Vec<InstitutionalFlow>>,
     delivery_stats: RwLock<Vec<DeliveryBar>>,
     oi_buildup: RwLock<HashMap<InstrumentId, OiBuildupSnapshot>>,
+    level_map: RwLock<Option<LevelMap>>,
+    oi_walls: RwLock<Option<OiWallsSnapshot>>,
 }
 
 impl RuntimeMarketReader {
@@ -292,6 +294,18 @@ impl RuntimeMarketReader {
             .write()
             .unwrap()
             .insert(instrument, snapshot);
+    }
+
+    /// Set or replace the session's level map (plan 0011 / EE+). Empty (never set) ⇒
+    /// `level_map` answers `PortError::unavailable` rather than a fabricated map.
+    pub fn set_level_map(&self, map: LevelMap) {
+        *self.level_map.write().unwrap() = Some(map);
+    }
+
+    /// Set or replace the OI-wall snapshot (plan 0011 / EE+). Empty (never set) ⇒
+    /// `oi_walls` answers `PortError::unavailable` rather than a fabricated snapshot.
+    pub fn set_oi_walls(&self, snapshot: OiWallsSnapshot) {
+        *self.oi_walls.write().unwrap() = Some(snapshot);
     }
 }
 
@@ -591,6 +605,50 @@ impl MarketReader for RuntimeMarketReader {
         map.get(instrument)
             .cloned()
             .ok_or_else(|| PortError::not_found(format!("OI buildup not found for {instrument}")))
+    }
+
+    async fn level_map(
+        &self,
+        _instrument: &InstrumentId,
+        _date: Option<NaiveDate>,
+    ) -> Result<LevelMap, PortError> {
+        let map = self.level_map.read().unwrap();
+        match map.as_ref() {
+            Some(m) => Ok(m.clone()),
+            None => {
+                // Nothing seeded and no level-map source is served anywhere yet — the
+                // kernel wire types exist (`tantra-core` `levels`) but the Elephant-zone /
+                // OI-wall / gamma / order-block indicators are an open `tantra-market`
+                // gap (0005) and no as-of level-map snapshot store exists (`tantra-data`
+                // gap 0016). An explicit error, not an empty map, so callers can't
+                // mistake "not wired up" for "this instrument really has no levels."
+                Err(PortError::unavailable(
+                    "level-map reader not wired; see tantra-market/docs/gaps/0005-elephant-zones-oi-levels-and-orderblock-indicators.md and tantra-data/docs/gaps/0016-intraday-option-chain-snapshot-lakehouse.md",
+                ))
+            }
+        }
+    }
+
+    async fn oi_walls(
+        &self,
+        _instrument: &InstrumentId,
+        _expiry: Option<NaiveDate>,
+    ) -> Result<OiWallsSnapshot, PortError> {
+        let walls = self.oi_walls.read().unwrap();
+        match walls.as_ref() {
+            Some(w) => Ok(w.clone()),
+            None => {
+                // Nothing seeded and no OI-wall source is served anywhere yet — the
+                // intraday option-chain snapshot lakehouse (OI/ΔOI/IV/delta/gamma) does
+                // not exist (`tantra-data` gap 0016) and the per-strike indicator feeds
+                // are an open `tantra-market` gap (0005). An explicit error, not an empty
+                // snapshot, so callers can't mistake "not wired up" for "this chain
+                // really has no walls."
+                Err(PortError::unavailable(
+                    "OI-wall reader not wired; see tantra-market/docs/gaps/0005-elephant-zones-oi-levels-and-orderblock-indicators.md and tantra-data/docs/gaps/0016-intraday-option-chain-snapshot-lakehouse.md",
+                ))
+            }
+        }
     }
 }
 

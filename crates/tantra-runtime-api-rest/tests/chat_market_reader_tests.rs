@@ -411,6 +411,40 @@ async fn oi_buildup_unavailable_without_store() {
 }
 
 #[tokio::test]
+async fn level_map_is_explicitly_unavailable_with_gap_citation() {
+    let reader = reader_over(FakeFeed::default(), RiskEngine::default());
+    let err = reader.level_map(&reliance(), None).await.unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message
+            .contains("0005-elephant-zones-oi-levels-and-orderblock-indicators.md"),
+        "unconfigured level_map must cite the upstream gap, got: {err}"
+    );
+    assert!(
+        err.message
+            .contains("0016-intraday-option-chain-snapshot-lakehouse.md"),
+        "unconfigured level_map must cite the snapshot-lakehouse gap, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn oi_walls_is_explicitly_unavailable_with_gap_citation() {
+    let reader = reader_over(FakeFeed::default(), RiskEngine::default());
+    let err = reader.oi_walls(&reliance(), None).await.unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message
+            .contains("0005-elephant-zones-oi-levels-and-orderblock-indicators.md"),
+        "unconfigured oi_walls must cite the upstream gap, got: {err}"
+    );
+    assert!(
+        err.message
+            .contains("0016-intraday-option-chain-snapshot-lakehouse.md"),
+        "unconfigured oi_walls must cite the snapshot-lakehouse gap, got: {err}"
+    );
+}
+
+#[tokio::test]
 async fn options_chain_serves_catalog_contracts_with_quotes_and_filters() {
     let inst = InstrumentId::new(Exchange::Nfo, "NIFTY");
     let contract_id = |symbol: &str| InstrumentId::new(Exchange::Nfo, symbol);
