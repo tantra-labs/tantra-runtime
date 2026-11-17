@@ -3,14 +3,15 @@
 //!
 //! Arguments are parsed manually (no `clap` in the workspace):
 //! `paper-serve --tape <file> [--addr <ip:port>] [--cash <decimal>] [--real-time]
-//! [--mis-square-off <HH:MM>]`.
+//! [--mis-square-off <HH:MM>] [--feed <tape|live>]`.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use rust_decimal::Decimal;
-use tantra_runtime_api_rest::paper_serve::{PaperServeConfig, run_tape_serve};
+use tantra_core::Bar;
+use tantra_runtime_api_rest::paper_serve::{PaperFeed, PaperServeConfig, run_tape_serve};
 
 fn usage() -> String {
     [
@@ -21,6 +22,7 @@ fn usage() -> String {
         "  --cash <decimal>         paper account starting cash (default 1000000)",
         "  --real-time              pace replay to the tape's wall-clock deltas",
         "  --mis-square-off <HH:MM> IST time to square off open positions",
+        "  --feed <tape|live>       bar feed source (default tape; live waits on a channel)",
         "  --help                   print this usage and exit",
     ]
     .join("\n")
@@ -38,6 +40,7 @@ fn main() -> ExitCode {
     let mut cash: Option<Decimal> = None;
     let mut real_time = false;
     let mut mis_square_off: Option<String> = None;
+    let mut feed_live = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -78,6 +81,21 @@ fn main() -> ExitCode {
                 i += 1;
             }
             "--real-time" => real_time = true,
+            "--feed" => {
+                let Some(v) = args.get(i + 1) else {
+                    return arg_error("--feed needs a value");
+                };
+                match v.as_str() {
+                    "live" => feed_live = true,
+                    "tape" => feed_live = false,
+                    other => {
+                        eprintln!("{}", usage());
+                        eprintln!("bad --feed {other:?}: expected tape or live");
+                        return ExitCode::from(2);
+                    }
+                }
+                i += 1;
+            }
             "--mis-square-off" => {
                 let Some(v) = args.get(i + 1) else {
                     return arg_error("--mis-square-off needs a value");
@@ -100,12 +118,24 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
+    // The live-feed seam: a real `tantra-market` broker feed (`tantra-market-dhan` /
+    // `tantra-market-zerodha`, see `tantra-market` docs/gaps/0003-*.md — real broker
+    // WebSocket credentials) would send bars into `tx`. The sender is held here so the
+    // channel stays open; the daemon consumes bars until the feed (or the operator) closes it.
+    let (feed, _live_feed_tx): (PaperFeed, Option<tokio::sync::mpsc::Sender<Bar>>) = if feed_live {
+        let (tx, rx) = tokio::sync::mpsc::channel::<Bar>(1024);
+        (PaperFeed::Live(rx), Some(tx))
+    } else {
+        (PaperFeed::Tape(Vec::new()), None)
+    };
+
     let config = PaperServeConfig {
         tape,
         addr: addr.unwrap_or_else(|| "127.0.0.1:8001".parse().expect("valid default addr")),
         initial_cash: cash.unwrap_or_else(|| Decimal::new(1_000_000, 0)),
         real_time,
         mis_square_off,
+        feed,
     };
 
     let runtime = match tokio::runtime::Builder::new_multi_thread()
