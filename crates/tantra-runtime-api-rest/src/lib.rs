@@ -319,9 +319,27 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
     }
 }
 
+fn versioned_failure(uri: &axum::http::Uri, status: StatusCode, detail: ErrorDetail) -> Response {
+    let is_v2 = uri.path() == "/api/v2" || uri.path().starts_with("/api/v2/");
+    if is_v2 {
+        let mut body: tantra_runtime_api::ResponseEnvelope<serde_json::Value> =
+            ApiResponse::error(detail);
+        body.api_version = tantra_runtime_api::ApiVersion::from("v2");
+        let mut res = (status, Json(body)).into_response();
+        res.headers_mut().insert(
+            HeaderName::from_static("x-tantra-version"),
+            HeaderValue::from_static("2"),
+        );
+        res
+    } else {
+        market::failure(status, detail)
+    }
+}
+
 /// An unknown route is a 404 `not_found` envelope, never an empty body.
 async fn unknown_route(uri: axum::http::Uri) -> Response {
-    market::failure(
+    versioned_failure(
+        &uri,
         StatusCode::NOT_FOUND,
         ErrorDetail::new(
             ErrorCode::NotFound,
@@ -332,7 +350,8 @@ async fn unknown_route(uri: axum::http::Uri) -> Response {
 
 /// A known path with a method it does not serve is a 405 `unsupported` envelope.
 async fn unsupported_method(method: Method, uri: axum::http::Uri) -> Response {
-    market::failure(
+    versioned_failure(
+        &uri,
         StatusCode::METHOD_NOT_ALLOWED,
         ErrorDetail::new(
             ErrorCode::NotImplemented,

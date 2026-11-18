@@ -56,6 +56,21 @@ async fn v2_prefixed_routes_return_v2_envelope_and_version_header() {
 }
 
 #[tokio::test]
+async fn v2_unknown_route_returns_v2_envelope_and_version_header() {
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v2/does-not-exist")
+        .body(Body::empty())
+        .unwrap();
+    let (status, headers, body) = call_req(req).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(headers.get("x-tantra-version").unwrap(), "2");
+    assert_eq!(body["api_version"], "v2");
+    assert_eq!(body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
 async fn legacy_unprefixed_routes_return_deprecation_and_canonical_link_headers() {
     let req = Request::builder()
         .method("GET")
