@@ -38,19 +38,25 @@ pub use cache::{CacheKey, CachedResult, ResultCache, canonical_json_bytes};
 pub use capabilities::{Capabilities, CapabilityManifest};
 pub use chat_adapters::{LedgerPortfolioReader, RuntimeMarketReader, RuntimeSnapshotSource};
 pub use experimental_analysis::{
-    AssetClassCatalogGroup, CatalogInstrumentEntry, CycleProgressAnalysis, CycleProgressDecile,
-    DailyOhlcRow, DailyOhlcSummary, DataSourceStatus, ExperimentalCatalogQuery,
-    ExperimentalCatalogResponse, ExperimentalCorrelationRequest, ExperimentalCorrelationResponse,
-    ExperimentalIntradayRequest, ExperimentalIntradayResponse, ExperimentalReturnsRequest,
-    ExperimentalReturnsResponse, ForwardConditionEvent, ForwardConditionalGroup, FrictionSummary,
+    AnalogEpisode, AssetClassCatalogGroup, CatalogInstrumentEntry, CycleProgressAnalysis,
+    CycleProgressDecile, DailyOhlcRow, DailyOhlcSummary, DataSourceStatus, EventStudyRow,
+    EventWindowPoint, ExperimentalCatalogQuery, ExperimentalCatalogResponse,
+    ExperimentalCorrelationRequest, ExperimentalCorrelationResponse, ExperimentalEventStudyRequest,
+    ExperimentalEventStudyResponse, ExperimentalForecastRequest, ExperimentalForecastResponse,
+    ExperimentalIntradayRequest, ExperimentalIntradayResponse, ExperimentalOptionsOverlayRequest,
+    ExperimentalOptionsOverlayResponse, ExperimentalOutlierNewsRequest,
+    ExperimentalOutlierNewsResponse, ExperimentalReturnsRequest, ExperimentalReturnsResponse,
+    ForecastHorizonStep, ForwardConditionEvent, ForwardConditionalGroup, FrictionSummary,
     GapAnalysis, GapBucketRow, GapEventRow, GreenVsRedComparison, IntradayMovementAnalysis,
     IntradaySlotStat, MagnitudePdfBucket, MarkovAnalysis, MarkovCurrentPrediction, MarkovState,
-    MarkovStateProbability, MarkovTransitionRow, OrbBacktestResult, OrbEquityPoint, OrbTradeRow,
-    OutlierAnalysis, OutlierKpis, OutlierPeriodPoint, OutlierStatus, PeriodPoint,
-    PeriodScheduleKind, PolarityStats, ProbabilityLevelRow, ReturnBucketRow, ReturnCalcKind,
-    ReturnKpis, ReturnPercentiles, RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint,
+    MarkovStateProbability, MarkovTransitionRow, OptionLegSpec, OptionOverlayStrategy,
+    OrbBacktestResult, OrbEquityPoint, OrbTradeRow, OutlierAnalysis, OutlierKpis, OutlierNewsItem,
+    OutlierPeriodPoint, OutlierStatus, OverlayEquityPoint, PeriodPoint, PeriodScheduleKind,
+    PolarityStats, ProbabilityLevelRow, ReturnBucketRow, ReturnCalcKind, ReturnKpis,
+    ReturnPercentiles, RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint,
     RollingPairPoint, ScheduleOption, SideStreakStats, StreakAnalysis, StreakDetail,
-    StreakDirection, StreakLengthBucket, StreakSummary, StudyAssetClass, SubCycleKind,
+    StreakDirection, StreakLengthBucket, StreakSummary, StrikeLabRow, StudyAssetClass,
+    StudyEventKind, SubCycleKind, VolatilityRegime,
 };
 pub use ingest::{MAX_INGEST_BARS, check_ingest_batch};
 pub use market::{

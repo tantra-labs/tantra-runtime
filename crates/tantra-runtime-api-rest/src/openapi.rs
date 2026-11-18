@@ -18,6 +18,10 @@ use tantra_core::{InstrumentId, OrderSide, OrderStatus, OrderType, Price, Quanti
 use tantra_risk::{RiskLimits, RiskRefusal};
 use tantra_runtime_api::experimental_analysis::{
     ExperimentalCatalogResponse, ExperimentalCorrelationRequest, ExperimentalCorrelationResponse,
+    ExperimentalEventStudyRequest, ExperimentalEventStudyResponse, ExperimentalForecastRequest,
+    ExperimentalForecastResponse, ExperimentalOptionsOverlayRequest,
+    ExperimentalOptionsOverlayResponse, ExperimentalOutlierNewsRequest,
+    ExperimentalOutlierNewsResponse,
     ExperimentalIntradayRequest, ExperimentalIntradayResponse, ExperimentalReturnsRequest,
     ExperimentalReturnsResponse,
 };
@@ -1586,6 +1590,33 @@ impl OpenApiDocument {
             corr_req_schema.clone(),
         );
         schemas.insert("ExperimentalCorrelationResponse".to_string(), corr_schema);
+        let ov_req_schema = register_schema::<ExperimentalOptionsOverlayRequest>(&mut schemas);
+        let ov_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalOptionsOverlayResponse>>(&mut schemas);
+        let ov_schema = register_schema::<ExperimentalOptionsOverlayResponse>(&mut schemas);
+        schemas.insert("ExperimentalOptionsOverlayRequest".to_string(), ov_req_schema.clone());
+        schemas.insert("ExperimentalOptionsOverlayResponse".to_string(), ov_schema);
+
+        let fc_req_schema = register_schema::<ExperimentalForecastRequest>(&mut schemas);
+        let fc_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalForecastResponse>>(&mut schemas);
+        let fc_schema = register_schema::<ExperimentalForecastResponse>(&mut schemas);
+        schemas.insert("ExperimentalForecastRequest".to_string(), fc_req_schema.clone());
+        schemas.insert("ExperimentalForecastResponse".to_string(), fc_schema);
+
+        let ev_req_schema = register_schema::<ExperimentalEventStudyRequest>(&mut schemas);
+        let ev_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalEventStudyResponse>>(&mut schemas);
+        let ev_schema = register_schema::<ExperimentalEventStudyResponse>(&mut schemas);
+        schemas.insert("ExperimentalEventStudyRequest".to_string(), ev_req_schema.clone());
+        schemas.insert("ExperimentalEventStudyResponse".to_string(), ev_schema);
+
+        let nw_req_schema = register_schema::<ExperimentalOutlierNewsRequest>(&mut schemas);
+        let nw_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalOutlierNewsResponse>>(&mut schemas);
+        let nw_schema = register_schema::<ExperimentalOutlierNewsResponse>(&mut schemas);
+        schemas.insert("ExperimentalOutlierNewsRequest".to_string(), nw_req_schema.clone());
+        schemas.insert("ExperimentalOutlierNewsResponse".to_string(), nw_schema);
 
         paths.insert(
             "/experimental-analysis/catalog".to_string(),
@@ -1725,6 +1756,162 @@ impl OpenApiDocument {
                                 "application/json".to_string(),
                                 MediaType {
                                     schema: corr_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/experimental-analysis/options-overlay".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary: "Evaluate multi-leg F&O options overlay & live bid-ask strike lab".to_string(),
+                    operation_id: "postExperimentalAnalysisOptionsOverlay".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: ov_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Multi-leg options overlay & strike lab report".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: ov_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/experimental-analysis/forecast".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary: "Evaluate Markov + volatility regime analog quantile forecast".to_string(),
+                    operation_id: "postExperimentalAnalysisForecast".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: fc_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Markov + volatility analog quantile fan & historical episodes".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: fc_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/experimental-analysis/events".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary: "Evaluate [-20d, +20d] CAR event reaction study for buybacks, earnings, macro & F&O rebalance".to_string(),
+                    operation_id: "postExperimentalAnalysisEvents".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: ev_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Benchmark-adjusted CAR[-20d, +20d] event study report".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: ev_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/experimental-analysis/outlier-news".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary: "Retrieve dated archival news, macro releases & filings for outlier windows".to_string(),
+                    operation_id: "postExperimentalAnalysisOutlierNews".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: nw_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Outlier window news, macro calendar & filings items".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: nw_resp_schema,
                                 },
                             )]),
                         },

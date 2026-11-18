@@ -303,6 +303,26 @@ pub const ROUTE_SCOPES: &[(&str, &str, RouteScope)] = &[
         "/experimental-analysis/correlation",
         RouteScope::Required("read"),
     ),
+    (
+        "POST",
+        "/experimental-analysis/options-overlay",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/experimental-analysis/forecast",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/experimental-analysis/events",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/experimental-analysis/outlier-news",
+        RouteScope::Required("read"),
+    ),
     // Profile routes: any valid token, scoped to its own `token_id` by the handlers.
     ("GET", "/profile", RouteScope::Authenticated),
     ("PUT", "/profile", RouteScope::Authenticated),

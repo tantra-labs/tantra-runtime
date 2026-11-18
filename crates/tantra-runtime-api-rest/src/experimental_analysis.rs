@@ -3,6 +3,7 @@
 //! `/experimental-analysis/correlation`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -20,7 +21,15 @@ use tantra_market_finance::studies::{
     RollBasisMode as DomainRollMode, SpreadCostConfig, StudyAssetClass as DomainAssetClass,
     StudyError, SubCycleKind as DomainSubCycle,
 };
-use tantra_market_store::CorporateActionsProjectionReader;
+use async_trait::async_trait;
+use tantra_agent_chat_tools::ports::error::PortError;
+use tantra_agent_chat_tools::ports::study::{
+    StudyProbabilityLevel, StudyReader, StudySummarySnapshot,
+};
+use tantra_market_store::{
+    CorporateActionsProjectionReader, EconomicCalendarProjectionReader, FilingsProjectionReader,
+    InstrumentChainReader, NewsProjectionReader,
+};
 use tantra_runtime_api::{
     AssetClassCatalogGroup, CatalogInstrumentEntry, CycleProgressAnalysis, CycleProgressDecile,
     DailyOhlcRow, DailyOhlcSummary, DataSourceStatus, ErrorCode, ErrorDetail,
@@ -33,16 +42,24 @@ use tantra_runtime_api::{
     MarkovTransitionRow, OrbBacktestResult, OrbEquityPoint, OrbTradeRow, OutlierAnalysis,
     OutlierKpis, OutlierPeriodPoint, OutlierStatus, PeriodPoint, PeriodScheduleKind, PolarityStats,
     ProbabilityLevelRow, ReturnBucketRow, ReturnCalcKind, ReturnKpis, ReturnPercentiles,
-    RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint, RollingPairPoint, ScheduleOption,
-    SideStreakStats, StreakAnalysis, StreakDetail, StreakDirection, StreakLengthBucket,
-    StreakSummary, StudyAssetClass, SubCycleKind, wire::InstrumentKind,
+    ExperimentalEventStudyRequest, ExperimentalEventStudyResponse, ExperimentalForecastRequest,
+    ExperimentalForecastResponse, ExperimentalOptionsOverlayRequest,
+    ExperimentalOptionsOverlayResponse, ExperimentalOutlierNewsRequest,
+    ExperimentalOutlierNewsResponse, AnalogEpisode, EventStudyRow, EventWindowPoint,
+    ForecastHorizonStep, OptionLegSpec, OptionOverlayStrategy, OutlierNewsItem,
+    OverlayEquityPoint, RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint,
+    RollingPairPoint, ScheduleOption, SideStreakStats, StreakAnalysis, StreakDetail,
+    StreakDirection, StreakLengthBucket, StreakSummary, StrikeLabRow, StudyAssetClass,
+    StudyEventKind, SubCycleKind, VolatilityRegime, wire::InstrumentKind,
 };
 use tantra_runtime_backtest::NseTradingCalendar;
 
 use crate::market::{
     ApiQuery, failure, instrument_not_found, port_failure, success, unprocessable,
 };
-use crate::market_feed::ports::{BarRequest, TradeReader as _};
+use crate::market_feed::ports::{
+    BarReader, BarRequest, ChainReader as _, InstrumentMaster, QuoteReader, TradeReader as _,
+};
 use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use crate::{ApiJson, AppState};
 
@@ -1781,4 +1798,1250 @@ pub(crate) async fn post_correlation(
             })
             .collect(),
     })
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3 Handlers: Options Overlay, Analog Forecast, Event Studies & News
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn map_to_domain_strategy(s: OptionOverlayStrategy) -> studies::OptionOverlayStrategy {
+    match s {
+        OptionOverlayStrategy::CoveredCall => studies::OptionOverlayStrategy::CoveredCall,
+        OptionOverlayStrategy::BullCallSpread => studies::OptionOverlayStrategy::BullCallSpread,
+        OptionOverlayStrategy::BearPutSpread => studies::OptionOverlayStrategy::BearPutSpread,
+        OptionOverlayStrategy::IronCondor => studies::OptionOverlayStrategy::IronCondor,
+        OptionOverlayStrategy::CalendarSpread => studies::OptionOverlayStrategy::CalendarSpread,
+    }
+}
+
+fn map_from_domain_vol_regime(v: studies::VolatilityRegime) -> VolatilityRegime {
+    match v {
+        studies::VolatilityRegime::Low => VolatilityRegime::Low,
+        studies::VolatilityRegime::Normal => VolatilityRegime::Normal,
+        studies::VolatilityRegime::Elevated => VolatilityRegime::Elevated,
+    }
+}
+
+fn map_from_domain_event_kind(k: studies::StudyEventKind) -> StudyEventKind {
+    match k {
+        studies::StudyEventKind::Buyback => StudyEventKind::Buyback,
+        studies::StudyEventKind::Earnings => StudyEventKind::Earnings,
+        studies::StudyEventKind::Macro => StudyEventKind::Macro,
+        studies::StudyEventKind::FnoRebalance => StudyEventKind::FnoRebalance,
+    }
+}
+
+fn instrument_text_matches(candidate: &str, canonical_id: &InstrumentId) -> bool {
+    let cand_upper = candidate.trim().to_ascii_uppercase();
+    let id_upper = canonical_id.to_string().to_ascii_uppercase();
+    let sym_upper = canonical_id.symbol.to_ascii_uppercase();
+    cand_upper == id_upper
+        || cand_upper == sym_upper
+        || cand_upper.ends_with(&format!(":{sym_upper}"))
+        || cand_upper.contains(&format!(":{sym_upper}-"))
+}
+
+async fn read_live_spot(state: &AppState, canonical_id: &InstrumentId) -> Option<Decimal> {
+    if let Some(live) = state.live_quotes()
+        && let Ok(Some(snap)) = live.read_trade_snapshot(canonical_id).await
+    {
+        let p = Decimal::from_f64_retain(snap.last.price()).unwrap_or_default();
+        if p > Decimal::ZERO {
+            return Some(p.round_dp(2));
+        }
+    }
+    if let Ok(Some(q)) = state.quotes.read_quote(canonical_id, None).await {
+        let bid = Decimal::from_f64_retain(q.bid_price()).unwrap_or_default();
+        let ask = Decimal::from_f64_retain(q.ask_price()).unwrap_or_default();
+        let mid = if bid > Decimal::ZERO && ask > Decimal::ZERO {
+            (bid + ask) / Decimal::from(2)
+        } else {
+            bid.max(ask)
+        };
+        if mid > Decimal::ZERO {
+            return Some(mid.round_dp(2));
+        }
+    }
+    None
+}
+
+/// `POST /experimental-analysis/options-overlay`: evaluates multi-leg F&O option overlay
+/// payoffs & live option chain bid-ask strike liquidity lab.
+pub(crate) async fn post_options_overlay(
+    State(state): State<Arc<AppState>>,
+    ApiJson(req): ApiJson<ExperimentalOptionsOverlayRequest>,
+) -> Response {
+    let parsed_id = match parse_study_instrument_id(&req.instrument_id) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+    let (start_date, end_date) = match parse_date_range(&req.start_date, &req.end_date) {
+        Ok(range) => range,
+        Err(detail) => return unprocessable(detail),
+    };
+
+    let target_short_prob_pct = req.target_short_prob_pct.unwrap_or_else(|| Decimal::from(80));
+    if target_short_prob_pct < Decimal::from(55) || target_short_prob_pct > Decimal::from(98) {
+        return unprocessable(invalid_field(
+            "target_short_prob_pct",
+            "out_of_range",
+            "target_short_prob_pct must be between 55 and 98",
+        ));
+    }
+    let wing_width_pct = req
+        .wing_width_pct
+        .unwrap_or_else(|| Decimal::from(3));
+    if wing_width_pct < Decimal::new(5, 1) || wing_width_pct > Decimal::from(15) {
+        return unprocessable(invalid_field(
+            "wing_width_pct",
+            "out_of_range",
+            "wing_width_pct must be between 0.5 and 15",
+        ));
+    }
+    let spread_slippage_bps = req.spread_slippage_bps.unwrap_or_else(|| Decimal::from(15));
+    if spread_slippage_bps < Decimal::ZERO || spread_slippage_bps > Decimal::from(500) {
+        return unprocessable(invalid_field(
+            "spread_slippage_bps",
+            "out_of_range",
+            "spread_slippage_bps must be between 0 and 500 bps",
+        ));
+    }
+
+    let instrument = match resolve_study_instrument(&state, &parsed_id).await {
+        Ok(inst) => inst,
+        Err(resp) => return resp,
+    };
+    let canonical_id = instrument.id().clone();
+    let lot_size = Decimal::from_f64_retain(instrument.lot_size()).unwrap_or(Decimal::ONE);
+    let tick_size = Decimal::from_f64_retain(instrument.tick_size())
+        .unwrap_or_else(|| Decimal::new(5, 2));
+
+    let daily_bars =
+        match load_daily_study_bars(&state, &canonical_id, start_date, end_date, false).await {
+            Ok(bars) => bars,
+            Err(resp) => return resp,
+        };
+    if daily_bars.is_empty() {
+        return failure(
+            StatusCode::NOT_FOUND,
+            ErrorDetail::new(
+                ErrorCode::NotFound,
+                format!(
+                    "no daily bars available for {canonical_id} between {start_date} and {end_date}"
+                ),
+            ),
+        );
+    }
+
+    let cal_inner = match state.lakehouse_root() {
+        Some(root) => NseTradingCalendar::from_data_root(root),
+        None => NseTradingCalendar::new(),
+    };
+    let calendar = RuntimeNseCalendar(cal_inner);
+    let domain_asset = to_domain_asset_class(req.asset_class);
+    let domain_schedule = to_domain_schedule(req.period);
+
+    let (periods, _) = studies::slice_periods(
+        &daily_bars,
+        &canonical_id.symbol,
+        domain_asset,
+        domain_schedule,
+        DomainSubCycle::Current,
+        DomainCalc::OpenToClose,
+        &calendar,
+    );
+    if periods.is_empty() {
+        return unprocessable(invalid_field(
+            "period",
+            "insufficient_periods",
+            "selected date range does not produce at least one complete period",
+        ));
+    }
+
+    let live_spot = read_live_spot(&state, &canonical_id).await;
+
+    // Query live option chain through InstrumentChainReader (never fabricates quotes if empty).
+    let chain_reader = InstrumentChainReader::new(state.instruments.clone(), state.quotes.clone());
+    let live_quotes: Vec<studies::LiveOptionStrikeQuote> = match chain_reader
+        .options_chain(&canonical_id, None, Some(200))
+        .await
+    {
+        Ok(contracts) => contracts
+            .into_iter()
+            .map(|c| studies::LiveOptionStrikeQuote {
+                option_type: match c.option_type {
+                    tantra_core::OptionType::Call => "CE".to_string(),
+                    tantra_core::OptionType::Put => "PE".to_string(),
+                },
+                strike: c.strike.value(),
+                expiry: c.expiry,
+                lot_size: c.lot_size.value(),
+                bid: c.bid.map(|p| p.value()),
+                ask: c.ask.map(|p| p.value()),
+                last_price: c.last_price.map(|p| p.value()),
+                open_interest: c.open_interest.map(|q| q.value()),
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+
+    let report = studies::evaluate_options_overlay(
+        &periods,
+        &live_quotes,
+        &studies::OptionsOverlayConfig {
+            symbol: canonical_id.to_string(),
+            asset_class: domain_asset,
+            strategy: map_to_domain_strategy(req.strategy),
+            target_short_prob_pct,
+            wing_width_pct,
+            lot_size,
+            tick_size,
+            spread_slippage_bps,
+            include_statutory_costs: req.include_statutory_costs,
+            live_spot_override: live_spot,
+        },
+    );
+
+    success(ExperimentalOptionsOverlayResponse {
+        instrument_id: canonical_id.to_string(),
+        symbol: canonical_id.symbol.clone(),
+        exchange: canonical_id.exchange.to_string(),
+        asset_class: req.asset_class,
+        period: req.period,
+        start_date: req.start_date,
+        end_date: req.end_date,
+        strategy: req.strategy,
+        spot_price: report.spot_price,
+        empirical_rv_pct: report.empirical_rv_pct,
+        quoted_iv_proxy_pct: report.quoted_iv_proxy_pct,
+        iv_minus_rv_pct: report.iv_minus_rv_pct,
+        live_chain_available: report.live_chain_available,
+        live_contract_count: report.live_contract_count,
+        nearest_expiry: report
+            .nearest_expiry
+            .map(|d| d.format("%Y-%m-%d").to_string()),
+        legs: report
+            .legs
+            .into_iter()
+            .map(|l| OptionLegSpec {
+                role: l.role,
+                side: l.side,
+                option_type: l.option_type,
+                strike: l.strike,
+                fair_value_pct: l.fair_value_pct,
+                bid: l.bid,
+                ask: l.ask,
+                spread_abs: l.spread_abs,
+                spread_bps: l.spread_bps,
+                execution_price: l.execution_price,
+            })
+            .collect(),
+        net_premium_pct: report.net_premium_pct,
+        total_spread_drag_pct: report.total_spread_drag_pct,
+        statutory_cost_pct: report.statutory_cost_pct,
+        net_after_friction_pct: report.net_after_friction_pct,
+        max_profit_pct: report.max_profit_pct,
+        max_loss_pct: report.max_loss_pct,
+        probability_of_profit_pct: report.probability_of_profit_pct,
+        buy_hold_cum_pct: report.buy_hold_cum_pct,
+        overlay_gross_cum_pct: report.overlay_gross_cum_pct,
+        overlay_net_cum_pct: report.overlay_net_cum_pct,
+        overlay_max_drawdown_pct: report.overlay_max_drawdown_pct,
+        buy_hold_max_drawdown_pct: report.buy_hold_max_drawdown_pct,
+        win_periods: report.win_periods,
+        total_periods: report.total_periods,
+        equity_curve: report
+            .equity_curve
+            .into_iter()
+            .map(|pt| OverlayEquityPoint {
+                date: pt.date.format("%Y-%m-%d").to_string(),
+                buy_hold_cum_pct: pt.buy_hold_cum_pct,
+                overlay_gross_cum_pct: pt.overlay_gross_cum_pct,
+                overlay_net_cum_pct: pt.overlay_net_cum_pct,
+                period_payoff_pct: pt.period_payoff_pct,
+            })
+            .collect(),
+        strike_lab: report
+            .strike_lab
+            .into_iter()
+            .map(|row| StrikeLabRow {
+                option_type: row.option_type,
+                strike: row.strike,
+                expiry: row.expiry.map(|d| d.format("%Y-%m-%d").to_string()),
+                bid: row.bid,
+                ask: row.ask,
+                mid: row.mid,
+                spread_abs: row.spread_abs,
+                spread_bps: row.spread_bps,
+                liquidity_tier: row.liquidity_tier,
+                open_interest: row.open_interest,
+                exceedance_prob_pct: row.exceedance_prob_pct,
+                moneyness_pct: row.moneyness_pct,
+            })
+            .collect(),
+        availability_note: report.availability_note,
+    })
+}
+
+/// `POST /experimental-analysis/forecast`: computes Markov + trailing volatility regime
+/// conditioned multi-step quantile fans & historical analog episodes (Tab 11).
+pub(crate) async fn post_forecast(
+    State(state): State<Arc<AppState>>,
+    ApiJson(req): ApiJson<ExperimentalForecastRequest>,
+) -> Response {
+    let parsed_id = match parse_study_instrument_id(&req.instrument_id) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+    let (start_date, end_date) = match parse_date_range(&req.start_date, &req.end_date) {
+        Ok(range) => range,
+        Err(detail) => return unprocessable(detail),
+    };
+
+    let horizon_steps = req.horizon_steps.unwrap_or(6);
+    if !(1..=12).contains(&horizon_steps) {
+        return unprocessable(invalid_field(
+            "horizon_steps",
+            "out_of_range",
+            "horizon_steps must be between 1 and 12",
+        ));
+    }
+    let spread_slippage_bps = req.spread_slippage_bps.unwrap_or(Decimal::ZERO);
+    if spread_slippage_bps < Decimal::ZERO || spread_slippage_bps > Decimal::from(500) {
+        return unprocessable(invalid_field(
+            "spread_slippage_bps",
+            "out_of_range",
+            "spread_slippage_bps must be between 0 and 500 bps",
+        ));
+    }
+    let futures_roll_basis_bps = req.futures_roll_basis_bps.unwrap_or(Decimal::ZERO);
+    if futures_roll_basis_bps < Decimal::from(-500) || futures_roll_basis_bps > Decimal::from(500) {
+        return unprocessable(invalid_field(
+            "futures_roll_basis_bps",
+            "out_of_range",
+            "futures_roll_basis_bps must be between -500 and +500 bps",
+        ));
+    }
+
+    let instrument = match resolve_study_instrument(&state, &parsed_id).await {
+        Ok(inst) => inst,
+        Err(resp) => return resp,
+    };
+    let canonical_id = instrument.id().clone();
+
+    let daily_bars =
+        match load_daily_study_bars(&state, &canonical_id, start_date, end_date, false).await {
+            Ok(bars) => bars,
+            Err(resp) => return resp,
+        };
+    if daily_bars.is_empty() {
+        return failure(
+            StatusCode::NOT_FOUND,
+            ErrorDetail::new(
+                ErrorCode::NotFound,
+                format!(
+                    "no daily bars available for {canonical_id} between {start_date} and {end_date}"
+                ),
+            ),
+        );
+    }
+
+    let cal_inner = match state.lakehouse_root() {
+        Some(root) => NseTradingCalendar::from_data_root(root),
+        None => NseTradingCalendar::new(),
+    };
+    let calendar = RuntimeNseCalendar(cal_inner);
+    let domain_asset = to_domain_asset_class(req.asset_class);
+    let domain_schedule = to_domain_schedule(req.period);
+    let domain_calc = to_domain_calc(req.calc_type);
+
+    let (mut periods, _) = studies::slice_periods(
+        &daily_bars,
+        &canonical_id.symbol,
+        domain_asset,
+        domain_schedule,
+        DomainSubCycle::Current,
+        domain_calc,
+        &calendar,
+    );
+    if periods.is_empty() {
+        return unprocessable(invalid_field(
+            "period",
+            "insufficient_periods",
+            "selected date range does not produce at least one complete period",
+        ));
+    }
+
+    studies::apply_spread_and_basis(
+        &mut periods,
+        domain_asset,
+        &canonical_id.to_string(),
+        domain_calc,
+        &SpreadCostConfig {
+            mode: to_domain_roll_mode(req.roll_basis_mode),
+            spread_slippage_bps,
+            futures_roll_basis_bps,
+            include_statutory_costs: req.include_statutory_costs,
+        },
+        20,
+    );
+
+    let live_spot = read_live_spot(&state, &canonical_id).await;
+    let forecast = studies::evaluate_forecasting(&periods, live_spot, horizon_steps);
+
+    success(ExperimentalForecastResponse {
+        instrument_id: canonical_id.to_string(),
+        symbol: canonical_id.symbol.clone(),
+        exchange: canonical_id.exchange.to_string(),
+        asset_class: req.asset_class,
+        period: req.period,
+        start_date: req.start_date,
+        end_date: req.end_date,
+        spot_price: forecast.spot_price,
+        current_markov_state: forecast.current_markov_state.map(map_markov_state),
+        current_markov_label: forecast.current_markov_label,
+        current_vol_regime: map_from_domain_vol_regime(forecast.current_vol_regime),
+        current_trailing_vol_pct: forecast.current_trailing_vol_pct,
+        match_tier: forecast.match_tier,
+        analog_count: forecast.analog_count,
+        horizon_fan: forecast
+            .horizon_fan
+            .into_iter()
+            .map(|h| ForecastHorizonStep {
+                step: h.step,
+                sample_count: h.sample_count,
+                p10_pct: h.p10_pct,
+                p25_pct: h.p25_pct,
+                p50_pct: h.p50_pct,
+                p75_pct: h.p75_pct,
+                p90_pct: h.p90_pct,
+                mean_pct: h.mean_pct,
+                positive_prob_pct: h.positive_prob_pct,
+                p10_price: h.p10_price,
+                p50_price: h.p50_price,
+                p90_price: h.p90_price,
+            })
+            .collect(),
+        top_analogs: forecast
+            .top_analogs
+            .into_iter()
+            .map(|a| AnalogEpisode {
+                trigger_end_date: a.trigger_end_date.format("%Y-%m-%d").to_string(),
+                trigger_return_pct: a.trigger_return_pct,
+                markov_state: map_markov_state(a.markov_state),
+                vol_regime: map_from_domain_vol_regime(a.vol_regime),
+                trailing_vol_pct: a.trailing_vol_pct,
+                next_1_pct: a.next_1_pct,
+                horizon_end_pct: a.horizon_end_pct,
+            })
+            .collect(),
+    })
+}
+
+/// `POST /experimental-analysis/events`: computes `[-20d, +20d]` benchmark-adjusted CAR & AAR
+/// event reaction curves over real Lakehouse corporate actions, filings, and economic calendar releases.
+pub(crate) async fn post_events(
+    State(state): State<Arc<AppState>>,
+    ApiJson(req): ApiJson<ExperimentalEventStudyRequest>,
+) -> Response {
+    let parsed_id = match parse_study_instrument_id(&req.instrument_id) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+    let (start_date, end_date) = match parse_date_range(&req.start_date, &req.end_date) {
+        Ok(range) => range,
+        Err(detail) => return unprocessable(detail),
+    };
+
+    let instrument = match resolve_study_instrument(&state, &parsed_id).await {
+        Ok(inst) => inst,
+        Err(resp) => return resp,
+    };
+    let canonical_id = instrument.id().clone();
+
+    let daily_bars =
+        match load_daily_study_bars(&state, &canonical_id, start_date, end_date, false).await {
+            Ok(bars) => bars,
+            Err(resp) => return resp,
+        };
+    if daily_bars.is_empty() {
+        return failure(
+            StatusCode::NOT_FOUND,
+            ErrorDetail::new(
+                ErrorCode::NotFound,
+                format!(
+                    "no daily bars available for {canonical_id} between {start_date} and {end_date}"
+                ),
+            ),
+        );
+    }
+
+    // Optional benchmark bars for market-adjusted CAR subtraction.
+    let mut benchmark_bars: Option<Vec<OhlcvBar>> = None;
+    let mut benchmark_symbol: Option<String> = None;
+    if let Some(raw_bench) = req
+        .benchmark_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        && let Ok(bench_parsed) = parse_study_instrument_id(raw_bench)
+        && let Ok(bench_inst) = resolve_study_instrument(&state, &bench_parsed).await
+    {
+        let bench_id = bench_inst.id().clone();
+        if bench_id != canonical_id
+            && let Ok(bb) = load_daily_study_bars(&state, &bench_id, start_date, end_date, false).await
+            && !bb.is_empty()
+        {
+            benchmark_symbol = Some(bench_id.to_string());
+            benchmark_bars = Some(bb);
+        }
+    }
+
+    let mut events: Vec<studies::StudyEventInput> = Vec::new();
+    let sym_label = canonical_id.symbol.clone();
+
+    if let Some(root) = state.lakehouse_root() {
+        match req.mode {
+            StudyEventKind::Buyback => {
+                if let Ok(actions) = CorporateActionsProjectionReader::new(root).read() {
+                    for act in actions {
+                        if act.ex_date < start_date || act.ex_date > end_date {
+                            continue;
+                        }
+                        if !instrument_text_matches(&act.instrument, &canonical_id) {
+                            continue;
+                        }
+                        let ty = act.action_type.to_ascii_lowercase();
+                        if matches!(
+                            ty.as_str(),
+                            "buyback" | "bonus" | "split" | "rights"
+                        ) {
+                            let detail = if let Some(p) = act.per_share {
+                                Some(format!("Amount/Share: {p} {}", act.currency))
+                            } else if let (Some(o), Some(n)) = (act.old_shares, act.new_shares) {
+                                Some(format!("Ratio {n}:{o}"))
+                            } else {
+                                act.issue_price.map(|ip| format!("Issue price {ip}"))
+                            };
+                            events.push(studies::StudyEventInput {
+                                event_date: act.ex_date,
+                                symbol: sym_label.clone(),
+                                kind: studies::StudyEventKind::Buyback,
+                                title: format!("Corporate Action: {}", act.action_type.to_uppercase()),
+                                detail,
+                            });
+                        }
+                    }
+                }
+                if let Ok(filings) = FilingsProjectionReader::new(root).read() {
+                    for f in filings {
+                        if f.filing_date < start_date || f.filing_date > end_date {
+                            continue;
+                        }
+                        if !instrument_text_matches(&f.instrument, &canonical_id) {
+                            continue;
+                        }
+                        let lower_title = f.title.to_ascii_lowercase();
+                        if lower_title.contains("buyback")
+                            || lower_title.contains("tender")
+                            || lower_title.contains("bonus")
+                            || lower_title.contains("split")
+                        {
+                            events.push(studies::StudyEventInput {
+                                event_date: f.filing_date,
+                                symbol: sym_label.clone(),
+                                kind: studies::StudyEventKind::Buyback,
+                                title: f.title,
+                                detail: f.source_url,
+                            });
+                        }
+                    }
+                }
+            }
+            StudyEventKind::Earnings => {
+                if let Ok(filings) = FilingsProjectionReader::new(root).read() {
+                    for f in filings {
+                        if f.filing_date < start_date || f.filing_date > end_date {
+                            continue;
+                        }
+                        if !instrument_text_matches(&f.instrument, &canonical_id) {
+                            continue;
+                        }
+                        let lower_type = f.filing_type.to_ascii_lowercase();
+                        let lower_title = f.title.to_ascii_lowercase();
+                        if lower_type == "quarterly_result"
+                            || lower_title.contains("result")
+                            || lower_title.contains("earnings")
+                            || lower_title.contains("financial")
+                        {
+                            events.push(studies::StudyEventInput {
+                                event_date: f.filing_date,
+                                symbol: sym_label.clone(),
+                                kind: studies::StudyEventKind::Earnings,
+                                title: f.title,
+                                detail: f.source_url,
+                            });
+                        }
+                    }
+                }
+            }
+            StudyEventKind::Macro => {
+                let country_filter = req
+                    .macro_country
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty());
+                if let Ok(cal_rows) = EconomicCalendarProjectionReader::new(root).read() {
+                    for ev in cal_rows {
+                        if ev.scheduled_date < start_date || ev.scheduled_date > end_date {
+                            continue;
+                        }
+                        if let Some(c) = country_filter
+                            && !ev.country.eq_ignore_ascii_case(c)
+                        {
+                            continue;
+                        }
+                        if !ev.impact_level.eq_ignore_ascii_case("high")
+                            && !ev.impact_level.eq_ignore_ascii_case("medium")
+                        {
+                            continue;
+                        }
+                        events.push(studies::StudyEventInput {
+                            event_date: ev.scheduled_date,
+                            symbol: ev.country.clone(),
+                            kind: studies::StudyEventKind::Macro,
+                            title: format!("{} ({})", ev.event_name, ev.country),
+                            detail: Some(format!(
+                                "{} impact={} actual={} forecast={} prior={}",
+                                ev.category,
+                                ev.impact_level,
+                                ev.actual
+                                    .map(|d| d.to_string())
+                                    .unwrap_or_else(|| "—".to_string()),
+                                ev.forecast
+                                    .map(|d| d.to_string())
+                                    .unwrap_or_else(|| "—".to_string()),
+                                ev.prior
+                                    .map(|d| d.to_string())
+                                    .unwrap_or_else(|| "—".to_string()),
+                            )),
+                        });
+                    }
+                }
+            }
+            StudyEventKind::FnoRebalance => {
+                if let Ok(filings) = FilingsProjectionReader::new(root).read() {
+                    for f in filings {
+                        if f.filing_date < start_date || f.filing_date > end_date {
+                            continue;
+                        }
+                        if !instrument_text_matches(&f.instrument, &canonical_id) {
+                            continue;
+                        }
+                        let lower_title = f.title.to_ascii_lowercase();
+                        if f.filing_type.eq_ignore_ascii_case("corporate_action")
+                            || lower_title.contains("f&o")
+                            || lower_title.contains("fno")
+                            || lower_title.contains("rebalance")
+                            || lower_title.contains("inclusion")
+                            || lower_title.contains("exclusion")
+                            || lower_title.contains("index")
+                        {
+                            events.push(studies::StudyEventInput {
+                                event_date: f.filing_date,
+                                symbol: sym_label.clone(),
+                                kind: studies::StudyEventKind::FnoRebalance,
+                                title: f.title,
+                                detail: f.source_url,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Deduplicate same date + title events cleanly.
+    let mut seen_events: BTreeSet<(NaiveDate, String)> = BTreeSet::new();
+    events.retain(|ev| seen_events.insert((ev.event_date, ev.title.clone())));
+
+    let report = studies::evaluate_event_study(
+        &daily_bars,
+        benchmark_bars.as_deref(),
+        benchmark_symbol.as_deref(),
+        &events,
+    );
+
+    success(ExperimentalEventStudyResponse {
+        instrument_id: canonical_id.to_string(),
+        symbol: canonical_id.symbol.clone(),
+        exchange: canonical_id.exchange.to_string(),
+        mode: req.mode,
+        available: report.available,
+        benchmark_adjusted: report.benchmark_adjusted,
+        benchmark_symbol: report.benchmark_symbol,
+        event_count: report.event_count,
+        avg_pre_drift_pct: report.avg_pre_drift_pct,
+        avg_event_day_pct: report.avg_event_day_pct,
+        avg_post_5d_pct: report.avg_post_5d_pct,
+        avg_post_20d_pct: report.avg_post_20d_pct,
+        win_rate_post_1d_pct: report.win_rate_post_1d_pct,
+        win_rate_post_5d_pct: report.win_rate_post_5d_pct,
+        win_rate_post_20d_pct: report.win_rate_post_20d_pct,
+        avg_volume_surge_ratio: report.avg_volume_surge_ratio,
+        window_curve: report
+            .window_curve
+            .into_iter()
+            .map(|pt| EventWindowPoint {
+                day_offset: pt.day_offset,
+                sample_count: pt.sample_count,
+                avg_abnormal_return_pct: pt.avg_abnormal_return_pct,
+                cum_abnormal_return_pct: pt.cum_abnormal_return_pct,
+                median_return_pct: pt.median_return_pct,
+                win_rate_pct: pt.win_rate_pct,
+            })
+            .collect(),
+        events: report
+            .events
+            .into_iter()
+            .map(|r| EventStudyRow {
+                event_date: r.event_date.format("%Y-%m-%d").to_string(),
+                symbol: r.symbol,
+                kind: map_from_domain_event_kind(r.kind),
+                title: r.title,
+                detail: r.detail,
+                pre_drift_pct: r.pre_drift_pct,
+                event_day_pct: r.event_day_pct,
+                post_5d_pct: r.post_5d_pct,
+                post_20d_pct: r.post_20d_pct,
+                volume_ratio: r.volume_ratio,
+            })
+            .collect(),
+        availability_note: report.availability_note,
+    })
+}
+
+/// `POST /experimental-analysis/outlier-news`: retrieves real dated news headlines,
+/// macro calendar releases, corporate actions & filings inside `[window_start - 2d, window_end + 1d]`.
+pub(crate) async fn post_outlier_news(
+    State(state): State<Arc<AppState>>,
+    ApiJson(req): ApiJson<ExperimentalOutlierNewsRequest>,
+) -> Response {
+    let parsed_id = match parse_study_instrument_id(&req.instrument_id) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+    let window_start = match NaiveDate::parse_from_str(req.window_start.trim(), "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => {
+            return unprocessable(invalid_field(
+                "window_start",
+                "invalid_date",
+                "window_start must be YYYY-MM-DD",
+            ));
+        }
+    };
+    let window_end = match NaiveDate::parse_from_str(req.window_end.trim(), "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => {
+            return unprocessable(invalid_field(
+                "window_end",
+                "invalid_date",
+                "window_end must be YYYY-MM-DD",
+            ));
+        }
+    };
+    if window_start > window_end {
+        return unprocessable(invalid_field(
+            "window_end",
+            "empty_range",
+            "window_start cannot be after window_end",
+        ));
+    }
+
+    let limit = req.limit.unwrap_or(20).clamp(1, 50);
+    let canonical_id = match resolve_study_instrument(&state, &parsed_id).await {
+        Ok(inst) => inst.id().clone(),
+        Err(_) => parsed_id,
+    };
+
+    let expanded_start = window_start - Duration::days(2);
+    let expanded_end = window_end + Duration::days(1);
+
+    let keywords = req
+        .keywords
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| match req.asset_class {
+            StudyAssetClass::Commodity => "crude oil opec gold fed macro".to_string(),
+            StudyAssetClass::Forex => "rbi fed currency dollar usd inr macro".to_string(),
+            StudyAssetClass::Index => format!("{} market economy finance macro", canonical_id.symbol),
+            StudyAssetClass::Etf => format!("{} etf flows macro index", canonical_id.symbol),
+            StudyAssetClass::FnoStock | StudyAssetClass::Equity => {
+                format!("{} earnings macro corporate event", canonical_id.symbol)
+            }
+        });
+
+    let tokens: Vec<String> = keywords
+        .split(|c: char| !c.is_alphanumeric())
+        .map(|t| t.trim().to_ascii_lowercase())
+        .filter(|t| t.len() >= 2)
+        .collect();
+    let matches_kw = |text: &str| -> bool {
+        if tokens.is_empty() {
+            return true;
+        }
+        let lower = text.to_ascii_lowercase();
+        tokens.iter().any(|tok| lower.contains(tok))
+    };
+
+    let mut items: Vec<OutlierNewsItem> = Vec::new();
+    let mut news_archive_available = false;
+    let mut macro_calendar_available = false;
+    let mut filings_available = false;
+
+    if let Some(root) = state.lakehouse_root() {
+        if let Ok(articles) = NewsProjectionReader::new(root).read() {
+            news_archive_available = true;
+            for a in articles {
+                let d = a.published_date;
+                if d < expanded_start || d > expanded_end {
+                    continue;
+                }
+                let mentions = a
+                    .instruments
+                    .iter()
+                    .any(|tag| instrument_text_matches(tag, &canonical_id));
+                let haystack = format!(
+                    "{} {} {}",
+                    a.title,
+                    a.summary.as_deref().unwrap_or(""),
+                    a.instruments.join(" ")
+                );
+                if mentions || matches_kw(&haystack) {
+                    items.push(OutlierNewsItem {
+                        kind: "news".to_string(),
+                        date: d.format("%Y-%m-%d").to_string(),
+                        published_at: a.published_at.to_rfc3339(),
+                        title: a.title,
+                        source: a.source,
+                        url: if a.url.is_empty() { None } else { Some(a.url) },
+                        summary: a.summary,
+                        instruments: a.instruments,
+                    });
+                }
+            }
+        }
+
+        if let Ok(cal_rows) = EconomicCalendarProjectionReader::new(root).read() {
+            macro_calendar_available = true;
+            for ev in cal_rows {
+                if ev.scheduled_date < expanded_start || ev.scheduled_date > expanded_end {
+                    continue;
+                }
+                let haystack = format!("{} {} {}", ev.event_name, ev.category, ev.country);
+                let important = ev.impact_level.eq_ignore_ascii_case("high");
+                if important || matches_kw(&haystack) {
+                    items.push(OutlierNewsItem {
+                        kind: "macro_calendar".to_string(),
+                        date: ev.scheduled_date.format("%Y-%m-%d").to_string(),
+                        published_at: ev.scheduled_at.clone(),
+                        title: ev.event_name,
+                        source: format!("Macro Calendar ({})", ev.country),
+                        url: None,
+                        summary: Some(format!(
+                            "{} | impact={} | actual={} | forecast={} | prior={}",
+                            ev.category,
+                            ev.impact_level,
+                            ev.actual
+                                .map(|d| d.to_string())
+                                .unwrap_or_else(|| "—".to_string()),
+                            ev.forecast
+                                .map(|d| d.to_string())
+                                .unwrap_or_else(|| "—".to_string()),
+                            ev.prior
+                                .map(|d| d.to_string())
+                                .unwrap_or_else(|| "—".to_string()),
+                        )),
+                        instruments: vec![canonical_id.to_string()],
+                    });
+                }
+            }
+        }
+
+        if let Ok(filings) = FilingsProjectionReader::new(root).read() {
+            filings_available = true;
+            for f in filings {
+                if f.filing_date < expanded_start || f.filing_date > expanded_end {
+                    continue;
+                }
+                if !instrument_text_matches(&f.instrument, &canonical_id) {
+                    continue;
+                }
+                items.push(OutlierNewsItem {
+                    kind: "filing".to_string(),
+                    date: f.filing_date.format("%Y-%m-%d").to_string(),
+                    published_at: format!("{}T00:00:00Z", f.filing_date),
+                    title: f.title,
+                    source: format!("Exchange Filing ({})", f.filing_type),
+                    url: f.source_url,
+                    summary: None,
+                    instruments: vec![f.instrument],
+                });
+            }
+        }
+
+        if let Ok(actions) = CorporateActionsProjectionReader::new(root).read() {
+            for act in actions {
+                if act.ex_date < expanded_start || act.ex_date > expanded_end {
+                    continue;
+                }
+                if !instrument_text_matches(&act.instrument, &canonical_id) {
+                    continue;
+                }
+                items.push(OutlierNewsItem {
+                    kind: "corporate_action".to_string(),
+                    date: act.ex_date.format("%Y-%m-%d").to_string(),
+                    published_at: format!("{}T00:00:00Z", act.ex_date),
+                    title: format!("Corporate Action: {} ({})", act.action_type, canonical_id.symbol),
+                    source: "Corporate Actions Registry".to_string(),
+                    url: None,
+                    summary: act
+                        .per_share
+                        .map(|v| format!("Per share: {v} {}", act.currency)),
+                    instruments: vec![act.instrument],
+                });
+            }
+        }
+    }
+
+    items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+    items.truncate(limit);
+    let count = items.len();
+    let availability_note = if count > 0 {
+        format!(
+            "Found {count} archived news, macro, or filing catalysts across {}..{}.",
+            expanded_start, expanded_end
+        )
+    } else if !news_archive_available && !macro_calendar_available && !filings_available {
+        "Lakehouse news, macro calendar, and filings projections are offline or not ingested in this data root. Consistent with the zero-fabrication policy, no synthetic headlines were created.".to_string()
+    } else {
+        format!(
+            "No archived news headlines, macro releases, or filings matched inside {}..{} for {}.",
+            expanded_start, expanded_end, canonical_id
+        )
+    };
+
+    success(ExperimentalOutlierNewsResponse {
+        instrument_id: canonical_id.to_string(),
+        asset_class: req.asset_class,
+        expanded_start: expanded_start.format("%Y-%m-%d").to_string(),
+        expanded_end: expanded_end.format("%Y-%m-%d").to_string(),
+        keywords,
+        items,
+        count,
+        news_archive_available,
+        macro_calendar_available,
+        filings_available,
+        availability_note,
+    })
+}
+
+/// Read-through `StudyReader` adapter wiring `Experimental-Analysis` statistical summaries
+/// directly into `tantra-agent-chat-tools` (`experimental_study_summary`).
+pub(crate) struct FeedStudyReader {
+    instruments: Arc<dyn InstrumentMaster>,
+    bars: Arc<dyn BarReader>,
+    quotes: Arc<dyn QuoteReader>,
+    data_root: Option<PathBuf>,
+}
+
+impl FeedStudyReader {
+    pub(crate) fn new(
+        instruments: Arc<dyn InstrumentMaster>,
+        bars: Arc<dyn BarReader>,
+        quotes: Arc<dyn QuoteReader>,
+        data_root: PathBuf,
+    ) -> Self {
+        Self {
+            instruments,
+            bars,
+            quotes,
+            data_root: if data_root.exists() {
+                Some(data_root)
+            } else {
+                None
+            },
+        }
+    }
+}
+
+fn parse_chat_asset_class(raw: Option<&str>, ex: Exchange, sym: &str) -> DomainAssetClass {
+    match raw.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("index") => DomainAssetClass::Index,
+        Some("fno_stock") | Some("fno") => DomainAssetClass::FnoStock,
+        Some("etf") => DomainAssetClass::Etf,
+        Some("equity") => DomainAssetClass::Equity,
+        Some("forex") | Some("fx") => DomainAssetClass::Forex,
+        Some("commodity") => DomainAssetClass::Commodity,
+        _ => {
+            if looks_like_commodity(ex, sym) {
+                DomainAssetClass::Commodity
+            } else if looks_like_forex(ex, sym) {
+                DomainAssetClass::Forex
+            } else if looks_like_etf(sym) {
+                DomainAssetClass::Etf
+            } else if sym.contains("NIFTY") || sym.contains("SENSEX") || sym.contains("VIX") {
+                DomainAssetClass::Index
+            } else {
+                DomainAssetClass::FnoStock
+            }
+        }
+    }
+}
+
+fn parse_chat_schedule(raw: Option<&str>, asset_class: DomainAssetClass) -> DomainSchedule {
+    match raw.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("weekly_expiry") => DomainSchedule::WeeklyExpiry,
+        Some("week_plus_one") => DomainSchedule::WeekPlusOne,
+        Some("monthly_expiry") => DomainSchedule::MonthlyExpiry,
+        Some("calendar_weekly") => DomainSchedule::CalendarWeekly,
+        Some("calendar_monthly") => DomainSchedule::CalendarMonthly,
+        Some("front_month_cycle") => DomainSchedule::FrontMonthCycle,
+        Some("mcx_expiry_cycle") => DomainSchedule::McxExpiryCycle,
+        Some("daily") => DomainSchedule::Daily,
+        _ => match asset_class {
+            DomainAssetClass::Index => DomainSchedule::WeeklyExpiry,
+            DomainAssetClass::FnoStock => DomainSchedule::MonthlyExpiry,
+            DomainAssetClass::Commodity => DomainSchedule::FrontMonthCycle,
+            DomainAssetClass::Etf | DomainAssetClass::Equity | DomainAssetClass::Forex => {
+                DomainSchedule::CalendarWeekly
+            }
+        },
+    }
+}
+
+fn parse_chat_calc(raw: Option<&str>) -> DomainCalc {
+    match raw.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("high_to_low") | Some("hl") => DomainCalc::HighToLow,
+        Some("close_to_close") | Some("cc") => DomainCalc::CloseToClose,
+        _ => DomainCalc::OpenToClose,
+    }
+}
+
+#[async_trait]
+impl StudyReader for FeedStudyReader {
+    async fn returns_study_summary(
+        &self,
+        instrument: &InstrumentId,
+        asset_class: Option<&str>,
+        period: Option<&str>,
+        calc_type: Option<&str>,
+        start_date: Option<NaiveDate>,
+        end_date: Option<NaiveDate>,
+    ) -> Result<StudySummarySnapshot, PortError> {
+        let end = end_date.unwrap_or_else(|| Utc::now().date_naive());
+        let start = start_date.unwrap_or_else(|| end - Duration::days(365 * 3));
+
+        let inst_match = match self.instruments.get_instrument(instrument).await {
+            Ok(Some(inst)) => inst,
+            Ok(None) => self
+                .instruments
+                .list_instruments()
+                .await
+                .map_err(|e| PortError::internal(format!("{e:?}")))?
+                .into_iter()
+                .find(|item| {
+                    item.id().exchange == instrument.exchange
+                        && item.id().symbol.eq_ignore_ascii_case(&instrument.symbol)
+                })
+                .ok_or_else(|| {
+                    PortError::not_found(format!("instrument {instrument} not found"))
+                })?,
+            Err(e) => return Err(PortError::internal(format!("{e:?}"))),
+        };
+        let canonical_id = inst_match.id().clone();
+
+        let from_utc: DateTime<Utc> = (start - Duration::days(1))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let to_utc: DateTime<Utc> = (end + Duration::days(2))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
+        let bar_req = BarRequest::new(
+            canonical_id.clone(),
+            spec,
+            Some(UnixNanos::from_datetime(from_utc)),
+            Some(UnixNanos::from_datetime(to_utc)),
+        )
+        .map_err(|e| PortError::internal(format!("{e:?}")))?;
+        let raw_bars = self
+            .bars
+            .read_bars(&bar_req)
+            .await
+            .map_err(|e| PortError::internal(format!("{e:?}")))?;
+
+        let ist_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
+        let mut dedup_bars: BTreeMap<NaiveDate, OhlcvBar> = BTreeMap::new();
+        for bar in raw_bars {
+            let d = bar
+                .ts_event()
+                .to_datetime()
+                .with_timezone(&ist_offset)
+                .date_naive();
+            if d < start || d > end {
+                continue;
+            }
+            dedup_bars.insert(
+                d,
+                OhlcvBar {
+                    date: d,
+                    open: Decimal::from_f64_retain(bar.open())
+                        .unwrap_or_default()
+                        .round_dp(4),
+                    high: Decimal::from_f64_retain(bar.high())
+                        .unwrap_or_default()
+                        .round_dp(4),
+                    low: Decimal::from_f64_retain(bar.low())
+                        .unwrap_or_default()
+                        .round_dp(4),
+                    close: Decimal::from_f64_retain(bar.close())
+                        .unwrap_or_default()
+                        .round_dp(4),
+                    volume: Decimal::from_f64_retain(bar.volume())
+                        .unwrap_or_default()
+                        .round_dp(2),
+                    dividend: Decimal::ZERO,
+                    split_factor: Decimal::ZERO,
+                },
+            );
+        }
+        let study_bars: Vec<OhlcvBar> = dedup_bars.into_values().collect();
+        if study_bars.is_empty() {
+            return Err(PortError::not_found(format!(
+                "no daily bars found for {canonical_id} in {start}..{end}"
+            )));
+        }
+
+        let live_spot = match self.quotes.read_quote(&canonical_id, None).await {
+            Ok(Some(q)) => {
+                let bid = Decimal::from_f64_retain(q.bid_price()).unwrap_or_default();
+                let ask = Decimal::from_f64_retain(q.ask_price()).unwrap_or_default();
+                let mid = if bid > Decimal::ZERO && ask > Decimal::ZERO {
+                    (bid + ask) / Decimal::from(2)
+                } else {
+                    bid.max(ask)
+                };
+                if mid > Decimal::ZERO {
+                    Some(mid.round_dp(2))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        let cal_inner = match &self.data_root {
+            Some(root) => NseTradingCalendar::from_data_root(root),
+            None => NseTradingCalendar::new(),
+        };
+        let calendar = RuntimeNseCalendar(cal_inner);
+        let domain_asset = parse_chat_asset_class(
+            asset_class,
+            canonical_id.exchange,
+            &canonical_id.symbol,
+        );
+        let domain_schedule = parse_chat_schedule(period, domain_asset);
+        let domain_calc = parse_chat_calc(calc_type);
+
+        let report = studies::evaluate_returns_study(
+            &study_bars,
+            &calendar,
+            &ExperimentalStudyConfig {
+                symbol: canonical_id.symbol.clone(),
+                asset_class: domain_asset,
+                schedule: domain_schedule,
+                sub_cycle: DomainSubCycle::Current,
+                calc_kind: domain_calc,
+                ma_window: 20,
+                outlier_coverage_pct: Decimal::from(90),
+                tail_threshold_pct: Decimal::from(2),
+                live_spot_override: live_spot,
+                spread_cost: SpreadCostConfig::default(),
+            },
+        )
+        .map_err(|e| PortError::unavailable(format!("{e}")))?;
+
+        let key_probs = [95usize, 90, 80, 50, 20, 10, 5];
+        let probability_levels = report
+            .distributions
+            .probability_levels
+            .iter()
+            .filter(|row| key_probs.contains(&row.prob_above_pct))
+            .map(|row| StudyProbabilityLevel {
+                prob_above_pct: row.prob_above_pct,
+                return_pct: row.return_pct,
+                implied_price: row.implied_price,
+                scenario: row.scenario.clone(),
+            })
+            .collect();
+
+        Ok(StudySummarySnapshot {
+            instrument: canonical_id,
+            asset_class: format!("{domain_asset:?}").to_ascii_lowercase(),
+            period_schedule: format!("{domain_schedule:?}").to_ascii_lowercase(),
+            calc_type: format!("{domain_calc:?}").to_ascii_lowercase(),
+            start_date: study_bars.first().map(|b| b.date).unwrap_or(start),
+            end_date: study_bars.last().map(|b| b.date).unwrap_or(end),
+            total_periods: report.period_series.len(),
+            regime_note: report.regime_note,
+            avg_return_pct: report.kpis.avg_return_pct,
+            std_dev_pct: report.kpis.std_dev_pct,
+            sharpe_ratio: report.kpis.sharpe_ratio,
+            sortino_ratio: report.kpis.sortino_ratio,
+            profit_factor: report.kpis.profit_factor,
+            max_gain_pct: report.kpis.max_gain_pct,
+            max_loss_pct: report.kpis.max_loss_pct,
+            win_rate_pct: report.kpis.positive_pct,
+            current_streak_direction: report
+                .streaks
+                .summary
+                .current_streak_type
+                .map(|d| format!("{d:?}").to_ascii_lowercase()),
+            current_streak_length: report.streaks.summary.current_streak_length,
+            current_streak_return_pct: report.streaks.summary.current_streak_return_pct,
+            current_markov_state: report
+                .markov
+                .current_prediction
+                .current_state
+                .map(|s| s.label().to_string()),
+            strongest_next_markov_state: report.markov.current_prediction.strongest_next_label,
+            strongest_next_probability_pct: report
+                .markov
+                .current_prediction
+                .strongest_probability_pct,
+            probability_levels,
+            outlier_90_lower_pct: report.distributions.outliers.kpis.lower_bound_pct,
+            outlier_90_upper_pct: report.distributions.outliers.kpis.upper_bound_pct,
+            outlier_count: report.distributions.outliers.kpis.total_outliers,
+            after_big_up_next_avg_pct: (!report
+                .distributions
+                .forward_conditional
+                .after_large_pos_events
+                .is_empty())
+            .then_some(report.distributions.forward_conditional.after_large_pos_mean_pct),
+            after_big_down_next_avg_pct: (!report
+                .distributions
+                .forward_conditional
+                .after_large_neg_events
+                .is_empty())
+            .then_some(report.distributions.forward_conditional.after_large_neg_mean_pct),
+        })
+    }
 }

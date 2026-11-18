@@ -1218,3 +1218,548 @@ pub struct ExperimentalCorrelationResponse {
     /// Rolling correlation and spread curve.
     pub rolling_series: Vec<RollingPairPoint>,
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3 DTOs: Options Overlay, Forecasting, Event Studies & Outlier News
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Option overlay strategy family evaluated in Tab 8 & Tab 9.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum OptionOverlayStrategy {
+    /// Long 1× underlying + Short 1× OTM Call at empirical target probability strike.
+    #[default]
+    CoveredCall,
+    /// Defined-risk Bull Call vertical spread (Long ATM CE + Short OTM CE).
+    BullCallSpread,
+    /// Defined-risk Bear Put vertical spread (Long ATM PE + Short OTM PE).
+    BearPutSpread,
+    /// Four-leg range-bound Iron Condor (Short OTM CE/PE + Long protective wings).
+    IronCondor,
+    /// Calendar time-spread roll proxy (Short near-cycle ATM CE + Long next-cycle ATM CE).
+    CalendarSpread,
+}
+
+/// Single option or underlying leg inside a multi-leg structure.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct OptionLegSpec {
+    /// Strategy leg label (`"Long Underlying"`, `"Short OTM Call"`, etc.).
+    pub role: String,
+    /// `"BUY"` or `"SELL"`.
+    pub side: String,
+    /// `"SPOT"`, `"CE"`, or `"PE"`.
+    pub option_type: String,
+    /// Selected strike price (or spot reference).
+    pub strike: Decimal,
+    /// Empirical cycle fair value (% of spot).
+    pub fair_value_pct: Decimal,
+    /// Quoted live bid price when option chain is loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bid: Option<Decimal>,
+    /// Quoted live ask price when option chain is loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask: Option<Decimal>,
+    /// Quoted bid-ask spread in price units (`ask - bid`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_abs: Option<Decimal>,
+    /// Quoted bid-ask spread in basis points relative to mid price.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<Decimal>,
+    /// Effective execution price after crossing bid/ask or configured slippage.
+    pub execution_price: Decimal,
+}
+
+/// Strike liquidity & empirical exceedance row for Tab 9 (`Expiry Strike Lab`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct StrikeLabRow {
+    /// `"CE"` or `"PE"`.
+    pub option_type: String,
+    /// Strike price.
+    pub strike: Decimal,
+    /// Option expiry date (`YYYY-MM-DD`) when sourced from live chain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expiry: Option<String>,
+    /// Best bid price when quoted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bid: Option<Decimal>,
+    /// Best ask price when quoted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask: Option<Decimal>,
+    /// Midpoint `(bid + ask) / 2`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mid: Option<Decimal>,
+    /// Quoted bid-ask spread (`ask - bid`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_abs: Option<Decimal>,
+    /// Quoted bid-ask spread in bps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<Decimal>,
+    /// Liquidity tier: `"tight"`, `"moderate"`, `"wide"`, or `"unquoted"`.
+    pub liquidity_tier: String,
+    /// Latest open interest when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_interest: Option<Decimal>,
+    /// Empirical probability (%) spot closes beyond this strike.
+    pub exceedance_prob_pct: Decimal,
+    /// Strike moneyness relative to spot (%).
+    pub moneyness_pct: Decimal,
+}
+
+/// Period-by-period equity curve sample comparing Buy-and-Hold vs Options Overlay.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct OverlayEquityPoint {
+    /// Period end date (`YYYY-MM-DD`).
+    pub date: String,
+    /// Buy-and-Hold cumulative return (%).
+    pub buy_hold_cum_pct: Decimal,
+    /// Gross overlay cumulative return (%) before spread & statutory costs.
+    pub overlay_gross_cum_pct: Decimal,
+    /// Net overlay cumulative return (%) after spread & statutory costs.
+    pub overlay_net_cum_pct: Decimal,
+    /// Single-period net strategy payoff (%).
+    pub period_payoff_pct: Decimal,
+}
+
+/// Request payload for `POST /experimental-analysis/options-overlay`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalOptionsOverlayRequest {
+    /// Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).
+    pub instrument_id: String,
+    /// Asset class context for schedule slicing and exchange fee tier.
+    pub asset_class: StudyAssetClass,
+    /// Period slicing schedule.
+    pub period: PeriodScheduleKind,
+    /// Inclusive start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Inclusive end date (`YYYY-MM-DD`).
+    pub end_date: String,
+    /// Option overlay strategy family (default `covered_call`).
+    #[serde(default)]
+    pub strategy: OptionOverlayStrategy,
+    /// Target non-exceedance probability (`55..=98`, default `80`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_short_prob_pct: Option<Decimal>,
+    /// Protective wing width percentage (`0.5..=15.0`, default `3.0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wing_width_pct: Option<Decimal>,
+    /// Fallback round-trip spread slippage in bps (`0..=500`, default `15`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_slippage_bps: Option<Decimal>,
+    /// Whether to deduct statutory Indian derivative turnover charges.
+    #[serde(default)]
+    pub include_statutory_costs: bool,
+}
+
+/// Response payload for `POST /experimental-analysis/options-overlay`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExperimentalOptionsOverlayResponse {
+    /// Analyzed canonical instrument ID.
+    pub instrument_id: String,
+    /// Symbol.
+    pub symbol: String,
+    /// Exchange code.
+    pub exchange: String,
+    /// Asset class evaluated.
+    pub asset_class: StudyAssetClass,
+    /// Period schedule applied.
+    pub period: PeriodScheduleKind,
+    /// Effective start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Effective end date (`YYYY-MM-DD`).
+    pub end_date: String,
+    /// Evaluated option strategy.
+    pub strategy: OptionOverlayStrategy,
+    /// Reference underlying spot price.
+    pub spot_price: Decimal,
+    /// Empirical annualized realized volatility (%).
+    pub empirical_rv_pct: Decimal,
+    /// Implied volatility proxy (%) from live ATM option quotes, when live chain exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quoted_iv_proxy_pct: Option<Decimal>,
+    /// Volatility risk premium (`IV - RV`) in % points when live chain exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iv_minus_rv_pct: Option<Decimal>,
+    /// True when live option quotes were matched from the runtime quote store.
+    pub live_chain_available: bool,
+    /// Count of live option contracts inspected.
+    pub live_contract_count: usize,
+    /// Nearest live option expiry date (`YYYY-MM-DD`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nearest_expiry: Option<String>,
+    /// Configured strategy legs with quoted bid/ask & execution pricing.
+    pub legs: Vec<OptionLegSpec>,
+    /// Net option credit/debit per cycle (% of spot) before friction.
+    pub net_premium_pct: Decimal,
+    /// Bid-ask spread drag (% of spot) per cycle.
+    pub total_spread_drag_pct: Decimal,
+    /// Statutory fee drag (% of spot) per cycle.
+    pub statutory_cost_pct: Decimal,
+    /// Net option credit/debit (% of spot) after spread & fees.
+    pub net_after_friction_pct: Decimal,
+    /// Capped max profit per cycle (% of spot), if bounded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_profit_pct: Option<Decimal>,
+    /// Capped max loss per cycle (% of spot, <= 0), if bounded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_loss_pct: Option<Decimal>,
+    /// Empirical probability of profit (%) after friction.
+    pub probability_of_profit_pct: Decimal,
+    /// Final buy-and-hold cumulative return (%).
+    pub buy_hold_cum_pct: Decimal,
+    /// Final gross overlay cumulative return (%).
+    pub overlay_gross_cum_pct: Decimal,
+    /// Final net overlay cumulative return (%).
+    pub overlay_net_cum_pct: Decimal,
+    /// Maximum net overlay drawdown (%).
+    pub overlay_max_drawdown_pct: Decimal,
+    /// Maximum buy-and-hold drawdown (%).
+    pub buy_hold_max_drawdown_pct: Decimal,
+    /// Winning net periods.
+    pub win_periods: usize,
+    /// Total simulated periods.
+    pub total_periods: usize,
+    /// Equity comparison series.
+    pub equity_curve: Vec<OverlayEquityPoint>,
+    /// Strike liquidity & empirical exceedance lab rows.
+    pub strike_lab: Vec<StrikeLabRow>,
+    /// Honest data-source & quote availability explanation.
+    pub availability_note: String,
+}
+
+/// Trailing volatility regime classification (empirical terciles).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum VolatilityRegime {
+    /// Lower third (`<= P33`).
+    Low,
+    /// Middle third (`P33..P67`).
+    Normal,
+    /// Upper third (`>= P67`).
+    Elevated,
+}
+
+/// Forward quantile step for Tab 11 (`Forecasting`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ForecastHorizonStep {
+    /// Forward step index (`1..=horizon_steps`).
+    pub step: usize,
+    /// Analog sample count.
+    pub sample_count: usize,
+    /// 10th percentile compounded forward return (%).
+    pub p10_pct: Decimal,
+    /// 25th percentile compounded forward return (%).
+    pub p25_pct: Decimal,
+    /// 50th percentile (median) compounded forward return (%).
+    pub p50_pct: Decimal,
+    /// 75th percentile compounded forward return (%).
+    pub p75_pct: Decimal,
+    /// 90th percentile compounded forward return (%).
+    pub p90_pct: Decimal,
+    /// Mean compounded forward return (%).
+    pub mean_pct: Decimal,
+    /// Share (%) of analog paths finishing positive (`> 0`).
+    pub positive_prob_pct: Decimal,
+    /// Spot-anchored `P10` target price.
+    pub p10_price: Decimal,
+    /// Spot-anchored `P50` target price.
+    pub p50_price: Decimal,
+    /// Spot-anchored `P90` target price.
+    pub p90_price: Decimal,
+}
+
+/// Historical analog episode matching active Markov + Volatility state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AnalogEpisode {
+    /// Period end date of match (`YYYY-MM-DD`).
+    pub trigger_end_date: String,
+    /// Period return at trigger (%).
+    pub trigger_return_pct: Decimal,
+    /// Markov streak state at match date.
+    pub markov_state: MarkovState,
+    /// Volatility regime at match date.
+    pub vol_regime: VolatilityRegime,
+    /// Trailing 5-period realized volatility (%).
+    pub trailing_vol_pct: Decimal,
+    /// Next-1-period forward return (%).
+    pub next_1_pct: Decimal,
+    /// Compounded return through horizon end (%).
+    pub horizon_end_pct: Decimal,
+}
+
+/// Request payload for `POST /experimental-analysis/forecast`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalForecastRequest {
+    /// Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).
+    pub instrument_id: String,
+    /// Asset class context.
+    pub asset_class: StudyAssetClass,
+    /// Period schedule.
+    pub period: PeriodScheduleKind,
+    /// Return formula (`open_to_close`, `high_to_low`, `close_to_close`).
+    #[serde(default)]
+    pub calc_type: ReturnCalcKind,
+    /// Inclusive start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Inclusive end date (`YYYY-MM-DD`).
+    pub end_date: String,
+    /// Forward forecast horizon in periods (`1..=12`, default `6`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizon_steps: Option<usize>,
+    /// Optional F&O spread/basis adjustment mode.
+    #[serde(default)]
+    pub roll_basis_mode: RollBasisMode,
+    /// Optional spread slippage in bps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_slippage_bps: Option<Decimal>,
+    /// Optional futures roll basis adjustment in bps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub futures_roll_basis_bps: Option<Decimal>,
+    /// Whether to deduct statutory costs when in net mode.
+    #[serde(default)]
+    pub include_statutory_costs: bool,
+}
+
+/// Response payload for `POST /experimental-analysis/forecast`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExperimentalForecastResponse {
+    /// Analyzed canonical instrument ID.
+    pub instrument_id: String,
+    /// Symbol.
+    pub symbol: String,
+    /// Exchange code.
+    pub exchange: String,
+    /// Asset class evaluated.
+    pub asset_class: StudyAssetClass,
+    /// Period schedule applied.
+    pub period: PeriodScheduleKind,
+    /// Effective start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Effective end date (`YYYY-MM-DD`).
+    pub end_date: String,
+    /// Reference spot price.
+    pub spot_price: Decimal,
+    /// Active Markov streak state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_markov_state: Option<MarkovState>,
+    /// Active Markov display label.
+    pub current_markov_label: String,
+    /// Active trailing volatility regime.
+    pub current_vol_regime: VolatilityRegime,
+    /// Trailing 5-period realized std dev (%).
+    pub current_trailing_vol_pct: Decimal,
+    /// Analog conditioning tier (`"exact_state_and_vol"`, `"markov_state_only"`, `"direction_only"`, `"unconditional"`).
+    pub match_tier: String,
+    /// Count of historical analog periods selected.
+    pub analog_count: usize,
+    /// Multi-step forward quantile fan (`1..=horizon_steps`).
+    pub horizon_fan: Vec<ForecastHorizonStep>,
+    /// Top matching historical episodes (up to 15).
+    pub top_analogs: Vec<AnalogEpisode>,
+}
+
+/// Event study category aligned across Phase 3 Event Modes & Tab 12.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum StudyEventKind {
+    /// Share buyback / tender / bonus / corporate action.
+    Buyback,
+    /// Quarterly earnings or financial result release.
+    Earnings,
+    /// Sovereign / central bank macro release (RBI / FOMC / CPI / GDP).
+    Macro,
+    /// F&O inclusion, exclusion, or index rebalance corporate event.
+    FnoRebalance,
+}
+
+/// Average & Cumulative Abnormal Return sample for offset `k ∈ [-20..=+20]`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct EventWindowPoint {
+    /// Trading-day offset relative to event `T+0` (`-20..=+20`).
+    pub day_offset: i32,
+    /// Events contributing at this offset.
+    pub sample_count: usize,
+    /// Cross-event average abnormal daily return (%).
+    pub avg_abnormal_return_pct: Decimal,
+    /// Cumulative average abnormal return (`T-20..=day_offset`, %).
+    pub cum_abnormal_return_pct: Decimal,
+    /// Cross-event median abnormal return (%) at `day_offset`.
+    pub median_return_pct: Decimal,
+    /// Share (%) of positive abnormal returns at `day_offset`.
+    pub win_rate_pct: Decimal,
+}
+
+/// Per-event drift summary row for event study tables.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct EventStudyRow {
+    /// Aligned trading date (`YYYY-MM-DD`).
+    pub event_date: String,
+    /// Instrument symbol.
+    pub symbol: String,
+    /// Event classification.
+    pub kind: StudyEventKind,
+    /// Human-readable event title.
+    pub title: String,
+    /// Optional numeric or category detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// Pre-event drift (`T-20` to `T-1`, %).
+    pub pre_drift_pct: Decimal,
+    /// Event-day abnormal return (`T+0`, %).
+    pub event_day_pct: Decimal,
+    /// Post-event 5-session drift (`T+1` to `T+5`, %).
+    pub post_5d_pct: Decimal,
+    /// Post-event 20-session drift (`T+1` to `T+20`, %).
+    pub post_20d_pct: Decimal,
+    /// Event-day volume relative to trailing 20-day pre-event average (`×`).
+    pub volume_ratio: Decimal,
+}
+
+/// Request payload for `POST /experimental-analysis/events`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalEventStudyRequest {
+    /// Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).
+    pub instrument_id: String,
+    /// Event study category (`buyback`, `earnings`, `macro`, `fno_rebalance`).
+    pub mode: StudyEventKind,
+    /// Optional benchmark instrument ID for abnormal return subtraction (e.g. `"NSE:NIFTY50"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark_id: Option<String>,
+    /// Optional ISO country filter for `macro` mode (`"IN"`, `"US"`, etc.).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub macro_country: Option<String>,
+    /// Inclusive start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Inclusive end date (`YYYY-MM-DD`).
+    pub end_date: String,
+}
+
+/// Response payload for `POST /experimental-analysis/events`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExperimentalEventStudyResponse {
+    /// Analyzed canonical instrument ID.
+    pub instrument_id: String,
+    /// Symbol.
+    pub symbol: String,
+    /// Exchange code.
+    pub exchange: String,
+    /// Requested event study mode.
+    pub mode: StudyEventKind,
+    /// `true` when at least one real Lakehouse event aligned with daily bars.
+    pub available: bool,
+    /// `true` when returns were benchmark-adjusted against `benchmark_id`.
+    pub benchmark_adjusted: bool,
+    /// Benchmark instrument label if adjusted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark_symbol: Option<String>,
+    /// Total aligned events.
+    pub event_count: usize,
+    /// Mean pre-event drift (`[-20d, -1d]`, %).
+    pub avg_pre_drift_pct: Decimal,
+    /// Mean event-day return (`T+0`, %).
+    pub avg_event_day_pct: Decimal,
+    /// Mean `+5d` drift (`[+1d, +5d]`, %).
+    pub avg_post_5d_pct: Decimal,
+    /// Mean `+20d` drift (`[+1d, +20d]`, %).
+    pub avg_post_20d_pct: Decimal,
+    /// Post `T+1` win rate (%).
+    pub win_rate_post_1d_pct: Decimal,
+    /// Post `T+5` win rate (%).
+    pub win_rate_post_5d_pct: Decimal,
+    /// Post `T+20` win rate (%).
+    pub win_rate_post_20d_pct: Decimal,
+    /// Mean event-day volume surge ratio (`×`).
+    pub avg_volume_surge_ratio: Decimal,
+    /// 41-point `[-20..=+20]` AAR / CAR trajectory.
+    pub window_curve: Vec<EventWindowPoint>,
+    /// Matched dated events table (up to 100 rows).
+    pub events: Vec<EventStudyRow>,
+    /// Honest data-source & projection availability message.
+    pub availability_note: String,
+}
+
+/// Dated historical news headline, macro release, or corporate/filing catalyst item.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct OutlierNewsItem {
+    /// Source category (`"news"`, `"macro_calendar"`, `"filing"`, `"corporate_action"`).
+    pub kind: String,
+    /// Event/article date (`YYYY-MM-DD`).
+    pub date: String,
+    /// Full timestamp / ISO datetime string.
+    pub published_at: String,
+    /// Headline or release title.
+    pub title: String,
+    /// Publisher or official calendar feed name.
+    pub source: String,
+    /// Optional article or filing URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Optional summary or release actual-vs-forecast string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Related instruments.
+    pub instruments: Vec<String>,
+}
+
+/// Request payload for `POST /experimental-analysis/outlier-news`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalOutlierNewsRequest {
+    /// Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).
+    pub instrument_id: String,
+    /// Asset class hint for default macro/catalyst keywords.
+    pub asset_class: StudyAssetClass,
+    /// Outlier period start date (`YYYY-MM-DD`).
+    pub window_start: String,
+    /// Outlier period end date (`YYYY-MM-DD`).
+    pub window_end: String,
+    /// Optional search keywords (space-separated).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keywords: Option<String>,
+    /// Maximum items to return (`1..=50`, default `20`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+}
+
+/// Response payload for `POST /experimental-analysis/outlier-news`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExperimentalOutlierNewsResponse {
+    /// Canonical instrument ID.
+    pub instrument_id: String,
+    /// Evaluated asset class.
+    pub asset_class: StudyAssetClass,
+    /// Expanded window start (`window_start - 2d`, `YYYY-MM-DD`).
+    pub expanded_start: String,
+    /// Expanded window end (`window_end + 1d`, `YYYY-MM-DD`).
+    pub expanded_end: String,
+    /// Effective search keywords applied.
+    pub keywords: String,
+    /// Matched real catalyst items sorted newest-first.
+    pub items: Vec<OutlierNewsItem>,
+    /// Total matched items returned.
+    pub count: usize,
+    /// Whether `NewsProjectionReader` was available.
+    pub news_archive_available: bool,
+    /// Whether `EconomicCalendarProjectionReader` was available.
+    pub macro_calendar_available: bool,
+    /// Whether `FilingsProjectionReader` was available.
+    pub filings_available: bool,
+    /// Honest explanation when archives are empty or offline.
+    pub availability_note: String,
+}

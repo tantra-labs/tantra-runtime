@@ -729,6 +729,297 @@
       "patch": null,
       "delete": null
     },
+    "/experimental-analysis/events": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate [-20d, +20d] CAR event reaction study for buybacks, earnings, macro & F&O rebalance",
+        "operationId": "postExperimentalAnalysisEvents",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalEventStudyRequest",
+                "description": "Request payload for `POST /experimental-analysis/events`.",
+                "type": "object",
+                "required": [
+                  "end_date",
+                  "instrument_id",
+                  "mode",
+                  "start_date"
+                ],
+                "properties": {
+                  "benchmark_id": {
+                    "description": "Optional benchmark instrument ID for abnormal return subtraction (e.g. `\"NSE:NIFTY50\"`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "macro_country": {
+                    "description": "Optional ISO country filter for `macro` mode (`\"IN\"`, `\"US\"`, etc.).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "mode": {
+                    "description": "Event study category (`buyback`, `earnings`, `macro`, `fno_rebalance`).",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyEventKind"
+                      }
+                    ]
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Benchmark-adjusted CAR[-20d, +20d] event study report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalEventStudyResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalEventStudyResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/experimental-analysis/forecast": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate Markov + volatility regime analog quantile forecast",
+        "operationId": "postExperimentalAnalysisForecast",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalForecastRequest",
+                "description": "Request payload for `POST /experimental-analysis/forecast`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class context.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "calc_type": {
+                    "description": "Return formula (`open_to_close`, `high_to_low`, `close_to_close`).",
+                    "default": "open_to_close",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/ReturnCalcKind"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "futures_roll_basis_bps": {
+                    "description": "Optional futures roll basis adjustment in bps.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "horizon_steps": {
+                    "description": "Forward forecast horizon in periods (`1..=12`, default `6`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "include_statutory_costs": {
+                    "description": "Whether to deduct statutory costs when in net mode.",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "period": {
+                    "description": "Period schedule.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "roll_basis_mode": {
+                    "description": "Optional F&O spread/basis adjustment mode.",
+                    "default": "gross_spot",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/RollBasisMode"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Optional spread slippage in bps.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Markov + volatility analog quantile fan & historical episodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalForecastResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalForecastResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/experimental-analysis/intraday": {
       "get": null,
       "post": {
@@ -863,6 +1154,289 @@
                       "anyOf": [
                         {
                           "$ref": "#/definitions/ExperimentalIntradayResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/experimental-analysis/options-overlay": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate multi-leg F&O options overlay & live bid-ask strike lab",
+        "operationId": "postExperimentalAnalysisOptionsOverlay",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalOptionsOverlayRequest",
+                "description": "Request payload for `POST /experimental-analysis/options-overlay`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class context for schedule slicing and exchange fee tier.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "include_statutory_costs": {
+                    "description": "Whether to deduct statutory Indian derivative turnover charges.",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "period": {
+                    "description": "Period slicing schedule.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Fallback round-trip spread slippage in bps (`0..=500`, default `15`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "strategy": {
+                    "description": "Option overlay strategy family (default `covered_call`).",
+                    "default": "covered_call",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/OptionOverlayStrategy"
+                      }
+                    ]
+                  },
+                  "target_short_prob_pct": {
+                    "description": "Target non-exceedance probability (`55..=98`, default `80`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "wing_width_pct": {
+                    "description": "Protective wing width percentage (`0.5..=15.0`, default `3.0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Multi-leg options overlay & strike lab report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalOptionsOverlayResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalOptionsOverlayResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/experimental-analysis/outlier-news": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Retrieve dated archival news, macro releases & filings for outlier windows",
+        "operationId": "postExperimentalAnalysisOutlierNews",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalOutlierNewsRequest",
+                "description": "Request payload for `POST /experimental-analysis/outlier-news`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "instrument_id",
+                  "window_end",
+                  "window_start"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class hint for default macro/catalyst keywords.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "keywords": {
+                    "description": "Optional search keywords (space-separated).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "limit": {
+                    "description": "Maximum items to return (`1..=50`, default `20`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "window_end": {
+                    "description": "Outlier period end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "window_start": {
+                    "description": "Outlier period start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Outlier window news, macro calendar & filings items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalOutlierNewsResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalOutlierNewsResponse"
                         },
                         {
                           "type": "null"
@@ -3776,6 +4350,61 @@
   },
   "components": {
     "schemas": {
+      "AnalogEpisode": {
+        "description": "Historical analog episode matching active Markov + Volatility state.",
+        "type": "object",
+        "required": [
+          "horizon_end_pct",
+          "markov_state",
+          "next_1_pct",
+          "trailing_vol_pct",
+          "trigger_end_date",
+          "trigger_return_pct",
+          "vol_regime"
+        ],
+        "properties": {
+          "horizon_end_pct": {
+            "description": "Compounded return through horizon end (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "markov_state": {
+            "description": "Markov streak state at match date.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkovState"
+              }
+            ]
+          },
+          "next_1_pct": {
+            "description": "Next-1-period forward return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "trailing_vol_pct": {
+            "description": "Trailing 5-period realized volatility (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "trigger_end_date": {
+            "description": "Period end date of match (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "trigger_return_pct": {
+            "description": "Period return at trigger (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "vol_regime": {
+            "description": "Volatility regime at match date.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/VolatilityRegime"
+              }
+            ]
+          }
+        }
+      },
       "AssetClassCatalogGroup": {
         "description": "Grouped instruments and supported schedules for one asset class.",
         "type": "object",
@@ -4315,6 +4944,120 @@
           }
         }
       },
+      "EventStudyRow": {
+        "description": "Per-event drift summary row for event study tables.",
+        "type": "object",
+        "required": [
+          "event_date",
+          "event_day_pct",
+          "kind",
+          "post_20d_pct",
+          "post_5d_pct",
+          "pre_drift_pct",
+          "symbol",
+          "title",
+          "volume_ratio"
+        ],
+        "properties": {
+          "detail": {
+            "description": "Optional numeric or category detail.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "event_date": {
+            "description": "Aligned trading date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "event_day_pct": {
+            "description": "Event-day abnormal return (`T+0`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "kind": {
+            "description": "Event classification.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyEventKind"
+              }
+            ]
+          },
+          "post_20d_pct": {
+            "description": "Post-event 20-session drift (`T+1` to `T+20`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "post_5d_pct": {
+            "description": "Post-event 5-session drift (`T+1` to `T+5`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pre_drift_pct": {
+            "description": "Pre-event drift (`T-20` to `T-1`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "symbol": {
+            "description": "Instrument symbol.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Human-readable event title.",
+            "type": "string"
+          },
+          "volume_ratio": {
+            "description": "Event-day volume relative to trailing 20-day pre-event average (`×`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "EventWindowPoint": {
+        "description": "Average & Cumulative Abnormal Return sample for offset `k ∈ [-20..=+20]`.",
+        "type": "object",
+        "required": [
+          "avg_abnormal_return_pct",
+          "cum_abnormal_return_pct",
+          "day_offset",
+          "median_return_pct",
+          "sample_count",
+          "win_rate_pct"
+        ],
+        "properties": {
+          "avg_abnormal_return_pct": {
+            "description": "Cross-event average abnormal daily return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "cum_abnormal_return_pct": {
+            "description": "Cumulative average abnormal return (`T-20..=day_offset`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "day_offset": {
+            "description": "Trading-day offset relative to event `T+0` (`-20..=+20`).",
+            "type": "integer",
+            "format": "int32"
+          },
+          "median_return_pct": {
+            "description": "Cross-event median abnormal return (%) at `day_offset`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sample_count": {
+            "description": "Events contributing at this offset.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "win_rate_pct": {
+            "description": "Share (%) of positive abnormal returns at `day_offset`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
       "ExperimentalCatalogResponse": {
         "title": "ExperimentalCatalogResponse",
         "description": "Response payload for `GET /experimental-analysis/catalog`.",
@@ -4487,6 +5230,388 @@
                 "type": "string",
                 "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
               }
+            }
+          }
+        }
+      },
+      "ExperimentalEventStudyRequest": {
+        "title": "ExperimentalEventStudyRequest",
+        "description": "Request payload for `POST /experimental-analysis/events`.",
+        "type": "object",
+        "required": [
+          "end_date",
+          "instrument_id",
+          "mode",
+          "start_date"
+        ],
+        "properties": {
+          "benchmark_id": {
+            "description": "Optional benchmark instrument ID for abnormal return subtraction (e.g. `\"NSE:NIFTY50\"`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end_date": {
+            "description": "Inclusive end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+            "type": "string"
+          },
+          "macro_country": {
+            "description": "Optional ISO country filter for `macro` mode (`\"IN\"`, `\"US\"`, etc.).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "description": "Event study category (`buyback`, `earnings`, `macro`, `fno_rebalance`).",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyEventKind"
+              }
+            ]
+          },
+          "start_date": {
+            "description": "Inclusive start date (`YYYY-MM-DD`).",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentalEventStudyResponse": {
+        "title": "ExperimentalEventStudyResponse",
+        "description": "Response payload for `POST /experimental-analysis/events`.",
+        "type": "object",
+        "required": [
+          "availability_note",
+          "available",
+          "avg_event_day_pct",
+          "avg_post_20d_pct",
+          "avg_post_5d_pct",
+          "avg_pre_drift_pct",
+          "avg_volume_surge_ratio",
+          "benchmark_adjusted",
+          "event_count",
+          "events",
+          "exchange",
+          "instrument_id",
+          "mode",
+          "symbol",
+          "win_rate_post_1d_pct",
+          "win_rate_post_20d_pct",
+          "win_rate_post_5d_pct",
+          "window_curve"
+        ],
+        "properties": {
+          "availability_note": {
+            "description": "Honest data-source & projection availability message.",
+            "type": "string"
+          },
+          "available": {
+            "description": "`true` when at least one real Lakehouse event aligned with daily bars.",
+            "type": "boolean"
+          },
+          "avg_event_day_pct": {
+            "description": "Mean event-day return (`T+0`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_post_20d_pct": {
+            "description": "Mean `+20d` drift (`[+1d, +20d]`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_post_5d_pct": {
+            "description": "Mean `+5d` drift (`[+1d, +5d]`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_pre_drift_pct": {
+            "description": "Mean pre-event drift (`[-20d, -1d]`, %).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_volume_surge_ratio": {
+            "description": "Mean event-day volume surge ratio (`×`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "benchmark_adjusted": {
+            "description": "`true` when returns were benchmark-adjusted against `benchmark_id`.",
+            "type": "boolean"
+          },
+          "benchmark_symbol": {
+            "description": "Benchmark instrument label if adjusted.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "event_count": {
+            "description": "Total aligned events.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "events": {
+            "description": "Matched dated events table (up to 100 rows).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/EventStudyRow"
+            }
+          },
+          "exchange": {
+            "description": "Exchange code.",
+            "type": "string"
+          },
+          "instrument_id": {
+            "description": "Analyzed canonical instrument ID.",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Requested event study mode.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyEventKind"
+              }
+            ]
+          },
+          "symbol": {
+            "description": "Symbol.",
+            "type": "string"
+          },
+          "win_rate_post_1d_pct": {
+            "description": "Post `T+1` win rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "win_rate_post_20d_pct": {
+            "description": "Post `T+20` win rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "win_rate_post_5d_pct": {
+            "description": "Post `T+5` win rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "window_curve": {
+            "description": "41-point `[-20..=+20]` AAR / CAR trajectory.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/EventWindowPoint"
+            }
+          }
+        }
+      },
+      "ExperimentalForecastRequest": {
+        "title": "ExperimentalForecastRequest",
+        "description": "Request payload for `POST /experimental-analysis/forecast`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "end_date",
+          "instrument_id",
+          "period",
+          "start_date"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class context.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "calc_type": {
+            "description": "Return formula (`open_to_close`, `high_to_low`, `close_to_close`).",
+            "default": "open_to_close",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ReturnCalcKind"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "Inclusive end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "futures_roll_basis_bps": {
+            "description": "Optional futures roll basis adjustment in bps.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "horizon_steps": {
+            "description": "Forward forecast horizon in periods (`1..=12`, default `6`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "include_statutory_costs": {
+            "description": "Whether to deduct statutory costs when in net mode.",
+            "default": false,
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+            "type": "string"
+          },
+          "period": {
+            "description": "Period schedule.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "roll_basis_mode": {
+            "description": "Optional F&O spread/basis adjustment mode.",
+            "default": "gross_spot",
+            "allOf": [
+              {
+                "$ref": "#/definitions/RollBasisMode"
+              }
+            ]
+          },
+          "spread_slippage_bps": {
+            "description": "Optional spread slippage in bps.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Inclusive start date (`YYYY-MM-DD`).",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentalForecastResponse": {
+        "title": "ExperimentalForecastResponse",
+        "description": "Response payload for `POST /experimental-analysis/forecast`.",
+        "type": "object",
+        "required": [
+          "analog_count",
+          "asset_class",
+          "current_markov_label",
+          "current_trailing_vol_pct",
+          "current_vol_regime",
+          "end_date",
+          "exchange",
+          "horizon_fan",
+          "instrument_id",
+          "match_tier",
+          "period",
+          "spot_price",
+          "start_date",
+          "symbol",
+          "top_analogs"
+        ],
+        "properties": {
+          "analog_count": {
+            "description": "Count of historical analog periods selected.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "asset_class": {
+            "description": "Asset class evaluated.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "current_markov_label": {
+            "description": "Active Markov display label.",
+            "type": "string"
+          },
+          "current_markov_state": {
+            "description": "Active Markov streak state.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/MarkovState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_trailing_vol_pct": {
+            "description": "Trailing 5-period realized std dev (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "current_vol_regime": {
+            "description": "Active trailing volatility regime.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/VolatilityRegime"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "Effective end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "exchange": {
+            "description": "Exchange code.",
+            "type": "string"
+          },
+          "horizon_fan": {
+            "description": "Multi-step forward quantile fan (`1..=horizon_steps`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ForecastHorizonStep"
+            }
+          },
+          "instrument_id": {
+            "description": "Analyzed canonical instrument ID.",
+            "type": "string"
+          },
+          "match_tier": {
+            "description": "Analog conditioning tier (`\"exact_state_and_vol\"`, `\"markov_state_only\"`, `\"direction_only\"`, `\"unconditional\"`).",
+            "type": "string"
+          },
+          "period": {
+            "description": "Period schedule applied.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "spot_price": {
+            "description": "Reference spot price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Effective start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Symbol.",
+            "type": "string"
+          },
+          "top_analogs": {
+            "description": "Top matching historical episodes (up to 15).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/AnalogEpisode"
             }
           }
         }
@@ -4683,6 +5808,437 @@
           "symbol": {
             "description": "Symbol.",
             "type": "string"
+          }
+        }
+      },
+      "ExperimentalOptionsOverlayRequest": {
+        "title": "ExperimentalOptionsOverlayRequest",
+        "description": "Request payload for `POST /experimental-analysis/options-overlay`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "end_date",
+          "instrument_id",
+          "period",
+          "start_date"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class context for schedule slicing and exchange fee tier.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "Inclusive end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "include_statutory_costs": {
+            "description": "Whether to deduct statutory Indian derivative turnover charges.",
+            "default": false,
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+            "type": "string"
+          },
+          "period": {
+            "description": "Period slicing schedule.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "spread_slippage_bps": {
+            "description": "Fallback round-trip spread slippage in bps (`0..=500`, default `15`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Inclusive start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "strategy": {
+            "description": "Option overlay strategy family (default `covered_call`).",
+            "default": "covered_call",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OptionOverlayStrategy"
+              }
+            ]
+          },
+          "target_short_prob_pct": {
+            "description": "Target non-exceedance probability (`55..=98`, default `80`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "wing_width_pct": {
+            "description": "Protective wing width percentage (`0.5..=15.0`, default `3.0`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentalOptionsOverlayResponse": {
+        "title": "ExperimentalOptionsOverlayResponse",
+        "description": "Response payload for `POST /experimental-analysis/options-overlay`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "availability_note",
+          "buy_hold_cum_pct",
+          "buy_hold_max_drawdown_pct",
+          "empirical_rv_pct",
+          "end_date",
+          "equity_curve",
+          "exchange",
+          "instrument_id",
+          "legs",
+          "live_chain_available",
+          "live_contract_count",
+          "net_after_friction_pct",
+          "net_premium_pct",
+          "overlay_gross_cum_pct",
+          "overlay_max_drawdown_pct",
+          "overlay_net_cum_pct",
+          "period",
+          "probability_of_profit_pct",
+          "spot_price",
+          "start_date",
+          "statutory_cost_pct",
+          "strategy",
+          "strike_lab",
+          "symbol",
+          "total_periods",
+          "total_spread_drag_pct",
+          "win_periods"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class evaluated.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "availability_note": {
+            "description": "Honest data-source & quote availability explanation.",
+            "type": "string"
+          },
+          "buy_hold_cum_pct": {
+            "description": "Final buy-and-hold cumulative return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "buy_hold_max_drawdown_pct": {
+            "description": "Maximum buy-and-hold drawdown (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "empirical_rv_pct": {
+            "description": "Empirical annualized realized volatility (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "end_date": {
+            "description": "Effective end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "equity_curve": {
+            "description": "Equity comparison series.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OverlayEquityPoint"
+            }
+          },
+          "exchange": {
+            "description": "Exchange code.",
+            "type": "string"
+          },
+          "instrument_id": {
+            "description": "Analyzed canonical instrument ID.",
+            "type": "string"
+          },
+          "iv_minus_rv_pct": {
+            "description": "Volatility risk premium (`IV - RV`) in % points when live chain exists.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "legs": {
+            "description": "Configured strategy legs with quoted bid/ask & execution pricing.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OptionLegSpec"
+            }
+          },
+          "live_chain_available": {
+            "description": "True when live option quotes were matched from the runtime quote store.",
+            "type": "boolean"
+          },
+          "live_contract_count": {
+            "description": "Count of live option contracts inspected.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "max_loss_pct": {
+            "description": "Capped max loss per cycle (% of spot, <= 0), if bounded.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_profit_pct": {
+            "description": "Capped max profit per cycle (% of spot), if bounded.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "nearest_expiry": {
+            "description": "Nearest live option expiry date (`YYYY-MM-DD`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "net_after_friction_pct": {
+            "description": "Net option credit/debit (% of spot) after spread & fees.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_premium_pct": {
+            "description": "Net option credit/debit per cycle (% of spot) before friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "overlay_gross_cum_pct": {
+            "description": "Final gross overlay cumulative return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "overlay_max_drawdown_pct": {
+            "description": "Maximum net overlay drawdown (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "overlay_net_cum_pct": {
+            "description": "Final net overlay cumulative return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "period": {
+            "description": "Period schedule applied.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "probability_of_profit_pct": {
+            "description": "Empirical probability of profit (%) after friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "quoted_iv_proxy_pct": {
+            "description": "Implied volatility proxy (%) from live ATM option quotes, when live chain exists.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "spot_price": {
+            "description": "Reference underlying spot price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Effective start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "statutory_cost_pct": {
+            "description": "Statutory fee drag (% of spot) per cycle.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "strategy": {
+            "description": "Evaluated option strategy.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OptionOverlayStrategy"
+              }
+            ]
+          },
+          "strike_lab": {
+            "description": "Strike liquidity & empirical exceedance lab rows.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/StrikeLabRow"
+            }
+          },
+          "symbol": {
+            "description": "Symbol.",
+            "type": "string"
+          },
+          "total_periods": {
+            "description": "Total simulated periods.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "total_spread_drag_pct": {
+            "description": "Bid-ask spread drag (% of spot) per cycle.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "win_periods": {
+            "description": "Winning net periods.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "ExperimentalOutlierNewsRequest": {
+        "title": "ExperimentalOutlierNewsRequest",
+        "description": "Request payload for `POST /experimental-analysis/outlier-news`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "instrument_id",
+          "window_end",
+          "window_start"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class hint for default macro/catalyst keywords.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+            "type": "string"
+          },
+          "keywords": {
+            "description": "Optional search keywords (space-separated).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "Maximum items to return (`1..=50`, default `20`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "window_end": {
+            "description": "Outlier period end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "window_start": {
+            "description": "Outlier period start date (`YYYY-MM-DD`).",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentalOutlierNewsResponse": {
+        "title": "ExperimentalOutlierNewsResponse",
+        "description": "Response payload for `POST /experimental-analysis/outlier-news`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "availability_note",
+          "count",
+          "expanded_end",
+          "expanded_start",
+          "filings_available",
+          "instrument_id",
+          "items",
+          "keywords",
+          "macro_calendar_available",
+          "news_archive_available"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Evaluated asset class.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "availability_note": {
+            "description": "Honest explanation when archives are empty or offline.",
+            "type": "string"
+          },
+          "count": {
+            "description": "Total matched items returned.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "expanded_end": {
+            "description": "Expanded window end (`window_end + 1d`, `YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "expanded_start": {
+            "description": "Expanded window start (`window_start - 2d`, `YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "filings_available": {
+            "description": "Whether `FilingsProjectionReader` was available.",
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "description": "Canonical instrument ID.",
+            "type": "string"
+          },
+          "items": {
+            "description": "Matched real catalyst items sorted newest-first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OutlierNewsItem"
+            }
+          },
+          "keywords": {
+            "description": "Effective search keywords applied.",
+            "type": "string"
+          },
+          "macro_calendar_available": {
+            "description": "Whether `EconomicCalendarProjectionReader` was available.",
+            "type": "boolean"
+          },
+          "news_archive_available": {
+            "description": "Whether `NewsProjectionReader` was available.",
+            "type": "boolean"
           }
         }
       },
@@ -5084,6 +6640,88 @@
           "symbol": {
             "description": "Instrument symbol.",
             "type": "string"
+          }
+        }
+      },
+      "ForecastHorizonStep": {
+        "description": "Forward quantile step for Tab 11 (`Forecasting`).",
+        "type": "object",
+        "required": [
+          "mean_pct",
+          "p10_pct",
+          "p10_price",
+          "p25_pct",
+          "p50_pct",
+          "p50_price",
+          "p75_pct",
+          "p90_pct",
+          "p90_price",
+          "positive_prob_pct",
+          "sample_count",
+          "step"
+        ],
+        "properties": {
+          "mean_pct": {
+            "description": "Mean compounded forward return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p10_pct": {
+            "description": "10th percentile compounded forward return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p10_price": {
+            "description": "Spot-anchored `P10` target price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p25_pct": {
+            "description": "25th percentile compounded forward return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p50_pct": {
+            "description": "50th percentile (median) compounded forward return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p50_price": {
+            "description": "Spot-anchored `P50` target price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p75_pct": {
+            "description": "75th percentile compounded forward return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p90_pct": {
+            "description": "90th percentile compounded forward return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p90_price": {
+            "description": "Spot-anchored `P90` target price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "positive_prob_pct": {
+            "description": "Share (%) of analog paths finishing positive (`> 0`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sample_count": {
+            "description": "Analog sample count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "step": {
+            "description": "Forward step index (`1..=horizon_steps`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
           }
         }
       },
@@ -6063,6 +7701,119 @@
           }
         }
       },
+      "OptionLegSpec": {
+        "description": "Single option or underlying leg inside a multi-leg structure.",
+        "type": "object",
+        "required": [
+          "execution_price",
+          "fair_value_pct",
+          "option_type",
+          "role",
+          "side",
+          "strike"
+        ],
+        "properties": {
+          "ask": {
+            "description": "Quoted live ask price when option chain is loaded.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "bid": {
+            "description": "Quoted live bid price when option chain is loaded.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "execution_price": {
+            "description": "Effective execution price after crossing bid/ask or configured slippage.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "fair_value_pct": {
+            "description": "Empirical cycle fair value (% of spot).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "option_type": {
+            "description": "`\"SPOT\"`, `\"CE\"`, or `\"PE\"`.",
+            "type": "string"
+          },
+          "role": {
+            "description": "Strategy leg label (`\"Long Underlying\"`, `\"Short OTM Call\"`, etc.).",
+            "type": "string"
+          },
+          "side": {
+            "description": "`\"BUY\"` or `\"SELL\"`.",
+            "type": "string"
+          },
+          "spread_abs": {
+            "description": "Quoted bid-ask spread in price units (`ask - bid`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "spread_bps": {
+            "description": "Quoted bid-ask spread in basis points relative to mid price.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "strike": {
+            "description": "Selected strike price (or spot reference).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "OptionOverlayStrategy": {
+        "description": "Option overlay strategy family evaluated in Tab 8 & Tab 9.",
+        "oneOf": [
+          {
+            "description": "Long 1× underlying + Short 1× OTM Call at empirical target probability strike.",
+            "type": "string",
+            "enum": [
+              "covered_call"
+            ]
+          },
+          {
+            "description": "Defined-risk Bull Call vertical spread (Long ATM CE + Short OTM CE).",
+            "type": "string",
+            "enum": [
+              "bull_call_spread"
+            ]
+          },
+          {
+            "description": "Defined-risk Bear Put vertical spread (Long ATM PE + Short OTM PE).",
+            "type": "string",
+            "enum": [
+              "bear_put_spread"
+            ]
+          },
+          {
+            "description": "Four-leg range-bound Iron Condor (Short OTM CE/PE + Long protective wings).",
+            "type": "string",
+            "enum": [
+              "iron_condor"
+            ]
+          },
+          {
+            "description": "Calendar time-spread roll proxy (Short near-cycle ATM CE + Long next-cycle ATM CE).",
+            "type": "string",
+            "enum": [
+              "calendar_spread"
+            ]
+          }
+        ]
+      },
       "OrbBacktestResult": {
         "description": "Tab 10: Complete 15m Opening Range Breakout + Flip simulation result.",
         "type": "object",
@@ -6509,6 +8260,61 @@
           }
         }
       },
+      "OutlierNewsItem": {
+        "description": "Dated historical news headline, macro release, or corporate/filing catalyst item.",
+        "type": "object",
+        "required": [
+          "date",
+          "instruments",
+          "kind",
+          "published_at",
+          "source",
+          "title"
+        ],
+        "properties": {
+          "date": {
+            "description": "Event/article date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "instruments": {
+            "description": "Related instruments.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "description": "Source category (`\"news\"`, `\"macro_calendar\"`, `\"filing\"`, `\"corporate_action\"`).",
+            "type": "string"
+          },
+          "published_at": {
+            "description": "Full timestamp / ISO datetime string.",
+            "type": "string"
+          },
+          "source": {
+            "description": "Publisher or official calendar feed name.",
+            "type": "string"
+          },
+          "summary": {
+            "description": "Optional summary or release actual-vs-forecast string.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "Headline or release title.",
+            "type": "string"
+          },
+          "url": {
+            "description": "Optional article or filing URL.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "OutlierPeriodPoint": {
         "description": "Single period point classified by empirical survivability bounds.",
         "type": "object",
@@ -6574,6 +8380,43 @@
             ]
           }
         ]
+      },
+      "OverlayEquityPoint": {
+        "description": "Period-by-period equity curve sample comparing Buy-and-Hold vs Options Overlay.",
+        "type": "object",
+        "required": [
+          "buy_hold_cum_pct",
+          "date",
+          "overlay_gross_cum_pct",
+          "overlay_net_cum_pct",
+          "period_payoff_pct"
+        ],
+        "properties": {
+          "buy_hold_cum_pct": {
+            "description": "Buy-and-Hold cumulative return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "date": {
+            "description": "Period end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "overlay_gross_cum_pct": {
+            "description": "Gross overlay cumulative return (%) before spread & statutory costs.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "overlay_net_cum_pct": {
+            "description": "Net overlay cumulative return (%) after spread & statutory costs.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "period_payoff_pct": {
+            "description": "Single-period net strategy payoff (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
       },
       "PeriodPoint": {
         "description": "Chronological period point rendered in Lollipop/Bar/SMA charts and Period table.",
@@ -8930,6 +10773,97 @@
           }
         }
       },
+      "StrikeLabRow": {
+        "description": "Strike liquidity & empirical exceedance row for Tab 9 (`Expiry Strike Lab`).",
+        "type": "object",
+        "required": [
+          "exceedance_prob_pct",
+          "liquidity_tier",
+          "moneyness_pct",
+          "option_type",
+          "strike"
+        ],
+        "properties": {
+          "ask": {
+            "description": "Best ask price when quoted.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "bid": {
+            "description": "Best bid price when quoted.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "exceedance_prob_pct": {
+            "description": "Empirical probability (%) spot closes beyond this strike.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "expiry": {
+            "description": "Option expiry date (`YYYY-MM-DD`) when sourced from live chain.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "liquidity_tier": {
+            "description": "Liquidity tier: `\"tight\"`, `\"moderate\"`, `\"wide\"`, or `\"unquoted\"`.",
+            "type": "string"
+          },
+          "mid": {
+            "description": "Midpoint `(bid + ask) / 2`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "moneyness_pct": {
+            "description": "Strike moneyness relative to spot (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "open_interest": {
+            "description": "Latest open interest when available.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "option_type": {
+            "description": "`\"CE\"` or `\"PE\"`.",
+            "type": "string"
+          },
+          "spread_abs": {
+            "description": "Quoted bid-ask spread (`ask - bid`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "spread_bps": {
+            "description": "Quoted bid-ask spread in bps.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "strike": {
+            "description": "Strike price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
       "StudyAssetClass": {
         "description": "Generalized asset class supported by the `Experimental-Analysis` workbench.",
         "oneOf": [
@@ -8973,6 +10907,39 @@
             "type": "string",
             "enum": [
               "commodity"
+            ]
+          }
+        ]
+      },
+      "StudyEventKind": {
+        "description": "Event study category aligned across Phase 3 Event Modes & Tab 12.",
+        "oneOf": [
+          {
+            "description": "Share buyback / tender / bonus / corporate action.",
+            "type": "string",
+            "enum": [
+              "buyback"
+            ]
+          },
+          {
+            "description": "Quarterly earnings or financial result release.",
+            "type": "string",
+            "enum": [
+              "earnings"
+            ]
+          },
+          {
+            "description": "Sovereign / central bank macro release (RBI / FOMC / CPI / GDP).",
+            "type": "string",
+            "enum": [
+              "macro"
+            ]
+          },
+          {
+            "description": "F&O inclusion, exclusion, or index rebalance corporate event.",
+            "type": "string",
+            "enum": [
+              "fno_rebalance"
             ]
           }
         ]
@@ -9168,6 +11135,32 @@
             "type": "string",
             "enum": [
               "halted"
+            ]
+          }
+        ]
+      },
+      "VolatilityRegime": {
+        "description": "Trailing volatility regime classification (empirical terciles).",
+        "oneOf": [
+          {
+            "description": "Lower third (`<= P33`).",
+            "type": "string",
+            "enum": [
+              "low"
+            ]
+          },
+          {
+            "description": "Middle third (`P33..P67`).",
+            "type": "string",
+            "enum": [
+              "normal"
+            ]
+          },
+          {
+            "description": "Upper third (`>= P67`).",
+            "type": "string",
+            "enum": [
+              "elevated"
             ]
           }
         ]

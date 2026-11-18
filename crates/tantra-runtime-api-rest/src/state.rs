@@ -385,6 +385,12 @@ impl AppState {
         self
     }
 
+    /// Configures a Lakehouse / catalog root directory for projection readers and calendars.
+    pub fn with_lakehouse_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.lakehouse_root = Some(root.into());
+        self
+    }
+
     /// Appends one NDJSON record per `PUT /trading-state` change to `path` (created on first
     /// change). Off by default. The journal is a record, not a source of truth: the state is
     /// never restored from it at start-up (ADR 0015, explicit runtime).

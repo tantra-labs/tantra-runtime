@@ -137,7 +137,7 @@ impl BarReader for MultiTfBarReader {
     }
 }
 
-fn test_app() -> Router {
+fn test_state() -> AppState {
     let start = NaiveDate::from_ymd_opt(2025, 6, 16).unwrap();
     let daily_dataset = Dataset::from_slices(vec![
         synthetic_daily_slice(Exchange::Nse, "RELIANCE", start, 95),
@@ -160,14 +160,18 @@ fn test_app() -> Router {
         daily: Arc::clone(&daily_reader),
         min5: min5_reader,
     });
-    api_router_with(AppState::new(
+    AppState::new(
         Arc::clone(&daily_reader)
             as Arc<dyn tantra_runtime_api_rest::market_feed::ports::InstrumentMaster>,
         bar_reader,
         Arc::clone(&daily_reader)
             as Arc<dyn tantra_runtime_api_rest::market_feed::ports::QuoteReader>,
         daily_reader as Arc<dyn tantra_runtime_api_rest::market_feed::ports::DepthReader>,
-    ))
+    )
+}
+
+fn test_app() -> Router {
+    api_router_with(test_state())
 }
 
 async fn get_json(app: &Router, uri: &str) -> (StatusCode, Value) {
@@ -515,4 +519,350 @@ async fn correlation_computes_symmetric_matrices_and_rolling_spread() {
     assert_eq!(d["rolling_window"], 15);
     assert!(d["aligned_sessions"].as_u64().unwrap() >= 80);
     assert!(!d["rolling_series"].as_array().unwrap().is_empty());
+}
+
+
+fn date32_days(y: i32, m: u32, d: u32) -> i32 {
+    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+    i32::try_from((NaiveDate::from_ymd_opt(y, m, d).unwrap() - epoch).num_days()).unwrap()
+}
+
+fn write_synthetic_lakehouse_projections(root: &std::path::Path) {
+    use arrow::array::{Date32Array, Decimal128Array, Int32Array, StringArray};
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use parquet::arrow::arrow_writer::ArrowWriter;
+
+    // 1. Corporate actions (Buyback for NSE:RELIANCE on 2025-08-05)
+    let ca_dir = root.join("catalog").join("corporate_actions");
+    std::fs::create_dir_all(&ca_dir).unwrap();
+    let ca_schema = Arc::new(Schema::new(vec![
+        Field::new("ex_date", DataType::Date32, false),
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("action_type", DataType::Utf8, false),
+        Field::new("old_shares", DataType::Int32, true),
+        Field::new("new_shares", DataType::Int32, true),
+        Field::new("per_share", DataType::Decimal128(18, 4), true),
+        Field::new("issue_price", DataType::Decimal128(18, 4), true),
+        Field::new("currency", DataType::Utf8, false),
+    ]));
+    let per_share = Decimal128Array::from(vec![Some(250_000i128)])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let issue_price = Decimal128Array::from(vec![None])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let ca_batch = RecordBatch::try_new(
+        ca_schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![date32_days(2025, 8, 5)])),
+            Arc::new(StringArray::from(vec!["NSE:RELIANCE"])),
+            Arc::new(StringArray::from(vec!["buyback"])),
+            Arc::new(Int32Array::from(vec![None])),
+            Arc::new(Int32Array::from(vec![None])),
+            Arc::new(per_share),
+            Arc::new(issue_price),
+            Arc::new(StringArray::from(vec!["INR"])),
+        ],
+    )
+    .unwrap();
+    let mut ca_writer = ArrowWriter::try_new(
+        std::fs::File::create(ca_dir.join("2025.parquet")).unwrap(),
+        ca_schema,
+        None,
+    )
+    .unwrap();
+    ca_writer.write(&ca_batch).unwrap();
+    ca_writer.close().unwrap();
+
+    // 2. Filings (Q2 Earnings on 2025-09-10)
+    let fil_dir = root.join("catalog").join("filings");
+    std::fs::create_dir_all(&fil_dir).unwrap();
+    let fil_schema = Arc::new(Schema::new(vec![
+        Field::new("filing_date", DataType::Date32, false),
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("filing_type", DataType::Utf8, false),
+        Field::new("title", DataType::Utf8, false),
+        Field::new("source_url", DataType::Utf8, true),
+    ]));
+    let fil_batch = RecordBatch::try_new(
+        fil_schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![date32_days(2025, 9, 10)])),
+            Arc::new(StringArray::from(vec!["NSE:RELIANCE"])),
+            Arc::new(StringArray::from(vec!["financial_results"])),
+            Arc::new(StringArray::from(vec!["Q2 Unaudited Results"] )),
+            Arc::new(StringArray::from(vec![Some("https://example.com/q2")])),
+        ],
+    )
+    .unwrap();
+    let mut fil_writer = ArrowWriter::try_new(
+        std::fs::File::create(fil_dir.join("2025.parquet")).unwrap(),
+        fil_schema,
+        None,
+    )
+    .unwrap();
+    fil_writer.write(&fil_batch).unwrap();
+    fil_writer.close().unwrap();
+
+    // 3. Economic calendar (RBI MPC rate decision IN on 2025-08-08)
+    let cal_dir = root.join("catalog").join("economic_calendar");
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let cal_schema = Arc::new(Schema::new(vec![
+        Field::new("scheduled_date", DataType::Date32, false),
+        Field::new("scheduled_at", DataType::Utf8, false),
+        Field::new("instrument", DataType::Utf8, true),
+        Field::new("country", DataType::Utf8, false),
+        Field::new("currency", DataType::Utf8, false),
+        Field::new("category", DataType::Utf8, false),
+        Field::new("event_name", DataType::Utf8, false),
+        Field::new("impact_level", DataType::Utf8, false),
+        Field::new("actual", DataType::Decimal128(18, 4), true),
+        Field::new("forecast", DataType::Decimal128(18, 4), true),
+        Field::new("prior", DataType::Decimal128(18, 4), true),
+        Field::new("period_label", DataType::Utf8, true),
+    ]));
+    let dec_arr = Decimal128Array::from(vec![Some(65_000i128)])
+        .with_precision_and_scale(18, 4)
+        .unwrap();
+    let cal_batch = RecordBatch::try_new(
+        cal_schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![date32_days(2025, 8, 8)])),
+            Arc::new(StringArray::from(vec!["2025-08-08T10:00:00Z"])),
+            Arc::new(StringArray::from(vec![None::<&str>])),
+            Arc::new(StringArray::from(vec!["IN"])),
+            Arc::new(StringArray::from(vec!["INR"])),
+            Arc::new(StringArray::from(vec!["Monetary Policy"])),
+            Arc::new(StringArray::from(vec!["RBI Repo Rate Decision"])),
+            Arc::new(StringArray::from(vec!["high"])),
+            Arc::new(dec_arr.clone()),
+            Arc::new(dec_arr.clone()),
+            Arc::new(dec_arr),
+            Arc::new(StringArray::from(vec![Some("Aug 2025")])),
+        ],
+    )
+    .unwrap();
+    let mut cal_writer = ArrowWriter::try_new(
+        std::fs::File::create(cal_dir.join("2025.parquet")).unwrap(),
+        cal_schema,
+        None,
+    )
+    .unwrap();
+    cal_writer.write(&cal_batch).unwrap();
+    cal_writer.close().unwrap();
+
+    // 4. News headline on 2025-08-04 (caught by window_start - 2d expansion around 2025-08-05)
+    let news_dir = root.join("catalog").join("news");
+    std::fs::create_dir_all(&news_dir).unwrap();
+    let news_schema = Arc::new(Schema::new(vec![
+        Field::new("published_date", DataType::Date32, false),
+        Field::new("published_at", DataType::Utf8, false),
+        Field::new("article_id", DataType::Utf8, false),
+        Field::new("title", DataType::Utf8, false),
+        Field::new("source", DataType::Utf8, false),
+        Field::new("url", DataType::Utf8, false),
+        Field::new("summary", DataType::Utf8, true),
+        Field::new("instruments", DataType::Utf8, false),
+    ]));
+    let news_batch = RecordBatch::try_new(
+        news_schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![date32_days(2025, 8, 4)])),
+            Arc::new(StringArray::from(vec!["2025-08-04T09:15:00Z"])),
+            Arc::new(StringArray::from(vec!["art-1"])),
+            Arc::new(StringArray::from(vec!["Reliance announces tender buyback record date"])),
+            Arc::new(StringArray::from(vec!["NSE Wires"])),
+            Arc::new(StringArray::from(vec!["https://example.com/news/1"])),
+            Arc::new(StringArray::from(vec![Some("Tender offer approved by board")])),
+            Arc::new(StringArray::from(vec!["NSE:RELIANCE"])),
+        ],
+    )
+    .unwrap();
+    let mut news_writer = ArrowWriter::try_new(
+        std::fs::File::create(news_dir.join("2025.parquet")).unwrap(),
+        news_schema,
+        None,
+    )
+    .unwrap();
+    news_writer.write(&news_batch).unwrap();
+    news_writer.close().unwrap();
+}
+
+#[tokio::test]
+async fn options_overlay_evaluates_spreads_and_preserves_unquoted_zero_fabrication() {
+    let app = test_app();
+
+    for (strategy, expected_legs) in [
+        ("covered_call", 2usize),
+        ("bull_call_spread", 2usize),
+        ("iron_condor", 4usize),
+        ("calendar_spread", 2usize),
+    ] {
+        let (status, body) = post_json(
+            &app,
+            "/api/v2/experimental-analysis/options-overlay",
+            json!({
+                "instrument_id": "NSE:RELIANCE",
+                "asset_class": "fno_stock",
+                "period": "weekly_expiry",
+                "start_date": "2025-06-16",
+                "end_date": "2025-11-15",
+                "strategy": strategy,
+                "target_short_prob_pct": "80",
+                "wing_width_pct": "3.0",
+                "spread_slippage_bps": "15",
+                "include_statutory_costs": true
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{strategy}: {body}");
+        let d = &body["data"];
+        assert_eq!(d["strategy"], strategy);
+        assert_eq!(d["live_chain_available"], false);
+        assert!(d["quoted_iv_proxy_pct"].is_null());
+        assert_eq!(d["legs"].as_array().unwrap().len(), expected_legs);
+        for leg in d["legs"].as_array().unwrap() {
+            assert!(leg["bid"].is_null(), "zero fabrication violated: {leg}");
+            assert!(leg["ask"].is_null(), "zero fabrication violated: {leg}");
+        }
+        assert!(!d["equity_curve"].as_array().unwrap().is_empty());
+        let lab = d["strike_lab"].as_array().unwrap();
+        assert!(!lab.is_empty());
+        assert!(lab.iter().all(|row| row["liquidity_tier"] == "unquoted"));
+    }
+}
+
+#[tokio::test]
+async fn forecast_computes_markov_vol_quantile_fan_and_top_analogs() {
+    let app = test_app();
+    let (status, body) = post_json(
+        &app,
+        "/api/v2/experimental-analysis/forecast",
+        json!({
+            "instrument_id": "NSE:RELIANCE",
+            "asset_class": "fno_stock",
+            "period": "weekly_expiry",
+            "calc_type": "open_to_close",
+            "start_date": "2025-06-16",
+            "end_date": "2025-11-15",
+            "horizon_steps": 4
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let d = &body["data"];
+    let fan = d["horizon_fan"].as_array().unwrap();
+    assert_eq!(fan.len(), 4);
+    for (idx, step) in fan.iter().enumerate() {
+        assert_eq!(step["step"], idx + 1);
+        let p10 = step["p10_price"].as_str().unwrap().parse::<f64>().unwrap();
+        let p50 = step["p50_price"].as_str().unwrap().parse::<f64>().unwrap();
+        let p90 = step["p90_price"].as_str().unwrap().parse::<f64>().unwrap();
+        assert!(p10 <= p50 && p50 <= p90, "unordered fan quantiles: {step}");
+    }
+    assert!(d["analog_count"].as_u64().unwrap() >= 1);
+    assert!(!d["top_analogs"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() {
+    // 1. Offline (no lakehouse_root) -> available=false, no fabricated events/news
+    let offline_app = test_app();
+    let (s_off, b_off) = post_json(
+        &offline_app,
+        "/api/v2/experimental-analysis/events",
+        json!({
+            "instrument_id": "NSE:RELIANCE",
+            "mode": "buyback",
+            "start_date": "2025-06-16",
+            "end_date": "2025-11-15"
+        }),
+    )
+    .await;
+    assert_eq!(s_off, StatusCode::OK, "{b_off}");
+    assert_eq!(b_off["data"]["available"], false);
+    assert_eq!(b_off["data"]["event_count"], 0);
+
+    let (n_off_s, n_off_b) = post_json(
+        &offline_app,
+        "/api/v2/experimental-analysis/outlier-news",
+        json!({
+            "instrument_id": "NSE:RELIANCE",
+            "asset_class": "fno_stock",
+            "window_start": "2025-08-05",
+            "window_end": "2025-08-06"
+        }),
+    )
+    .await;
+    assert_eq!(n_off_s, StatusCode::OK, "{n_off_b}");
+    assert_eq!(n_off_b["data"]["news_archive_available"], false);
+    assert_eq!(n_off_b["data"]["macro_calendar_available"], false);
+    assert_eq!(n_off_b["data"]["filings_available"], false);
+    assert_eq!(n_off_b["data"]["count"], 0);
+
+    // 2. With synthetic Lakehouse projection parquet files -> CAR[-20d,+20d] + expanded outlier news
+    let dir = tempfile::tempdir().unwrap();
+    write_synthetic_lakehouse_projections(dir.path());
+    let lakehouse_app = api_router_with(test_state().with_lakehouse_root(dir.path()));
+
+    let (s_buy, b_buy) = post_json(
+        &lakehouse_app,
+        "/api/v2/experimental-analysis/events",
+        json!({
+            "instrument_id": "NSE:RELIANCE",
+            "mode": "buyback",
+            "benchmark_id": "MCX:GOLD",
+            "start_date": "2025-06-16",
+            "end_date": "2025-11-15"
+        }),
+    )
+    .await;
+    assert_eq!(s_buy, StatusCode::OK, "{b_buy}");
+    assert_eq!(b_buy["data"]["available"], true);
+    assert_eq!(b_buy["data"]["benchmark_adjusted"], true);
+    assert_eq!(b_buy["data"]["event_count"], 1);
+    assert_eq!(b_buy["data"]["window_curve"].as_array().unwrap().len(), 41);
+
+    let (s_mac, b_mac) = post_json(
+        &lakehouse_app,
+        "/api/v2/experimental-analysis/events",
+        json!({
+            "instrument_id": "NSE:RELIANCE",
+            "mode": "macro",
+            "macro_country": "IN",
+            "start_date": "2025-06-16",
+            "end_date": "2025-11-15"
+        }),
+    )
+    .await;
+    assert_eq!(s_mac, StatusCode::OK, "{b_mac}");
+    assert_eq!(b_mac["data"]["available"], true);
+    assert_eq!(b_mac["data"]["event_count"], 1);
+
+    let (n_on_s, n_on_b) = post_json(
+        &lakehouse_app,
+        "/api/v2/experimental-analysis/outlier-news",
+        json!({
+            "instrument_id": "NSE:RELIANCE",
+            "asset_class": "fno_stock",
+            "window_start": "2025-08-05",
+            "window_end": "2025-08-06"
+        }),
+    )
+    .await;
+    assert_eq!(n_on_s, StatusCode::OK, "{n_on_b}");
+    assert_eq!(n_on_b["data"]["expanded_start"], "2025-08-03");
+    assert_eq!(n_on_b["data"]["expanded_end"], "2025-08-07");
+    assert_eq!(n_on_b["data"]["news_archive_available"], true);
+    assert_eq!(n_on_b["data"]["macro_calendar_available"], true);
+    assert_eq!(n_on_b["data"]["filings_available"], true);
+    let kinds: Vec<&str> = n_on_b["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["kind"].as_str().unwrap())
+        .collect();
+    assert!(kinds.contains(&"news"), "expected expanded news hit: {kinds:?}");
+    assert!(kinds.contains(&"corporate_action"), "expected buyback hit: {kinds:?}");
 }
