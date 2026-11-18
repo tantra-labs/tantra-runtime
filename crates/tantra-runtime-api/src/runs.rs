@@ -123,6 +123,13 @@ pub struct RunManifest {
     /// Why the run failed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<ErrorDetail>,
+    /// Resolved Lakehouse v3 catalog commit SHA that produced this run, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_commit_sha: Option<String>,
+    /// Resolved Lakehouse v3 IST trading date (`YYYY-MM-DD`) that produced this run, when
+    /// available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_as_of_ist: Option<String>,
 }
 
 fn illegal(e: TransitionError) -> ErrorDetail {
@@ -160,6 +167,8 @@ impl RunManifest {
             assumptions: None,
             report: None,
             error: None,
+            data_commit_sha: None,
+            data_as_of_ist: None,
         }
     }
 
@@ -186,6 +195,14 @@ impl RunManifest {
         at: &str,
     ) -> Result<(), ErrorDetail> {
         self.apply(RunEvent::Complete, at)?;
+        self.data_commit_sha = assumptions
+            .get("data_commit_sha")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        self.data_as_of_ist = assumptions
+            .get("data_as_of_ist")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
         self.metrics = Some(metrics);
         self.assumptions = Some(assumptions);
         Ok(())

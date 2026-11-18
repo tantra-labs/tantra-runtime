@@ -11,11 +11,13 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use arrow::array::{Array, Date32Array, StringArray};
+use arrow::array::{Array, Date32Array};
 use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use tantra_core::TradingCalendar;
+use tantra_market_store::ManifestResolver;
+use tantra_market_store::manifest::arrow_utf8_array;
 use thiserror::Error;
 
 /// Column schema of the `catalog/trading_holidays/<year>.parquet` bridge
@@ -120,13 +122,6 @@ pub enum TradingHolidayError {
 }
 
 /// Load the trading-holiday dates from every `*.parquet` file under `dir`.
-///
-/// Returns `(holidays, muhurat_dates)`. Every row of the bridge projection
-/// (columns `holiday_date`, `description`, `kind`) marks a declared closure;
-/// rows whose `kind` is `"muhurat"` (Diwali Laxmi Pujan) additionally mark a
-/// Muhurat trading session. This mirrors the historic seed semantics: a
-/// Muhurat date is both a clearing holiday (the regular session is closed) and
-/// a trading day (`is_trading_day` checks the Muhurat session first).
 fn load_trading_holidays_from_dir(
     dir: &Path,
 ) -> Result<(Vec<NaiveDate>, Vec<NaiveDate>), TradingHolidayError> {
@@ -136,10 +131,16 @@ fn load_trading_holidays_from_dir(
             dir: dir.to_path_buf(),
         });
     }
+    load_trading_holidays_from_files(&files)
+}
+
+fn load_trading_holidays_from_files(
+    files: &[PathBuf],
+) -> Result<(Vec<NaiveDate>, Vec<NaiveDate>), TradingHolidayError> {
     let mut holidays: Vec<NaiveDate> = Vec::new();
     let mut muhurat: Vec<NaiveDate> = Vec::new();
     for path in files {
-        let file = File::open(&path).map_err(|source| TradingHolidayError::Io {
+        let file = File::open(path).map_err(|source| TradingHolidayError::Io {
             path: path.clone(),
             source,
         })?;
@@ -158,7 +159,7 @@ fn load_trading_holidays_from_dir(
                 path: path.clone(),
                 source: Box::new(source),
             })?;
-            append_holiday_batch(&path, &batch, &mut holidays, &mut muhurat)?;
+            append_holiday_batch(path, &batch, &mut holidays, &mut muhurat)?;
         }
     }
     Ok((holidays, muhurat))
@@ -199,14 +200,13 @@ fn append_holiday_batch(
             data_type: Box::new(date_col.data_type().clone()),
         })?;
     let kind_col = batch.column(kind_idx);
-    let kind_arr = kind_col
-        .as_any()
-        .downcast_ref::<StringArray>()
-        .ok_or_else(|| TradingHolidayError::UnsupportedColumnType {
+    let kind_arr = arrow_utf8_array(kind_col.as_ref()).map_err(|_| {
+        TradingHolidayError::UnsupportedColumnType {
             path: path.to_path_buf(),
             column: HOLIDAY_KIND_COLUMN,
             data_type: Box::new(kind_col.data_type().clone()),
-        })?;
+        }
+    })?;
 
     for row in 0..num_rows {
         if date_arr.is_null(row) {
@@ -294,14 +294,6 @@ impl Default for NseTradingCalendar {
 impl NseTradingCalendar {
     /// Create the deterministic offline NSE calendar seeded with the bundled
     /// standard national holidays and Muhurat dates.
-    ///
-    /// This is the **offline fallback** (gap 0015, `tantra-ledger` plan 0005):
-    /// `tantra-data` owns the trading-holiday reference data, so callers that
-    /// have the data deployed should use [`Self::from_data_root`] /
-    /// [`Self::from_data_root_env`] instead. `new()` is kept as the seed-table
-    /// default purely so backtests stay byte-for-byte deterministic when no
-    /// holiday data is available; the hardcoded table can silently go stale,
-    /// which is exactly the staleness gap 0015 closes.
     pub fn new() -> Self {
         let mut cal = Self {
             holidays: HashSet::new(),
@@ -314,15 +306,12 @@ impl NseTradingCalendar {
 
     /// Load the calendar strictly from the `tantra-data` trading-holiday
     /// Parquet bridge at `dir` (gap 0015).
-    ///
-    /// Every `*.parquet` file under `dir` is read; each row needs the
-    /// `holiday_date` (date32), `kind` and `description` columns of the
-    /// `catalog/trading_holidays/<year>.parquet` projection. Rows with
-    /// `kind == "muhurat"` register a Muhurat session date (which is also a
-    /// clearing holiday, matching the historic seed semantics). Returns
-    /// [`TradingHolidayError::NotFound`] when `dir` holds no holiday files.
     pub fn from_parquet_dir(dir: impl AsRef<Path>) -> Result<Self, TradingHolidayError> {
         let (holidays, muhurat) = load_trading_holidays_from_dir(dir.as_ref())?;
+        Ok(Self::from_dates(holidays, muhurat))
+    }
+
+    fn from_dates(holidays: Vec<NaiveDate>, muhurat: Vec<NaiveDate>) -> Self {
         let mut cal = Self {
             holidays: HashSet::new(),
             muhurat_dates: HashSet::new(),
@@ -334,22 +323,49 @@ impl NseTradingCalendar {
         for session in muhurat {
             cal.muhurat_dates.insert(session);
         }
-        Ok(cal)
+        cal
     }
 
-    /// Build the calendar from the `tantra-data` data root, preferring the
-    /// trading-holiday bridge projection and falling back to the offline seed
-    /// table only when no holiday data is available (gap 0015).
-    ///
-    /// `root` may point to the data directory (whose `catalog/` child holds
-    /// the `trading_holidays/` projection) or directly to the directory that
-    /// contains `trading_holidays/`. When neither location has holiday data,
-    /// or the projection is unreadable, this falls back to [`Self::new`]
-    /// (logging a warning) so callers always get a usable, deterministic
-    /// calendar.
+    /// Build the calendar from the `tantra-data` data root, checking Lakehouse v3
+    /// manifests (`reference/trading_holidays`, `fundamentals/trading_holidays`) before
+    /// falling back to `{root}/catalog/trading_holidays` or `{root}/trading_holidays`, and
+    /// finally the offline seed table.
     pub fn from_data_root(root: impl AsRef<Path>) -> Self {
+        Self::from_data_root_at(root, None)
+    }
+
+    /// Like [`Self::from_data_root`], resolving any Lakehouse v3 holiday table at `reference`.
+    pub fn from_data_root_at(root: impl AsRef<Path>, reference: Option<&str>) -> Self {
         let root = root.as_ref();
+        let resolver = ManifestResolver::new(root);
+        if resolver.has_v3_layout() {
+            for (domain, dataset) in [
+                ("reference", "trading_holidays"),
+                ("fundamentals", "trading_holidays"),
+            ] {
+                match resolver.resolve_partition(domain, dataset, None, None, None, None, reference)
+                {
+                    Ok(files) if !files.is_empty() => {
+                        match load_trading_holidays_from_files(&files) {
+                            Ok((holidays, muhurat)) => return Self::from_dates(holidays, muhurat),
+                            Err(err) => {
+                                tracing::warn!(
+                                    "ignoring unreadable v3 trading-holiday data for {domain}/{dataset}: {err}"
+                                );
+                            }
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(err) => {
+                        tracing::warn!("ignoring v3 manifest error for {domain}/{dataset}: {err}");
+                    }
+                }
+            }
+        }
+
         for candidate in [
+            root.join("reference").join("trading_holidays"),
+            root.join("fundamentals").join("trading_holidays"),
             root.join("catalog").join("trading_holidays"),
             root.join("trading_holidays"),
         ] {
@@ -370,12 +386,6 @@ impl NseTradingCalendar {
     }
 
     /// Build the calendar from the `TANTRA_DATA_DIR` environment variable.
-    ///
-    /// When `TANTRA_DATA_DIR` is set to a data root that carries the
-    /// `catalog/trading_holidays/` projection, the calendar is data-driven;
-    /// otherwise (unset, empty, or no holiday data) it returns the
-    /// deterministic offline [`Self::new`] fallback. This is the runtime's
-    /// opt-in seam for gap 0015.
     pub fn from_data_root_env() -> Self {
         match std::env::var("TANTRA_DATA_DIR") {
             Ok(dir) if !dir.trim().is_empty() => Self::from_data_root(PathBuf::from(dir)),
@@ -443,16 +453,7 @@ impl NseTradingCalendar {
         self.ist_offset
     }
 
-    /// Every declared holiday date, as a flat list. This is the real NSE
-    /// holiday *data* this calendar owns; it gets injected into
-    /// `tantra_ledger_portfolio::ClearingCalendar::with_holidays` so that crate
-    /// never duplicates or hardcodes its own (potentially diverging) copy
-    /// of the same table.
-    ///
-    /// Muhurat session dates (Diwali Laxmi Pujan) are included: the regular
-    /// session is closed on those days, so they are clearing holidays too —
-    /// even though `is_trading_day` returns `true` for them because of the
-    /// special Muhurat session.
+    /// Every declared holiday date, as a flat list.
     pub fn holidays(&self) -> Vec<NaiveDate> {
         self.holidays.iter().copied().collect()
     }
@@ -469,45 +470,39 @@ impl NseTradingCalendar {
     }
 
     fn seed_standard_holidays(&mut self) {
-        // Offline fallback (gap 0015 / tantra-ledger plan 0005): the canonical
-        // source of this table is now `tantra-data`'s trading-holiday provider;
-        // this seed exists only so `new()` stays deterministic when no bridge
-        // data is deployed. Prefer `from_data_root` / `from_data_root_env`.
-        // Standard declared NSE holidays across recent years
         let holidays = [
             // 2025
-            NaiveDate::from_ymd_opt(2025, 1, 26).unwrap(), // Republic Day
-            NaiveDate::from_ymd_opt(2025, 2, 26).unwrap(), // Mahashivratri
-            NaiveDate::from_ymd_opt(2025, 3, 14).unwrap(), // Holi
-            NaiveDate::from_ymd_opt(2025, 3, 31).unwrap(), // Id-Ul-Fitr
-            NaiveDate::from_ymd_opt(2025, 4, 10).unwrap(), // Mahavir Jayanti
-            NaiveDate::from_ymd_opt(2025, 4, 14).unwrap(), // Dr. Ambedkar Jayanti
-            NaiveDate::from_ymd_opt(2025, 4, 18).unwrap(), // Good Friday
-            NaiveDate::from_ymd_opt(2025, 5, 1).unwrap(),  // Maharashtra Day
-            NaiveDate::from_ymd_opt(2025, 8, 15).unwrap(), // Independence Day
-            NaiveDate::from_ymd_opt(2025, 8, 27).unwrap(), // Ganesh Chaturthi
-            NaiveDate::from_ymd_opt(2025, 10, 2).unwrap(), // Mahatma Gandhi Jayanti
-            NaiveDate::from_ymd_opt(2025, 10, 21).unwrap(), // Diwali Laxmi Pujan (Muhurat session evening)
-            NaiveDate::from_ymd_opt(2025, 10, 22).unwrap(), // Diwali Balipratipada
-            NaiveDate::from_ymd_opt(2025, 11, 5).unwrap(),  // Prakash Gurpurb
-            NaiveDate::from_ymd_opt(2025, 12, 25).unwrap(), // Christmas
+            NaiveDate::from_ymd_opt(2025, 1, 26).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 2, 26).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 3, 14).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 3, 31).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 4, 10).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 4, 14).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 4, 18).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 5, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 8, 15).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 8, 27).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 10, 2).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 10, 21).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 10, 22).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 11, 5).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 12, 25).unwrap(),
             // 2026
-            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(), // Republic Day
-            NaiveDate::from_ymd_opt(2026, 3, 3).unwrap(),  // Holi
-            NaiveDate::from_ymd_opt(2026, 4, 3).unwrap(),  // Good Friday
-            NaiveDate::from_ymd_opt(2026, 4, 14).unwrap(), // Ambedkar Jayanti
-            NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),  // Maharashtra Day
-            NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(), // Independence Day
-            NaiveDate::from_ymd_opt(2026, 10, 2).unwrap(), // Gandhi Jayanti
-            NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(), // Diwali Laxmi Pujan (Muhurat)
-            NaiveDate::from_ymd_opt(2026, 12, 25).unwrap(), // Christmas
+            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 3, 3).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 4, 3).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 4, 14).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 10, 2).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 12, 25).unwrap(),
         ];
 
         for h in holidays {
             self.holidays.insert(h);
         }
 
-        // Register special Muhurat sessions
         self.muhurat_dates
             .insert(NaiveDate::from_ymd_opt(2025, 10, 21).unwrap());
         self.muhurat_dates

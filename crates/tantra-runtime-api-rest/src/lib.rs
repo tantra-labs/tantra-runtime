@@ -88,7 +88,7 @@ pub use bootstrap::{
     parse_fill_model, parse_trading_state, parse_trading_state_command, prepare_server,
     run_server_blocking, to_api_trading_state,
 };
-pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog};
+pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog, load_lakehouse_v3};
 pub use chat::{
     ChatAttachmentInput, ChatClientMessage, ChatRuntime, LlmProviderRegistry, chat_ws_handler,
 };

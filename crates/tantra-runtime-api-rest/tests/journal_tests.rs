@@ -38,6 +38,7 @@ fn sample_manifest(id_str: &str, status: RunStatus) -> RunManifest {
         fill_model: None,
         commission_per_fill: rust_decimal_macros::dec!(0.0),
         slippage_bps: rust_decimal_macros::dec!(0.0),
+        data_ref: None,
     });
 
     let mut manifest = RunManifest::new_pending(

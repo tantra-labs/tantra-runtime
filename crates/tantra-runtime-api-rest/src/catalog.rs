@@ -15,14 +15,18 @@ use std::path::{Path, PathBuf};
 
 use crate::market_feed::ports::{BarReader, BarRequest, PortError, PortResult};
 use crate::market_feed::wire::Bar;
+use crate::market_feed::wire::UnixNanos;
 use crate::market_feed::{
     ColumnarSlice, ColumnarSliceBuilder, Dataset, DatasetBuildError, DatasetReader,
     ParquetBarSource, ParquetError,
 };
 use async_trait::async_trait;
+use rust_decimal::prelude::ToPrimitive;
 use tantra_core::{Exchange, InstrumentId};
+use tantra_market_store::{ManifestCommit, ManifestError};
 use tantra_runtime_api::parse_timeframe;
 use tantra_runtime_api::wire::{BarAggregation, BarSpecification, PriceType};
+use tantra_runtime_backtest::catalog::{CatalogError, CatalogLoader};
 use thiserror::Error;
 
 /// Converts the REST contract's bar specification (`tantra_runtime_api::wire`, this crate's own
@@ -82,6 +86,12 @@ pub enum CatalogLoadError {
     /// The rows broke a dataset invariant.
     #[error(transparent)]
     Dataset(#[from] DatasetBuildError),
+    /// Lakehouse v3 manifest or ref resolution failed.
+    #[error("manifest error: {0}")]
+    Manifest(#[from] ManifestError),
+    /// Lakehouse v3 catalog read failed.
+    #[error("lakehouse catalog error: {0}")]
+    BacktestCatalog(#[from] CatalogError),
 }
 
 /// Stored bars of the catalog, one [`Dataset`] per timeframe.
@@ -155,6 +165,69 @@ pub fn load_catalog(root: &Path) -> Result<(CatalogBars, DatasetReader), Catalog
     let listing =
         DatasetReader::from_dataset(Dataset::from_slices(latest.into_values().collect())?);
     Ok((CatalogBars { timeframes }, listing))
+}
+
+/// Loads Lakehouse v3 market bars (`market/bars`) at `reference` (or `refs/heads/main` when
+/// `None`) using `reference/aliases` canonical symbology, returning the per-timeframe bar store,
+/// a latest-slice listing reader, and the resolved [`ManifestCommit`] metadata.
+pub fn load_lakehouse_v3(
+    root: &Path,
+    reference: Option<&str>,
+) -> Result<(CatalogBars, DatasetReader, Option<ManifestCommit>), CatalogLoadError> {
+    let mut loader = CatalogLoader::new(root).with_legacy_fallback(false);
+    if let Some(r) = reference {
+        loader = loader.with_ref(r);
+    }
+    let (commit, grouped) = loader.load_v3_bars_grouped()?;
+    let mut timeframes = Vec::with_capacity(grouped.len());
+    let mut latest: std::collections::BTreeMap<InstrumentId, ColumnarSlice> = Default::default();
+
+    for (tf_name, inst_map) in grouped {
+        let spec = parse_timeframe(&tf_name.to_ascii_lowercase())
+            .map_err(|_| CatalogLoadError::Timeframe(tf_name.clone()))?;
+        let feed_spec = to_feed_spec(spec);
+        let mut slices = Vec::with_capacity(inst_map.len());
+        for (id, bars) in inst_map {
+            if bars.is_empty() {
+                continue;
+            }
+            let mut builder = ColumnarSliceBuilder::new(id, feed_spec);
+            let mut ts_buf = Vec::with_capacity(bars.len());
+            let mut open_buf = Vec::with_capacity(bars.len());
+            let mut high_buf = Vec::with_capacity(bars.len());
+            let mut low_buf = Vec::with_capacity(bars.len());
+            let mut close_buf = Vec::with_capacity(bars.len());
+            let mut vol_buf = Vec::with_capacity(bars.len());
+
+            for bar in bars {
+                ts_buf.push(UnixNanos::from_datetime(bar.timestamp));
+                open_buf.push(bar.open.0.to_f64().unwrap_or_default());
+                high_buf.push(bar.high.0.to_f64().unwrap_or_default());
+                low_buf.push(bar.low.0.to_f64().unwrap_or_default());
+                close_buf.push(bar.close.0.to_f64().unwrap_or_default());
+                vol_buf.push(bar.volume.0.to_f64().unwrap_or_default());
+            }
+            builder.push_rows(
+                &ts_buf, &open_buf, &high_buf, &low_buf, &close_buf, &vol_buf,
+            )?;
+            let slice = builder.finish()?;
+            if !slice.is_empty() {
+                let newer = latest
+                    .get(slice.instrument())
+                    .is_none_or(|held| slice.timestamps().last() > held.timestamps().last());
+                if newer {
+                    latest.insert(slice.instrument().clone(), slice.clone());
+                }
+                slices.push(slice);
+            }
+        }
+        let dataset = Dataset::from_slices(slices)?;
+        timeframes.push((spec, DatasetReader::from_dataset(dataset.clone()), dataset));
+    }
+
+    let listing =
+        DatasetReader::from_dataset(Dataset::from_slices(latest.into_values().collect())?);
+    Ok((CatalogBars { timeframes }, listing, commit))
 }
 
 /// Concatenates a symbol's partition files, in file-name order, into one slice.

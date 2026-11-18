@@ -14,7 +14,7 @@ use crate::market_feed::{DatasetReader, LiveQuoteStore, ReaderError};
 use tantra_core::Currency;
 use tantra_core::rust_decimal::Decimal;
 use tantra_ledger_performance::store::JournalStore;
-use tantra_market_store::BlockDealsProjectionReader;
+use tantra_market_store::{BlockDealsProjectionReader, ManifestCommit, ManifestResolver};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api::{ErrorDetail, StrategyCatalog, TradingState};
 
@@ -114,6 +114,10 @@ pub struct AppState {
     /// empty handle genuinely means "no trading activity in this process" — it is never
     /// fabricated data.
     pub shared_ledger: Arc<tantra_runtime_api::SharedLedger>,
+    /// Data root for Lakehouse v3 pinned backtest snapshot resolution and calendars.
+    lakehouse_root: Option<PathBuf>,
+    /// Resolved Lakehouse v3 commit metadata captured when built via `from_lakehouse_v3`.
+    data_commit: Option<ManifestCommit>,
 }
 
 impl AppState {
@@ -154,6 +158,8 @@ impl AppState {
             chat: None,
             database: None,
             shared_ledger: Arc::new(tantra_runtime_api::SharedLedger::new()),
+            lakehouse_root: None,
+            data_commit: None,
         }
     }
 
@@ -181,6 +187,16 @@ impl AppState {
     /// ports has none. The bar pump writes each bar here before advancing the market.
     pub fn live_quotes(&self) -> Option<&Arc<LiveQuoteStore>> {
         self.live.as_ref()
+    }
+
+    /// Configured Lakehouse/catalog root directory when constructed from a data directory.
+    pub fn lakehouse_root(&self) -> Option<&Path> {
+        self.lakehouse_root.as_deref()
+    }
+
+    /// Resolved Lakehouse v3 commit metadata at startup, if any.
+    pub fn data_commit(&self) -> Option<&ManifestCommit> {
+        self.data_commit.as_ref()
     }
 
     /// Replaces the strategy catalog.
@@ -323,6 +339,12 @@ impl AppState {
         });
         let mut executor =
             BacktestExecutor::new(bars, registry.clone()).with_execution(self.execution.clone());
+        if let Some(root) = &self.lakehouse_root {
+            executor = executor.with_catalog_root(root);
+        }
+        if let Some(commit) = &self.data_commit {
+            executor = executor.with_default_commit(commit.clone());
+        }
         if let Some(ticks) = &self.ticks {
             let ticks: Arc<dyn tantra_core::TickReader + Send + Sync> = Arc::new(SyncTickReader {
                 inner: ticks.clone(),
@@ -416,12 +438,43 @@ impl AppState {
         let live = Arc::new(LiveQuoteStore::new(listing.clone()));
         let mut state = Self::new(listing.clone(), Arc::new(bars), live.clone(), listing);
         state.live = Some(live);
+        state.lakehouse_root = Some(root.to_path_buf());
         Ok(state)
     }
 
-    /// Whether `root` holds a `tantra-data` bar catalog ([`AppState::from_catalog_dir`]).
+    /// Creates state serving a Lakehouse v3 catalog under `root` (`refs/`, `commits/`,
+    /// `trees/`, `objects/`, `views/`, plus `reference/aliases`), resolved at `reference` (or
+    /// `refs/heads/main` when `None`). Blocks on I/O; call once at start-up.
+    pub fn from_lakehouse_v3(
+        root: &Path,
+        reference: Option<&str>,
+    ) -> Result<Self, crate::CatalogLoadError> {
+        let (bars, listing, commit) = crate::catalog::load_lakehouse_v3(root, reference)?;
+        let listing = Arc::new(listing);
+        let live = Arc::new(LiveQuoteStore::new(listing.clone()));
+        let mut state = Self::new(listing.clone(), Arc::new(bars), live.clone(), listing);
+        state.live = Some(live);
+        state.lakehouse_root = Some(root.to_path_buf());
+        state.data_commit = commit;
+        Ok(state)
+    }
+
+    /// Whether `root` holds a non-empty `tantra-data` legacy bar catalog ([`AppState::from_catalog_dir`]).
+    ///
+    /// Ignores placeholder hidden files such as `.gitkeep`.
     pub fn has_catalog(root: &Path) -> bool {
-        root.join(crate::catalog::CATALOG_DIR).is_dir()
+        let catalog = root.join(crate::catalog::CATALOG_DIR);
+        let Ok(entries) = std::fs::read_dir(&catalog) else {
+            return false;
+        };
+        entries.filter_map(Result::ok).any(|entry| {
+            entry.path().is_dir() && !entry.file_name().to_string_lossy().starts_with('.')
+        })
+    }
+
+    /// Whether `root` holds a Lakehouse v3 CAS/views catalog ([`AppState::from_lakehouse_v3`]).
+    pub fn has_lakehouse_v3(root: &Path) -> bool {
+        ManifestResolver::new(root).has_v3_layout()
     }
 }
 

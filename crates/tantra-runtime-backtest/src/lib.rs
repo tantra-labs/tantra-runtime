@@ -22,7 +22,7 @@ pub mod sim;
 
 pub use calendar::{NseTradingCalendar, SessionWindow, TradingHolidayError};
 pub use catalog::{
-    CatalogError, CatalogInstrumentSummary, CatalogLoader, CatalogVerificationReport,
+    CatalogError, CatalogInstrumentSummary, CatalogLoader, CatalogVerificationReport, LoadStats,
     decimal_from_f64_lossless,
 };
 pub use engine::{BacktestConfig, BacktestEngine, BacktestResult, decimal_qty_to_u64};
@@ -32,3 +32,4 @@ pub use tantra_ledger_journal::Transaction as LedgerTransaction;
 pub use tantra_ledger_portfolio::{
     ClearingCalendar, DematHoldings, FillSettlementResult, SettlementEngine, SettlementInstruction,
 };
+pub use tantra_market_store::{ManifestCommit, ManifestError, ManifestResolver};

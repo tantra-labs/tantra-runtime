@@ -277,7 +277,7 @@ impl ServeFillConfig {
 /// Top-level pure-Rust configuration for launching the `tantra-ya-api-rest` server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServeConfig {
-    /// Market data directory (either a `catalog/` tree or flat `SYMBOL.EXCHANGE.parquet` files).
+    /// Market data directory (Lakehouse v3 CAS/views root, `catalog/` tree, or flat `SYMBOL.EXCHANGE.parquet` files).
     pub data_dir: PathBuf,
     /// Socket address to bind (default `127.0.0.1:8000`; `127.0.0.1:0` binds an ephemeral port).
     pub addr: SocketAddr,
@@ -409,7 +409,9 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         });
     }
 
-    let state = if AppState::has_catalog(&config.data_dir) {
+    let state = if AppState::has_lakehouse_v3(&config.data_dir) {
+        AppState::from_lakehouse_v3(&config.data_dir, None).map_err(anyhow::Error::from)
+    } else if AppState::has_catalog(&config.data_dir) {
         AppState::from_catalog_dir(&config.data_dir).map_err(anyhow::Error::from)
     } else {
         AppState::from_parquet_dir(&config.data_dir).map_err(anyhow::Error::from)

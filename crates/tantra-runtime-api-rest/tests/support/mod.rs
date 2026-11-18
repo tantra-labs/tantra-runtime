@@ -136,6 +136,7 @@ pub fn backtest_request(seed: u64) -> ResolvedRequest {
         fill_model: None,
         commission_per_fill: dec!(0.0),
         slippage_bps: dec!(0.0),
+        data_ref: None,
     })
 }
 
@@ -223,6 +224,7 @@ pub fn sma_request(seed: u64) -> BacktestRequest {
         fill_model: None,
         commission_per_fill: None,
         slippage_bps: None,
+        data_ref: None,
     }
 }
 

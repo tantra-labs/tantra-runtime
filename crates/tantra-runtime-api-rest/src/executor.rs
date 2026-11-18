@@ -37,6 +37,7 @@
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -47,6 +48,7 @@ use tantra_core::{
     BarReader, Currency, InstrumentId, PortError, Quantity, TickReader, Timeframe, TradingCalendar,
 };
 use tantra_ledger_journal::ProductType;
+use tantra_market_store::{ManifestCommit, ManifestError};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api::wire::BarAggregation;
 use tantra_runtime_api::{
@@ -55,6 +57,7 @@ use tantra_runtime_api::{
     SweepReportResponse, parse_instrument_id, parse_timeframe, unknown_strategy,
 };
 use tantra_runtime_backtest::calendar::NseTradingCalendar;
+use tantra_runtime_backtest::catalog::{CatalogError, CatalogLoader};
 use tantra_runtime_backtest::engine::{BacktestConfig, BacktestEngine, BacktestResult};
 use tantra_runtime_backtest::events::MarketEvent;
 use tantra_runtime_backtest::sim::latency::NetworkLatency;
@@ -78,6 +81,8 @@ pub struct BacktestExecutor {
     #[allow(dead_code)]
     cache: Option<ResultCache>,
     ticks: Option<Arc<dyn TickReader + Send + Sync>>,
+    catalog_root: Option<PathBuf>,
+    default_commit: Option<ManifestCommit>,
 }
 
 impl BacktestExecutor {
@@ -91,6 +96,8 @@ impl BacktestExecutor {
             execution: ExecutionConfig::default(),
             cache: None,
             ticks: None,
+            catalog_root: None,
+            default_commit: None,
         }
     }
 
@@ -122,6 +129,50 @@ impl BacktestExecutor {
         self
     }
 
+    /// Configures the market-data root used to resolve `data_ref` pinned snapshots and
+    /// Lakehouse v3 trading-holiday calendars.
+    #[must_use]
+    pub fn with_catalog_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.catalog_root = Some(root.into());
+        self
+    }
+
+    /// Configures the default Lakehouse v3 commit metadata captured at server start-up.
+    #[must_use]
+    pub fn with_default_commit(mut self, commit: ManifestCommit) -> Self {
+        self.default_commit = Some(commit);
+        self
+    }
+
+    fn calendar(&self, data_ref: Option<&str>) -> Arc<dyn TradingCalendar> {
+        match &self.catalog_root {
+            Some(root) => Arc::new(NseTradingCalendar::from_data_root_at(root, data_ref)),
+            None => Arc::new(NseTradingCalendar::new()),
+        }
+    }
+
+    fn resolve_backtest_source(
+        &self,
+        spec: &ResolvedBacktest,
+    ) -> Result<(Option<ManifestCommit>, Option<CatalogLoader>), ErrorDetail> {
+        if let Some(reference) = spec.data_ref.as_deref() {
+            let root = self.catalog_root.as_deref().ok_or_else(|| {
+                invalid(
+                    "data_ref",
+                    "unsupported_data_ref",
+                    "data_ref requires a Lakehouse v3 data directory",
+                )
+            })?;
+            let loader = CatalogLoader::new(root)
+                .with_ref(reference)
+                .with_legacy_fallback(false);
+            let commit = loader.resolved_commit().map_err(catalog_error)?;
+            Ok((commit, Some(loader)))
+        } else {
+            Ok((self.default_commit.clone(), None))
+        }
+    }
+
     pub(crate) fn account_currency(&self) -> Result<Currency, ErrorDetail> {
         match self.account.currency.as_str() {
             "INR" => Ok(Currency::Inr),
@@ -150,6 +201,8 @@ impl BacktestExecutor {
     #[allow(clippy::too_many_arguments)]
     fn run_engine(
         &self,
+        bar_reader: &(dyn BarReader + Send + Sync),
+        calendar: Arc<dyn TradingCalendar>,
         strategy: Box<dyn Strategy>,
         instrument: &InstrumentId,
         start: DateTime<Utc>,
@@ -160,8 +213,7 @@ impl BacktestExecutor {
         fill_model: FillModel,
     ) -> Result<BacktestResult, ErrorDetail> {
         let timeframe = timeframe_from_bar_spec(bar_spec)?;
-        let bars = self
-            .bars
+        let bars = bar_reader
             .read_bars(&tantra_core::BarRequest {
                 instrument: instrument.clone(),
                 timeframe,
@@ -176,7 +228,6 @@ impl BacktestExecutor {
             );
         }
 
-        let calendar: Arc<dyn TradingCalendar> = Arc::new(NseTradingCalendar::new());
         let (config, events) = match fill_model {
             FillModel::L2 => {
                 let ticks = self.ticks.as_ref().ok_or_else(l2_requires_ticks)?;
@@ -255,6 +306,8 @@ impl BacktestExecutor {
         for trial in &grid {
             let strategy = self.trial_strategy(strategy_name, instrument, spec.seed, trial)?;
             let result = self.run_engine(
+                &*self.bars,
+                self.calendar(None),
                 strategy,
                 instrument,
                 spec.start,
@@ -334,9 +387,10 @@ impl RunExecutor for BacktestExecutor {
         match &job.request {
             ResolvedRequest::Backtest(spec) => {
                 let instrument = parse_universe(&spec.universe)?;
+                let (commit, pinned_loader) = self.resolve_backtest_source(spec)?;
                 // A cache hit serves the exact metrics and assumptions without simulating or
                 // journaling (ADR 0020, E4-S1): the key pins every input that shapes a run.
-                let key = backtest_cache_key(&job, &instrument);
+                let key = backtest_cache_key(&job, &instrument, commit.as_ref());
                 if let Some(cached) = self.cache.as_ref().and_then(|c| c.get(&key)) {
                     return Ok(RunOutcome::Backtest {
                         metrics: cached.metrics,
@@ -348,7 +402,14 @@ impl RunExecutor for BacktestExecutor {
                     .build(&strategy_name, &instrument, spec.seed)
                     .ok_or_else(|| unknown_strategy(&strategy_name))?;
                 let fill_model = self.effective_fill_model(spec.fill_model.as_deref())?;
+                let calendar = self.calendar(spec.data_ref.as_deref());
+                let bar_reader: &(dyn BarReader + Send + Sync) = match &pinned_loader {
+                    Some(loader) => loader,
+                    None => &*self.bars,
+                };
                 let result = self.run_engine(
+                    bar_reader,
+                    calendar,
                     strategy,
                     &instrument,
                     spec.start,
@@ -361,7 +422,7 @@ impl RunExecutor for BacktestExecutor {
                 write_fills(journal, &result)?;
                 let outcome = RunOutcome::Backtest {
                     metrics: metrics_from_result(&result),
-                    assumptions: assumptions(spec, fill_model),
+                    assumptions: assumptions(spec, fill_model, commit.as_ref()),
                 };
                 if let (
                     RunOutcome::Backtest {
@@ -405,7 +466,11 @@ const COST_MODEL_VERSION: &str = "1";
 /// outcome — strategy id, compiled manifest, universe, seed, capital, window, bar spec, fill
 /// model and the cost knobs — so identical inputs hit the cache and any change misses it. The
 /// run id is deliberately absent: the identical rerun must map to the same key.
-fn backtest_cache_key(job: &RunJob, instrument: &InstrumentId) -> CacheKey {
+fn backtest_cache_key(
+    job: &RunJob,
+    instrument: &InstrumentId,
+    commit: Option<&ManifestCommit>,
+) -> CacheKey {
     let params = match &job.request {
         ResolvedRequest::Backtest(spec) => json!({
             "strategy": job.strategy_id,
@@ -419,6 +484,8 @@ fn backtest_cache_key(job: &RunJob, instrument: &InstrumentId) -> CacheKey {
             "fill_model": spec.fill_model,
             "commission_per_fill": spec.commission_per_fill,
             "slippage_bps": spec.slippage_bps,
+            "data_ref": spec.data_ref,
+            "data_commit_sha": commit.map(|c| c.commit_sha.as_str()),
         }),
         ResolvedRequest::Sweep(_) => json!({"kind": "sweep"}),
     };
@@ -449,6 +516,25 @@ fn fill_model_from_name(name: &str) -> Result<FillModel, ErrorDetail> {
             format!("unknown fill_model {name:?}"),
         )
     })
+}
+
+fn catalog_error(e: CatalogError) -> ErrorDetail {
+    match e {
+        CatalogError::Manifest(ref me)
+            if matches!(
+                me,
+                ManifestError::RefNotFound(_)
+                    | ManifestError::CommitNotFound(_)
+                    | ManifestError::MissingTree { .. }
+                    | ManifestError::MissingObject { .. }
+            ) =>
+        {
+            ErrorDetail::new(ErrorCode::NotFound, e.to_string())
+                .with_context(json!({"field": "data_ref", "reason": "data_ref_not_found"}))
+        }
+        other => ErrorDetail::new(ErrorCode::InternalError, other.to_string())
+            .with_context(json!({"reason": "catalog_read"})),
+    }
 }
 
 fn port_error(e: PortError) -> ErrorDetail {
@@ -483,7 +569,11 @@ pub(crate) fn parse_universe(universe: &str) -> Result<InstrumentId, ErrorDetail
 /// Annualisation used for the Sharpe ratio.
 const PERIODS_PER_YEAR: f64 = 252.0;
 
-fn assumptions(spec: &ResolvedBacktest, fill_model: FillModel) -> Value {
+fn assumptions(
+    spec: &ResolvedBacktest,
+    fill_model: FillModel,
+    commit: Option<&ManifestCommit>,
+) -> Value {
     let mut not_modelled: Vec<&str> = Vec::new();
     if spec.commission_per_fill == Decimal::ZERO {
         not_modelled.push("transaction_costs");
@@ -500,7 +590,7 @@ fn assumptions(spec: &ResolvedBacktest, fill_model: FillModel) -> Value {
         "corporate_actions",
         "market_calendar",
     ]);
-    json!({
+    let mut value = json!({
         "not_modelled": not_modelled,
         "applied": {
             "commission_per_fill": spec.commission_per_fill,
@@ -510,7 +600,15 @@ fn assumptions(spec: &ResolvedBacktest, fill_model: FillModel) -> Value {
         "fill_model": serde_json::to_value(fill_model).unwrap_or_else(|_| Value::String("bar_fill".into())),
         "metrics_basis": "closed_round_trips",
         "periods_per_year": PERIODS_PER_YEAR
-    })
+    });
+    if let Some(reference) = &spec.data_ref {
+        value["data_ref"] = json!(reference);
+    }
+    if let Some(c) = commit {
+        value["data_commit_sha"] = json!(c.commit_sha);
+        value["data_as_of_ist"] = json!(c.as_of_ist.to_string());
+    }
+    value
 }
 
 /// Converts a JSON parameter object (name -> [low, high, step]) into a Cartesian grid of trial params.

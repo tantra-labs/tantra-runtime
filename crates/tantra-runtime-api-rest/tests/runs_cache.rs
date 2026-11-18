@@ -60,6 +60,7 @@ fn job_with(strategy: &str, universe: &str, bar_spec: &str, seed: u64, capital: 
                 fill_model: None,
                 commission_per_fill: dec!(0.0),
                 slippage_bps: dec!(0.0),
+                data_ref: None,
             },
         ),
         seed,

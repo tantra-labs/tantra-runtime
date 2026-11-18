@@ -76,6 +76,11 @@ pub struct ResolvedBacktest {
     /// zero, as above.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub slippage_bps: Decimal,
+    /// Pinned Lakehouse v3 catalog snapshot ref (`"refs/heads/main"`, `"refs/tags/<tag>"`, or
+    /// 64-hex commit SHA), if any. Omitted when unset so older manifests round-trip (ADR 0012
+    /// rule 1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_ref: Option<String>,
 }
 
 /// A [`SweepRequest`] with every required field present and valid.
@@ -217,6 +222,13 @@ impl BacktestRequest {
             MAX_COMMISSION_PER_FILL,
         )?;
         let slippage_bps = bounded("slippage_bps", self.slippage_bps, MAX_SLIPPAGE_BPS)?;
+        let data_ref = match self.data_ref.as_deref().map(str::trim) {
+            None => None,
+            Some("") => {
+                return Err(invalid("data_ref", "empty", "data_ref must not be empty"));
+            }
+            Some(reference) => Some(reference.to_owned()),
+        };
         Ok(ResolvedBacktest {
             strategy,
             universe,
@@ -228,6 +240,7 @@ impl BacktestRequest {
             fill_model,
             commission_per_fill,
             slippage_bps,
+            data_ref,
         })
     }
 }

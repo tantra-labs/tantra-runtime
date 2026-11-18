@@ -16,6 +16,7 @@ tantra-risk.workspace = true
 tantra-ledger.workspace = true
 tantra-ledger-portfolio.workspace = true
 tantra-ledger-journal.workspace = true
+tantra-market-store.workspace = true
 tantra-runtime-strategy.workspace = true
 arrow.workspace = true
 parquet.workspace = true
@@ -35,3 +36,5 @@ tokio.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 tempfile = "3"
 tantra-agent.workspace = true
+sha2.workspace = true
+hex.workspace = true

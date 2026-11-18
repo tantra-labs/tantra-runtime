@@ -142,6 +142,11 @@ pub struct BacktestRequest {
     /// See [`MAX_SLIPPAGE_BPS`](crate::MAX_SLIPPAGE_BPS).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slippage_bps: Option<Decimal>,
+    /// Optional Lakehouse v3 catalog snapshot reference (`"refs/heads/main"`,
+    /// `"refs/tags/<tag>"`, or raw 64-hex commit SHA). When set, executes over the pinned
+    /// snapshot instead of the server's default active catalog view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_ref: Option<String>,
 }
 
 /// Sweep request.
