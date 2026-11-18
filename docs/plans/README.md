@@ -12,6 +12,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 |---|-------|--------------|--------|
 | [0007](0007-group-screener-alerts.md) | Alpha-Style Group & Event Alerts Engine (`ScreenEdge` + `EventMatch`, multi-universe scoping, live + hourly/daily digests, preset packs, `/v1/alerts/*`, MCP wiring) | `tantra-runtime-persistence`, `tantra-runtime-api(-rest)` | Proposed (revised 2026-11-16) — research `docs/research/trendlyne-screener-alerts-mcp.md`; root plan `docs/plans/0010` (F7, F8 wiring) |
 | [0006](0006-trade-manager-backtest-and-synthetic-brackets.md) | TradeManager in Backtest, Synthetic Brackets, `/v1/trade-plan` | `tantra-runtime-backtest`, `tantra-runtime-actors`, `tantra-runtime-api-rest` | Proposed — root plan `docs/plans/0008` |
+| [0008](0008-fire-planning-persistence-and-rest-api.md) | FIRE Planning Persistence, Portfolio Hydration & REST API (`Profile.fire_plans`, `/api/{v1,v2}/planning/fire/*`, OpenAPI regen) | `tantra-runtime-api`, `tantra-runtime-api-rest` | Proposed (2026-11-18) — Track **T19.2**; root plan `docs/plans/0013`; depends on `tantra-ledger` 0006 |
 
 ## Implemented Plans
 
