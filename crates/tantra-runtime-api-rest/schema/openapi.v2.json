@@ -526,6 +526,266 @@
       "patch": null,
       "delete": null
     },
+    "/experimental-analysis/catalog": {
+      "get": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Multi-asset study catalog and schedule metadata",
+        "operationId": "getExperimentalAnalysisCatalog",
+        "parameters": [
+          {
+            "name": "asset_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Multi-asset statistical workbench catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalCatalogResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalCatalogResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/experimental-analysis/returns": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate period returns, streaks, Markov, distribution, and outlier study",
+        "operationId": "postExperimentalAnalysisReturns",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalReturnsRequest",
+                "description": "Request payload for `POST /experimental-analysis/returns`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class used for schedule adaptation.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "calc_type": {
+                    "description": "Open-to-Close, High-to-Low, or Close-to-Close.",
+                    "default": "open_to_close",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/ReturnCalcKind"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or bare symbol resolved cleanly).",
+                    "type": "string"
+                  },
+                  "ma_window": {
+                    "description": "Moving average window in periods (`2..=120`, default `20`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "ohlc_page": {
+                    "description": "1-based page number for `daily_ohlc_rows` pagination (default `1`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "ohlc_page_size": {
+                    "description": "Rows per page for `daily_ohlc_rows` (`10..=500`, default `50`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "outlier_coverage_pct": {
+                    "description": "Outlier survivability boundary coverage `%` (`50..=99`, default `90`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "period": {
+                    "description": "Period slicing schedule.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "sub_cycle": {
+                    "description": "Current period vs `+1` carry horizon.",
+                    "default": "current",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/SubCycleKind"
+                      }
+                    ]
+                  },
+                  "tail_threshold_pct": {
+                    "description": "Large-move threshold `%` for conditional forward accordions (default `2.0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Complete statistical & outlier returns study",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalReturnsResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalReturnsResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/fees": {
       "get": {
         "tags": [
@@ -3189,6 +3449,53 @@
   },
   "components": {
     "schemas": {
+      "AssetClassCatalogGroup": {
+        "description": "Grouped instruments and supported schedules for one asset class.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "default_schedule",
+          "instruments",
+          "label",
+          "schedules"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class key.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "default_schedule": {
+            "description": "Default schedule applied when selecting this asset class.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "instruments": {
+            "description": "Instruments available in the runtime store for this asset class.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/CatalogInstrumentEntry"
+            }
+          },
+          "label": {
+            "description": "Display heading (`Indices`, `F&O Stocks`, etc.).",
+            "type": "string"
+          },
+          "schedules": {
+            "description": "Supported period schedules for this asset class.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ScheduleOption"
+            }
+          }
+        }
+      },
       "BarAggregation": {
         "title": "BarAggregation",
         "description": "Bar length unit of a [`BarSpecification`].",
@@ -3236,6 +3543,220 @@
             ]
           }
         ]
+      },
+      "CatalogInstrumentEntry": {
+        "description": "Single instrument entry returned in the `Experimental-Analysis` catalog.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "currency",
+          "exchange",
+          "instrument_id",
+          "instrument_kind",
+          "lot_size",
+          "symbol",
+          "tick_size"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Classified study asset class.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "currency": {
+            "description": "Settlement currency (`INR`, etc.).",
+            "type": "string"
+          },
+          "exchange": {
+            "description": "Exchange code (`NSE`, `BSE`, `NFO`, `MCX`, `CDS`).",
+            "type": "string"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID.",
+            "type": "string"
+          },
+          "instrument_kind": {
+            "description": "Underlying wire instrument kind.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/InstrumentKind"
+              }
+            ]
+          },
+          "lot_size": {
+            "description": "Tradable lot size.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "symbol": {
+            "description": "Ticker symbol.",
+            "type": "string"
+          },
+          "tick_size": {
+            "description": "Tick increment.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "DailyOhlcRow": {
+        "description": "Single session row inside the paginated `Daily OHLC Data` table.",
+        "type": "object",
+        "required": [
+          "close",
+          "daily_return_pct",
+          "date",
+          "dividend",
+          "high",
+          "low",
+          "open",
+          "split_factor",
+          "volume"
+        ],
+        "properties": {
+          "close": {
+            "description": "Close price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "daily_return_pct": {
+            "description": "Session close-to-close return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "date": {
+            "description": "Session date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "dividend": {
+            "description": "Dividend on ex-date.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "high": {
+            "description": "High price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "low": {
+            "description": "Low price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "open": {
+            "description": "Opening price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "split_factor": {
+            "description": "Split factor on ex-date.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "volume": {
+            "description": "Volume.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "DailyOhlcSummary": {
+        "description": "7-metric KPI bar above the Daily OHLC chart & table.",
+        "type": "object",
+        "required": [
+          "avg_daily_return_pct",
+          "avg_volume",
+          "daily_return_std_pct",
+          "latest_close",
+          "period_high",
+          "period_low",
+          "total_trading_days"
+        ],
+        "properties": {
+          "avg_daily_return_pct": {
+            "description": "Mean close-to-close daily return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_volume": {
+            "description": "Mean daily traded volume.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "daily_return_std_pct": {
+            "description": "Sample standard deviation of daily returns (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "latest_close": {
+            "description": "Most recent session close price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "period_high": {
+            "description": "Maximum high across the date window.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "period_low": {
+            "description": "Minimum low across the date window.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "total_trading_days": {
+            "description": "Total daily trading bars in range.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "DataSourceStatus": {
+        "description": "Market data & feed connectivity summary for the left control rail.",
+        "type": "object",
+        "required": [
+          "adapter_label",
+          "fno_contract_count",
+          "indexed_instruments",
+          "lakehouse_connected",
+          "live_feed_connected"
+        ],
+        "properties": {
+          "adapter_label": {
+            "description": "Human-readable source label.",
+            "type": "string"
+          },
+          "fno_contract_count": {
+            "description": "Count of indexed F&O derivative contracts/symbols.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "indexed_instruments": {
+            "description": "Total indexed instruments in the runtime master.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "lakehouse_commit_id": {
+            "description": "Active Lakehouse commit hash when pinned.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lakehouse_connected": {
+            "description": "Whether historical Lakehouse v3 root is attached.",
+            "type": "boolean"
+          },
+          "live_feed_connected": {
+            "description": "Whether a live quote store/broadcast feed is wired.",
+            "type": "boolean"
+          }
+        }
       },
       "ErrorCode": {
         "title": "ErrorCode",
@@ -3383,6 +3904,522 @@
             "description": "Whether retrying the identical request may succeed.",
             "default": false,
             "type": "boolean"
+          }
+        }
+      },
+      "ExperimentalCatalogResponse": {
+        "title": "ExperimentalCatalogResponse",
+        "description": "Response payload for `GET /experimental-analysis/catalog`.",
+        "type": "object",
+        "required": [
+          "groups",
+          "source_status"
+        ],
+        "properties": {
+          "groups": {
+            "description": "Per-asset-class instrument groups and schedules.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/AssetClassCatalogGroup"
+            }
+          },
+          "source_status": {
+            "description": "Feed and Lakehouse status card metadata.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/DataSourceStatus"
+              }
+            ]
+          }
+        }
+      },
+      "ExperimentalReturnsRequest": {
+        "title": "ExperimentalReturnsRequest",
+        "description": "Request payload for `POST /experimental-analysis/returns`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "end_date",
+          "instrument_id",
+          "period",
+          "start_date"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class used for schedule adaptation.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "calc_type": {
+            "description": "Open-to-Close, High-to-Low, or Close-to-Close.",
+            "default": "open_to_close",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ReturnCalcKind"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "Inclusive end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or bare symbol resolved cleanly).",
+            "type": "string"
+          },
+          "ma_window": {
+            "description": "Moving average window in periods (`2..=120`, default `20`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "ohlc_page": {
+            "description": "1-based page number for `daily_ohlc_rows` pagination (default `1`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "ohlc_page_size": {
+            "description": "Rows per page for `daily_ohlc_rows` (`10..=500`, default `50`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "outlier_coverage_pct": {
+            "description": "Outlier survivability boundary coverage `%` (`50..=99`, default `90`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "period": {
+            "description": "Period slicing schedule.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "start_date": {
+            "description": "Inclusive start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "sub_cycle": {
+            "description": "Current period vs `+1` carry horizon.",
+            "default": "current",
+            "allOf": [
+              {
+                "$ref": "#/definitions/SubCycleKind"
+              }
+            ]
+          },
+          "tail_threshold_pct": {
+            "description": "Large-move threshold `%` for conditional forward accordions (default `2.0`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentalReturnsResponse": {
+        "title": "ExperimentalReturnsResponse",
+        "description": "Full single-shot statistical report returned by `POST /experimental-analysis/returns`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "calc_type",
+          "coarse_buckets",
+          "currency",
+          "current_price",
+          "current_reference_change_pct",
+          "current_reference_price",
+          "daily_ohlc_page",
+          "daily_ohlc_page_size",
+          "daily_ohlc_rows",
+          "daily_ohlc_summary",
+          "daily_ohlc_total_rows",
+          "end_date",
+          "exchange",
+          "forward_conditional",
+          "granular_10bps",
+          "green_vs_red",
+          "instrument_id",
+          "kpis",
+          "markov",
+          "outliers",
+          "percentiles",
+          "period",
+          "period_count",
+          "probability_levels",
+          "series",
+          "source_label",
+          "start_date",
+          "streaks",
+          "sub_cycle",
+          "symbol"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class evaluated.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "calc_type": {
+            "description": "Return formula (`open_to_close`, `high_to_low`, `close_to_close`).",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ReturnCalcKind"
+              }
+            ]
+          },
+          "coarse_buckets": {
+            "description": "16 coarse return buckets.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ReturnBucketRow"
+            }
+          },
+          "currency": {
+            "description": "Currency code (`INR`, etc.).",
+            "type": "string"
+          },
+          "current_price": {
+            "description": "Current live or latest close price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "current_reference_change_pct": {
+            "description": "Percentage delta of current price vs current cycle reference price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "current_reference_price": {
+            "description": "Current cycle opening reference price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "daily_ohlc_page": {
+            "description": "Active 1-based page number.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "daily_ohlc_page_size": {
+            "description": "Page size applied.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "daily_ohlc_rows": {
+            "description": "Current page of daily OHLC rows (newest-first).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/DailyOhlcRow"
+            }
+          },
+          "daily_ohlc_summary": {
+            "description": "7-KPI daily OHLC summary strip.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/DailyOhlcSummary"
+              }
+            ]
+          },
+          "daily_ohlc_total_rows": {
+            "description": "Total daily OHLC rows in range (for pagination).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "end_date": {
+            "description": "Effective last period end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "exchange": {
+            "description": "Exchange code.",
+            "type": "string"
+          },
+          "forward_conditional": {
+            "description": "Conditional forward moves after large period swings.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ForwardConditionalGroup"
+              }
+            ]
+          },
+          "forward_conditional_plus_one": {
+            "description": "Optional conditional forward moves after large `Period+1` swings.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/ForwardConditionalGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "granular_10bps": {
+            "description": "Non-empty 10-bps (`0.1%`) granular return buckets.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ReturnBucketRow"
+            }
+          },
+          "green_vs_red": {
+            "description": "Green vs Red comparative statistics and PDF bins.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/GreenVsRedComparison"
+              }
+            ]
+          },
+          "instrument_id": {
+            "description": "Analyzed instrument ID (`EXCHANGE:SYMBOL`).",
+            "type": "string"
+          },
+          "kpis": {
+            "description": "3×3 Return KPIs.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ReturnKpis"
+              }
+            ]
+          },
+          "markov": {
+            "description": "6-state streak Markov chain analysis.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkovAnalysis"
+              }
+            ]
+          },
+          "outliers": {
+            "description": "Survivability outlier scatter & ranked table.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OutlierAnalysis"
+              }
+            ]
+          },
+          "percentiles": {
+            "description": "Empirical return percentiles (`P99..P1`).",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ReturnPercentiles"
+              }
+            ]
+          },
+          "period": {
+            "description": "Period schedule applied.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "period_count": {
+            "description": "Total sliced periods analyzed.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "probability_levels": {
+            "description": "Exceedance price levels (`10%..99%`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ProbabilityLevelRow"
+            }
+          },
+          "regime_note": {
+            "description": "Optional NSE Sep 2025 or exchange regime transition banner.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "series": {
+            "description": "Chronological period return series with rolling SMA.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/PeriodPoint"
+            }
+          },
+          "source_label": {
+            "description": "Historical source description (`Lakehouse v3` or `Store BarReader`).",
+            "type": "string"
+          },
+          "start_date": {
+            "description": "Effective first period start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "streaks": {
+            "description": "Streak KPIs, timeline, details, and histogram.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StreakAnalysis"
+              }
+            ]
+          },
+          "sub_cycle": {
+            "description": "Sub-cycle modifier (`current` or `plus_one`).",
+            "allOf": [
+              {
+                "$ref": "#/definitions/SubCycleKind"
+              }
+            ]
+          },
+          "symbol": {
+            "description": "Instrument symbol.",
+            "type": "string"
+          }
+        }
+      },
+      "ForwardConditionEvent": {
+        "description": "Single next-period observation following a large trigger move.",
+        "type": "object",
+        "required": [
+          "next_end_date",
+          "next_return_pct",
+          "trigger_end_date",
+          "trigger_return_pct"
+        ],
+        "properties": {
+          "next_end_date": {
+            "description": "Following period end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "next_return_pct": {
+            "description": "Following period return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "trigger_end_date": {
+            "description": "Trigger period end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "trigger_return_pct": {
+            "description": "Trigger period return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "ForwardConditionalGroup": {
+        "description": "Aggregate forward expectancy following large positive or negative moves.",
+        "type": "object",
+        "required": [
+          "after_large_neg_events",
+          "after_large_neg_mean_pct",
+          "after_large_neg_median_pct",
+          "after_large_neg_win_pct",
+          "after_large_pos_events",
+          "after_large_pos_mean_pct",
+          "after_large_pos_median_pct",
+          "after_large_pos_win_pct",
+          "threshold_pct"
+        ],
+        "properties": {
+          "after_large_neg_events": {
+            "description": "Event rows after large negative trigger.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ForwardConditionEvent"
+            }
+          },
+          "after_large_neg_mean_pct": {
+            "description": "Mean forward return (%) after large negative trigger.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "after_large_neg_median_pct": {
+            "description": "Median forward return (%) after large negative trigger.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "after_large_neg_win_pct": {
+            "description": "Positive win rate (%) after large negative trigger.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "after_large_pos_events": {
+            "description": "Event rows after large positive trigger.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ForwardConditionEvent"
+            }
+          },
+          "after_large_pos_mean_pct": {
+            "description": "Mean forward return (%) after large positive trigger.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "after_large_pos_median_pct": {
+            "description": "Median forward return (%) after large positive trigger.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "after_large_pos_win_pct": {
+            "description": "Positive win rate (%) after large positive trigger.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "threshold_pct": {
+            "description": "Trigger magnitude threshold (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "GreenVsRedComparison": {
+        "description": "Green vs Red split comparison bundle.",
+        "type": "object",
+        "required": [
+          "green",
+          "magnitude_buckets",
+          "red"
+        ],
+        "properties": {
+          "green": {
+            "description": "Green side stats.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PolarityStats"
+              }
+            ]
+          },
+          "magnitude_buckets": {
+            "description": "Side-by-side empirical PDF magnitude bins.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/MagnitudePdfBucket"
+            }
+          },
+          "red": {
+            "description": "Red side stats.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PolarityStats"
+              }
+            ]
           }
         }
       },
@@ -3563,6 +4600,257 @@
             "description": "Layouts by name (opaque to the server).",
             "type": "object",
             "additionalProperties": true
+          }
+        }
+      },
+      "MagnitudePdfBucket": {
+        "description": "Magnitude PDF comparison bin (`Green %` vs `Red %`).",
+        "type": "object",
+        "required": [
+          "green_count",
+          "green_pct",
+          "label",
+          "red_count",
+          "red_pct"
+        ],
+        "properties": {
+          "green_count": {
+            "description": "Green count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "green_pct": {
+            "description": "Green share (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "label": {
+            "description": "Magnitude label (`\"0% - 1%\"`, etc.).",
+            "type": "string"
+          },
+          "red_count": {
+            "description": "Red count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "red_pct": {
+            "description": "Red share (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "MarkovAnalysis": {
+        "description": "Complete 6-State Markov Chain analysis bundle.",
+        "type": "object",
+        "required": [
+          "current_prediction",
+          "steady_state",
+          "transition_matrix"
+        ],
+        "properties": {
+          "current_prediction": {
+            "description": "Conditional prediction from active state.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkovCurrentPrediction"
+              }
+            ]
+          },
+          "steady_state": {
+            "description": "Long-run stationary distribution (%).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/MarkovStateProbability"
+            }
+          },
+          "transition_matrix": {
+            "description": "6×6 transition matrix rows.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/MarkovTransitionRow"
+            }
+          }
+        }
+      },
+      "MarkovCurrentPrediction": {
+        "description": "Conditional next-streak prediction anchored to active streak state.",
+        "type": "object",
+        "required": [
+          "current_label",
+          "negative_next_pct",
+          "positive_next_pct",
+          "state_breakdown",
+          "strongest_next_label",
+          "strongest_probability_pct"
+        ],
+        "properties": {
+          "current_label": {
+            "description": "Active streak display label.",
+            "type": "string"
+          },
+          "current_state": {
+            "description": "Active streak Markov state.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/MarkovState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "negative_next_pct": {
+            "description": "Total probability (%) of next streak being Negative.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "positive_next_pct": {
+            "description": "Total probability (%) of next streak being Positive.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "state_breakdown": {
+            "description": "Ranked breakdown across all 6 target states.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/MarkovStateProbability"
+            }
+          },
+          "strongest_next_label": {
+            "description": "Label of strongest next state.",
+            "type": "string"
+          },
+          "strongest_next_state": {
+            "description": "Most likely next Markov state.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/MarkovState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strongest_probability_pct": {
+            "description": "Probability (%) of strongest next state.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "MarkovState": {
+        "description": "Six discrete Markov states encoding streak polarity × duration bucket.",
+        "oneOf": [
+          {
+            "description": "1–2 consecutive positive periods.",
+            "type": "string",
+            "enum": [
+              "short_positive"
+            ]
+          },
+          {
+            "description": "3–4 consecutive positive periods.",
+            "type": "string",
+            "enum": [
+              "medium_positive"
+            ]
+          },
+          {
+            "description": "5+ consecutive positive periods.",
+            "type": "string",
+            "enum": [
+              "long_positive"
+            ]
+          },
+          {
+            "description": "1–2 consecutive negative periods.",
+            "type": "string",
+            "enum": [
+              "short_negative"
+            ]
+          },
+          {
+            "description": "3–4 consecutive negative periods.",
+            "type": "string",
+            "enum": [
+              "medium_negative"
+            ]
+          },
+          {
+            "description": "5+ consecutive negative periods.",
+            "type": "string",
+            "enum": [
+              "long_negative"
+            ]
+          }
+        ]
+      },
+      "MarkovStateProbability": {
+        "description": "Probability weight (`0..100`) associated with one Markov state.",
+        "type": "object",
+        "required": [
+          "label",
+          "probability_pct",
+          "state"
+        ],
+        "properties": {
+          "label": {
+            "description": "Display label.",
+            "type": "string"
+          },
+          "probability_pct": {
+            "description": "Empirical probability percentage.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "state": {
+            "description": "Target state.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkovState"
+              }
+            ]
+          }
+        }
+      },
+      "MarkovTransitionRow": {
+        "description": "One row of the 6×6 Markov transition matrix.",
+        "type": "object",
+        "required": [
+          "from_label",
+          "from_state",
+          "observation_count",
+          "probs_pct"
+        ],
+        "properties": {
+          "from_label": {
+            "description": "Display label.",
+            "type": "string"
+          },
+          "from_state": {
+            "description": "Source Markov state.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkovState"
+              }
+            ]
+          },
+          "observation_count": {
+            "description": "Historical outgoing transition sample size.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "probs_pct": {
+            "description": "Row probabilities matching `[ShortPos, MedPos, LongPos, ShortNeg, MedNeg, LongNeg]` (%).",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
           }
         }
       },
@@ -3785,6 +5073,339 @@
             }
           }
         ]
+      },
+      "OutlierAnalysis": {
+        "description": "Survivability Outlier bundle for Tab 2.",
+        "type": "object",
+        "required": [
+          "kpis",
+          "outlier_table",
+          "scatter_points"
+        ],
+        "properties": {
+          "kpis": {
+            "description": "Summary KPIs & empirical thresholds.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OutlierKpis"
+              }
+            ]
+          },
+          "outlier_table": {
+            "description": "Filtered outlier rows sorted by `|return_pct|` descending.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OutlierPeriodPoint"
+            }
+          },
+          "scatter_points": {
+            "description": "Chronological scatter points.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OutlierPeriodPoint"
+            }
+          }
+        }
+      },
+      "OutlierKpis": {
+        "description": "4-KPI outlier summary strip + computed bounds.",
+        "type": "object",
+        "required": [
+          "coverage_pct",
+          "downside_outliers",
+          "lower_bound_pct",
+          "outlier_pct",
+          "total_outliers",
+          "total_periods",
+          "upper_bound_pct",
+          "upside_outliers"
+        ],
+        "properties": {
+          "coverage_pct": {
+            "description": "Coverage slider value (`50..=99`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "downside_outliers": {
+            "description": "Downside outliers count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "lower_bound_pct": {
+            "description": "Lower threshold (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "outlier_pct": {
+            "description": "Outlier percentage.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "total_outliers": {
+            "description": "Total outliers.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "total_periods": {
+            "description": "Total periods.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "upper_bound_pct": {
+            "description": "Upper threshold (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "upside_outliers": {
+            "description": "Upside outliers count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "OutlierPeriodPoint": {
+        "description": "Single period point classified by empirical survivability bounds.",
+        "type": "object",
+        "required": [
+          "end_date",
+          "index",
+          "return_pct",
+          "start_date",
+          "status"
+        ],
+        "properties": {
+          "end_date": {
+            "description": "End date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "index": {
+            "description": "Cycle index.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "return_pct": {
+            "description": "Return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "status": {
+            "description": "Survivability status.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OutlierStatus"
+              }
+            ]
+          }
+        }
+      },
+      "OutlierStatus": {
+        "description": "Survivability outlier classification against symmetric empirical quantiles.",
+        "oneOf": [
+          {
+            "description": "Inside empirical coverage boundaries.",
+            "type": "string",
+            "enum": [
+              "within_boundary"
+            ]
+          },
+          {
+            "description": "Strictly above upper percentile bound.",
+            "type": "string",
+            "enum": [
+              "upside_outlier"
+            ]
+          },
+          {
+            "description": "Strictly below lower percentile bound.",
+            "type": "string",
+            "enum": [
+              "downside_outlier"
+            ]
+          }
+        ]
+      },
+      "PeriodPoint": {
+        "description": "Chronological period point rendered in Lollipop/Bar/SMA charts and Period table.",
+        "type": "object",
+        "required": [
+          "end_date",
+          "entry_price",
+          "exit_price",
+          "high_price",
+          "index",
+          "low_price",
+          "regime_label",
+          "return_pct",
+          "start_date"
+        ],
+        "properties": {
+          "end_date": {
+            "description": "Period end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "entry_price": {
+            "description": "Period opening price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "exit_price": {
+            "description": "Period closing price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "high_price": {
+            "description": "Period high price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "index": {
+            "description": "1-based ordinal index.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "low_price": {
+            "description": "Period low price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "ma_pct": {
+            "description": "Rolling SMA across returns when window is warm.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "regime_label": {
+            "description": "Regime/schedule label for tooltips & annotations.",
+            "type": "string"
+          },
+          "return_pct": {
+            "description": "Computed return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Period start date (`YYYY-MM-DD`).",
+            "type": "string"
+          }
+        }
+      },
+      "PeriodScheduleKind": {
+        "description": "Period slicing convention mapped across asset classes and calendars.",
+        "oneOf": [
+          {
+            "description": "NSE/BSE weekly derivative expiry cycle (pre/post Sep 3, 2025 cutover aware).",
+            "type": "string",
+            "enum": [
+              "weekly_expiry"
+            ]
+          },
+          {
+            "description": "Overlapping `Week + 1` carry window (`cycle_k.open` → `cycle_{k+1}.close`).",
+            "type": "string",
+            "enum": [
+              "week_plus_one"
+            ]
+          },
+          {
+            "description": "Monthly derivative expiry cycle.",
+            "type": "string",
+            "enum": [
+              "monthly_expiry"
+            ]
+          },
+          {
+            "description": "Standard Monday-to-Friday calendar week.",
+            "type": "string",
+            "enum": [
+              "calendar_weekly"
+            ]
+          },
+          {
+            "description": "Standard calendar month.",
+            "type": "string",
+            "enum": [
+              "calendar_monthly"
+            ]
+          },
+          {
+            "description": "Front-month futures rollover cycle.",
+            "type": "string",
+            "enum": [
+              "front_month_cycle"
+            ]
+          },
+          {
+            "description": "MCX commodity expiry cycle.",
+            "type": "string",
+            "enum": [
+              "mcx_expiry_cycle"
+            ]
+          },
+          {
+            "description": "Single daily trading session.",
+            "type": "string",
+            "enum": [
+              "daily"
+            ]
+          }
+        ]
+      },
+      "PolarityStats": {
+        "description": "Descriptive stats for Green (`r > 0`) or Red (`r < 0`) periods.",
+        "type": "object",
+        "required": [
+          "count",
+          "extreme_pct",
+          "mean_pct",
+          "median_pct",
+          "share_pct",
+          "std_dev_pct"
+        ],
+        "properties": {
+          "count": {
+            "description": "Period count on this side.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "extreme_pct": {
+            "description": "Most extreme return on this side (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "mean_pct": {
+            "description": "Mean return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "median_pct": {
+            "description": "Median return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "share_pct": {
+            "description": "Percentage share across all periods.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "std_dev_pct": {
+            "description": "Sample standard deviation (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
       },
       "PortfolioAccount": {
         "title": "PortfolioAccount",
@@ -4018,6 +5639,44 @@
           }
         ]
       },
+      "ProbabilityLevelRow": {
+        "description": "Exceedance row for `Probability-Based Levels (Easy Reference)`.",
+        "type": "object",
+        "required": [
+          "change_pct",
+          "implied_price",
+          "prob_above_pct",
+          "return_pct",
+          "scenario"
+        ],
+        "properties": {
+          "change_pct": {
+            "description": "Percentage change from reference price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "implied_price": {
+            "description": "Implied spot price anchored to reference price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "prob_above_pct": {
+            "description": "Probability (%) of spot finishing above `implied_price`.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "return_pct": {
+            "description": "Return cut (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "scenario": {
+            "description": "Directional scenario tag.",
+            "type": "string"
+          }
+        }
+      },
       "Profile": {
         "title": "Profile",
         "description": "Everything stored for one user (`GET` / `PUT /profile`).",
@@ -4230,6 +5889,240 @@
             "description": "The wire schema version the payload was written against.",
             "default": "4",
             "type": "string"
+          }
+        }
+      },
+      "ReturnBucketRow": {
+        "description": "One row of the 16-bucket or 10-bps return distribution table.",
+        "type": "object",
+        "required": [
+          "count",
+          "label",
+          "pct_of_total",
+          "percentile_range",
+          "probability_label"
+        ],
+        "properties": {
+          "count": {
+            "description": "Period count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "label": {
+            "description": "Range label.",
+            "type": "string"
+          },
+          "max_pct": {
+            "description": "Upper bound (%).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "min_pct": {
+            "description": "Lower bound (%).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pct_of_total": {
+            "description": "Share of total periods (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "percentile_range": {
+            "description": "Cumulative quantile range display label.",
+            "type": "string"
+          },
+          "price_range_high": {
+            "description": "Projected upper spot price anchored to reference price.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "price_range_low": {
+            "description": "Projected lower spot price anchored to reference price.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "probability_label": {
+            "description": "Cumulative probability display label.",
+            "type": "string"
+          }
+        }
+      },
+      "ReturnCalcKind": {
+        "description": "Return calculation convention across each sliced period.",
+        "oneOf": [
+          {
+            "description": "Open-to-Close return: `(exit_close - entry_open) / entry_open * 100`.",
+            "type": "string",
+            "enum": [
+              "open_to_close"
+            ]
+          },
+          {
+            "description": "High-to-Low range %: `(period_high - period_low) / entry_open * 100`.",
+            "type": "string",
+            "enum": [
+              "high_to_low"
+            ]
+          },
+          {
+            "description": "Close-to-Close return (gap-inclusive): `(exit_close - prev_close) / prev_close * 100`.",
+            "type": "string",
+            "enum": [
+              "close_to_close"
+            ]
+          }
+        ]
+      },
+      "ReturnKpis": {
+        "description": "3×3 KPI strip for Tab 1 (`Returns Analysis`).",
+        "type": "object",
+        "required": [
+          "avg_return_pct",
+          "max_gain_pct",
+          "max_loss_pct",
+          "negative_count",
+          "negative_pct",
+          "neutral_count",
+          "positive_count",
+          "positive_pct",
+          "profit_factor",
+          "sharpe_ratio",
+          "sortino_ratio",
+          "std_dev_pct",
+          "total_periods"
+        ],
+        "properties": {
+          "avg_return_pct": {
+            "description": "Mean return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_gain_pct": {
+            "description": "Maximum single-period gain (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_loss_pct": {
+            "description": "Maximum single-period loss (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "negative_count": {
+            "description": "Number of strictly negative periods (`r < 0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "negative_pct": {
+            "description": "Percentage of negative periods.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "neutral_count": {
+            "description": "Count of exact zero-return periods.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "positive_count": {
+            "description": "Number of strictly positive periods (`r > 0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "positive_pct": {
+            "description": "Percentage of positive periods.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "profit_factor": {
+            "description": "Profit factor (`sum(r > 0) / abs(sum(r < 0))`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sharpe_ratio": {
+            "description": "Non-annualized per-period Sharpe ratio (`mu / sigma`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sortino_ratio": {
+            "description": "Per-period Sortino ratio (`mu / downside_dev`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "std_dev_pct": {
+            "description": "Sample standard deviation of period returns (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "total_periods": {
+            "description": "Total sliced periods.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "ReturnPercentiles": {
+        "description": "Seven empirical quantile landmarks (`P99..P1`).",
+        "type": "object",
+        "required": [
+          "p1",
+          "p25",
+          "p5",
+          "p50",
+          "p75",
+          "p95",
+          "p99"
+        ],
+        "properties": {
+          "p1": {
+            "description": "1st percentile.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p25": {
+            "description": "25th percentile.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p5": {
+            "description": "5th percentile.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p50": {
+            "description": "50th percentile (median).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p75": {
+            "description": "75th percentile.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p95": {
+            "description": "95th percentile.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p99": {
+            "description": "99th percentile.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
           }
         }
       },
@@ -5179,6 +7072,72 @@
           }
         ]
       },
+      "ScheduleOption": {
+        "description": "Period schedule metadata advertised for an asset class.",
+        "type": "object",
+        "required": [
+          "description",
+          "is_default",
+          "kind",
+          "label"
+        ],
+        "properties": {
+          "description": {
+            "description": "Short explanation of cycle boundaries.",
+            "type": "string"
+          },
+          "is_default": {
+            "description": "Whether this schedule is the default for its asset class.",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "Machine schedule key.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "label": {
+            "description": "Human display label.",
+            "type": "string"
+          }
+        }
+      },
+      "SideStreakStats": {
+        "description": "Descriptive distribution stats for one streak polarity side.",
+        "type": "object",
+        "required": [
+          "median_length",
+          "most_common_count",
+          "most_common_length",
+          "std_dev_length"
+        ],
+        "properties": {
+          "median_length": {
+            "description": "Median streak length.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "most_common_count": {
+            "description": "Observation count at the mode.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "most_common_length": {
+            "description": "Modal streak length.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "std_dev_length": {
+            "description": "Sample standard deviation of streak lengths.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
       "Source": {
         "title": "Source",
         "description": "A source feeding a [`Module`], for example a broker adapter or a symbol list.",
@@ -5197,6 +7156,338 @@
             "type": "string"
           }
         }
+      },
+      "StreakAnalysis": {
+        "description": "Complete Streak Analysis bundle.",
+        "type": "object",
+        "required": [
+          "details",
+          "length_distribution",
+          "negative_stats",
+          "positive_stats",
+          "summary"
+        ],
+        "properties": {
+          "details": {
+            "description": "Chronological list of streaks.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/StreakDetail"
+            }
+          },
+          "length_distribution": {
+            "description": "Streak length histogram.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/StreakLengthBucket"
+            }
+          },
+          "negative_stats": {
+            "description": "Negative streak statistics.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/SideStreakStats"
+              }
+            ]
+          },
+          "positive_stats": {
+            "description": "Positive streak statistics.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/SideStreakStats"
+              }
+            ]
+          },
+          "summary": {
+            "description": "Active & summary streak KPIs.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StreakSummary"
+              }
+            ]
+          }
+        }
+      },
+      "StreakDetail": {
+        "description": "One contiguous positive or negative run in `Streak Details`.",
+        "type": "object",
+        "required": [
+          "avg_period_return_pct",
+          "end_date",
+          "end_price",
+          "index",
+          "length",
+          "start_date",
+          "start_price",
+          "streak_type",
+          "total_return_pct"
+        ],
+        "properties": {
+          "avg_period_return_pct": {
+            "description": "Average per-period return inside streak (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "end_date": {
+            "description": "Streak end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "end_price": {
+            "description": "Closing price of final period in streak.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "index": {
+            "description": "1-based chronological streak index.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "length": {
+            "description": "Number of non-neutral periods in run.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "start_date": {
+            "description": "Streak start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "start_price": {
+            "description": "Opening price of first period in streak.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "streak_type": {
+            "description": "Streak direction.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StreakDirection"
+              }
+            ]
+          },
+          "total_return_pct": {
+            "description": "Compounded total return over the streak (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "StreakDirection": {
+        "description": "Directional polarity of a streak (`0%` neutral periods are excluded).",
+        "oneOf": [
+          {
+            "description": "Positive return run (`r > 0`).",
+            "type": "string",
+            "enum": [
+              "positive"
+            ]
+          },
+          {
+            "description": "Negative return run (`r < 0`).",
+            "type": "string",
+            "enum": [
+              "negative"
+            ]
+          }
+        ]
+      },
+      "StreakLengthBucket": {
+        "description": "Histogram bar comparing positive vs negative streak counts by duration.",
+        "type": "object",
+        "required": [
+          "length",
+          "negative_count",
+          "positive_count"
+        ],
+        "properties": {
+          "length": {
+            "description": "Run length (`1, 2, 3, ...`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "negative_count": {
+            "description": "Negative streak count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "positive_count": {
+            "description": "Positive streak count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "StreakSummary": {
+        "description": "Aggregate KPI metrics across all completed streaks.",
+        "type": "object",
+        "required": [
+          "avg_negative_length",
+          "avg_positive_length",
+          "best_positive_return_pct",
+          "current_streak_length",
+          "current_streak_return_pct",
+          "excluded_neutral_count",
+          "longest_negative",
+          "longest_positive",
+          "negative_streak_count",
+          "positive_streak_count",
+          "worst_negative_return_pct"
+        ],
+        "properties": {
+          "avg_negative_length": {
+            "description": "Average negative streak length.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_positive_length": {
+            "description": "Average positive streak length.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "best_positive_return_pct": {
+            "description": "Best positive streak total return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "current_markov_state": {
+            "description": "Markov state of active streak.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/MarkovState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_streak_length": {
+            "description": "Length of active streak.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "current_streak_return_pct": {
+            "description": "Compounded return of active streak (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "current_streak_type": {
+            "description": "Active streak direction.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/StreakDirection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "excluded_neutral_count": {
+            "description": "Exact zero-return periods excluded before streak grouping.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "longest_negative": {
+            "description": "Longest negative streak length.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "longest_positive": {
+            "description": "Longest positive streak length.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "negative_streak_count": {
+            "description": "Total negative streaks.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "positive_streak_count": {
+            "description": "Total positive streaks.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "worst_negative_return_pct": {
+            "description": "Worst negative streak total return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "StudyAssetClass": {
+        "description": "Generalized asset class supported by the `Experimental-Analysis` workbench.",
+        "oneOf": [
+          {
+            "description": "Benchmark cash & index benchmarks (`NIFTY 50`, `BANK NIFTY`, `SENSEX`, `INDIA VIX`).",
+            "type": "string",
+            "enum": [
+              "index"
+            ]
+          },
+          {
+            "description": "F&O eligible stocks and continuous derivative underlyings.",
+            "type": "string",
+            "enum": [
+              "fno_stock"
+            ]
+          },
+          {
+            "description": "Exchange-traded funds.",
+            "type": "string",
+            "enum": [
+              "etf"
+            ]
+          },
+          {
+            "description": "Cash equities.",
+            "type": "string",
+            "enum": [
+              "equity"
+            ]
+          },
+          {
+            "description": "Foreign exchange pairs and currency futures.",
+            "type": "string",
+            "enum": [
+              "forex"
+            ]
+          },
+          {
+            "description": "Commodities (`GOLD`, `SILVER`, `CRUDEOIL`, `NATURALGAS`, `COPPER`, MCX/global).",
+            "type": "string",
+            "enum": [
+              "commodity"
+            ]
+          }
+        ]
+      },
+      "SubCycleKind": {
+        "description": "Sub-cycle horizon modifier (`Current` vs `Period + 1` carry).",
+        "oneOf": [
+          {
+            "description": "Single current period.",
+            "type": "string",
+            "enum": [
+              "current"
+            ]
+          },
+          {
+            "description": "Carry from current period open to following period close (`+1`).",
+            "type": "string",
+            "enum": [
+              "plus_one"
+            ]
+          }
+        ]
       },
       "TimeInForce": {
         "title": "TimeInForce",
@@ -5423,6 +7714,10 @@
     {
       "name": "strategies",
       "description": "Strategy authoring (catalog, compile, verify)"
+    },
+    {
+      "name": "experimental-analysis",
+      "description": "Multi-asset statistical & event study workbench"
     },
     {
       "name": "screener",

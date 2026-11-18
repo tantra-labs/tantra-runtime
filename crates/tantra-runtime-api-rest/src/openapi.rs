@@ -16,6 +16,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tantra_core::{InstrumentId, OrderSide, OrderStatus, OrderType, Price, Quantity, TimeInForce};
 use tantra_risk::{RiskLimits, RiskRefusal};
+use tantra_runtime_api::experimental_analysis::{
+    ExperimentalCatalogResponse, ExperimentalReturnsRequest, ExperimentalReturnsResponse,
+};
 use tantra_runtime_api::profile::{
     LayoutDocument, LayoutsResponse, Module, ModulesResponse, Profile, ProfileRevision, Source,
 };
@@ -186,6 +189,14 @@ fn query_param(name: &str) -> Parameter {
     }
 }
 
+fn register_schema<T: schemars::JsonSchema>(schemas: &mut BTreeMap<String, Schema>) -> Schema {
+    let root = schemars::schema_for!(T);
+    for (name, def) in root.definitions {
+        schemas.entry(name).or_insert(def);
+    }
+    root.schema.into()
+}
+
 fn path_param(name: &str) -> Parameter {
     Parameter {
         name: name.to_string(),
@@ -207,6 +218,7 @@ impl OpenApiDocument {
     /// Generate the complete OpenAPI 3.1 document for the Tantra REST API.
     pub fn generate() -> Self {
         let mut paths = BTreeMap::new();
+        let mut schemas = BTreeMap::new();
 
         // Market data endpoints
         paths.insert(
@@ -1540,6 +1552,94 @@ impl OpenApiDocument {
             },
         );
 
+        // Experimental-Analysis multi-asset statistical workbench endpoints
+        let catalog_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalCatalogResponse>>(&mut schemas);
+        let returns_req_schema = register_schema::<ExperimentalReturnsRequest>(&mut schemas);
+        let returns_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalReturnsResponse>>(&mut schemas);
+        let cat_schema = register_schema::<ExperimentalCatalogResponse>(&mut schemas);
+        let ret_schema = register_schema::<ExperimentalReturnsResponse>(&mut schemas);
+        schemas.insert("ExperimentalCatalogResponse".to_string(), cat_schema);
+        schemas.insert(
+            "ExperimentalReturnsRequest".to_string(),
+            returns_req_schema.clone(),
+        );
+        schemas.insert("ExperimentalReturnsResponse".to_string(), ret_schema);
+
+        paths.insert(
+            "/experimental-analysis/catalog".to_string(),
+            PathItem {
+                get: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary: "Multi-asset study catalog and schedule metadata".to_string(),
+                    operation_id: "getExperimentalAnalysisCatalog".to_string(),
+                    parameters: vec![query_param("asset_class")],
+                    request_body: None,
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Multi-asset statistical workbench catalog".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: catalog_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/experimental-analysis/returns".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary:
+                        "Evaluate period returns, streaks, Markov, distribution, and outlier study"
+                            .to_string(),
+                    operation_id: "postExperimentalAnalysisReturns".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: returns_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Complete statistical & outlier returns study".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: returns_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
         // Screener and run journals
         paths.insert(
             "/screener/scan".to_string(),
@@ -1633,7 +1733,6 @@ impl OpenApiDocument {
             },
         );
 
-        let mut schemas = BTreeMap::new();
         schemas.insert(
             "InstrumentId".to_string(),
             schema_for!(InstrumentId).schema.into(),
@@ -1809,6 +1908,10 @@ impl OpenApiDocument {
                 Tag {
                     name: "strategies".to_string(),
                     description: "Strategy authoring (catalog, compile, verify)".to_string(),
+                },
+                Tag {
+                    name: "experimental-analysis".to_string(),
+                    description: "Multi-asset statistical & event study workbench".to_string(),
                 },
                 Tag {
                     name: "screener".to_string(),

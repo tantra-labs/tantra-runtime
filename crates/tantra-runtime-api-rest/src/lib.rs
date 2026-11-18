@@ -45,6 +45,7 @@ pub mod chat_trade;
 mod dispatch;
 mod exec;
 mod executor;
+mod experimental_analysis;
 mod ingest;
 mod journal;
 mod market;

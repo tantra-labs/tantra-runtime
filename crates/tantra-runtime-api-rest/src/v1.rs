@@ -28,8 +28,8 @@ use crate::trade_journal::{
 use crate::ws::ws_handler;
 use crate::ws_live::ws_live_handler;
 use crate::{
-    ApiJson, AppState, capability_manifest, ingest, openapi, orders, portfolio, profile, runs,
-    screener, streams::get_backtest_events, trading_state,
+    ApiJson, AppState, capability_manifest, experimental_analysis, ingest, openapi, orders,
+    portfolio, profile, runs, screener, streams::get_backtest_events, trading_state,
 };
 
 /// Get API capabilities for v1.
@@ -240,6 +240,14 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/approval/approve", post(orders::post_approve_order))
         .route("/approval/reject", post(orders::post_reject_order))
         .route("/screener/scan", get(screener::get_screener_scan))
+        .route(
+            "/experimental-analysis/catalog",
+            get(experimental_analysis::get_catalog),
+        )
+        .route(
+            "/experimental-analysis/returns",
+            post(experimental_analysis::post_returns),
+        )
         .route("/journals/:id", get(runs::get_journal_by_id))
         // Trade-performance journal (distinct from run/backtest journals and
         // the operator journal): backed by tantra-ledger-performance.

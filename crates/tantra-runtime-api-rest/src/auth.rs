@@ -283,6 +283,16 @@ pub const ROUTE_SCOPES: &[(&str, &str, RouteScope)] = &[
     ("GET", "/trading-state", RouteScope::Required("admin")),
     ("PUT", "/trading-state", RouteScope::Required("admin")),
     ("GET", "/screener/scan", RouteScope::Required("read")),
+    (
+        "GET",
+        "/experimental-analysis/catalog",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/experimental-analysis/returns",
+        RouteScope::Required("read"),
+    ),
     // Profile routes: any valid token, scoped to its own `token_id` by the handlers.
     ("GET", "/profile", RouteScope::Authenticated),
     ("PUT", "/profile", RouteScope::Authenticated),
