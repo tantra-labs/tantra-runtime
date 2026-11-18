@@ -397,6 +397,69 @@ fn to_wire_kind(k: tantra_core::InstrumentKind) -> InstrumentKind {
     }
 }
 
+fn looks_like_index_or_proxy(symbol: &str) -> bool {
+    let s = symbol.trim().to_ascii_uppercase();
+    matches!(
+        s.as_str(),
+        "NIFTY"
+            | "NIFTY50"
+            | "NIFTY 50"
+            | "BANKNIFTY"
+            | "FINNIFTY"
+            | "MIDCPNIFTY"
+            | "NIFTYNXT50"
+            | "SENSEX"
+            | "BANKEX"
+            | "INDIAVIX"
+            | "NIFTYBEES"
+            | "BANKBEES"
+            | "JUNIORBEES"
+            | "MID150BEES"
+            | "SENSEXETF"
+            | "SENSEXIETF"
+            | "SETFNIF50"
+            | "SETFNIFBK"
+            | "SETFNN50"
+            | "NIFTYETF"
+            | "NIFTYIETF"
+            | "MONIFTY100"
+            | "MONIFTY500"
+            | "NIFTY1"
+            | "BANKNIFTY1"
+            | "HDFCNIFTY"
+            | "KOTAKNIFTY"
+            | "AXISNIFTY"
+            | "BSLNIFTY"
+            | "GROWWNIFTY"
+            | "MID150"
+            | "MIDCAPETF"
+            | "MIDCAPIETF"
+            | "SMALLCAP"
+            | "ICICIB22"
+    )
+}
+
+fn index_sort_rank(item: &CatalogInstrumentEntry) -> (u8, usize, &str) {
+    let kind_rank = if item.instrument_kind == InstrumentKind::Index { 0 } else { 1 };
+    let sym = item.symbol.trim().to_ascii_uppercase();
+    let preferred = [
+        "NIFTY50",
+        "BANKNIFTY",
+        "FINNIFTY",
+        "SENSEX",
+        "NIFTYBEES",
+        "BANKBEES",
+        "JUNIORBEES",
+        "MID150BEES",
+        "SENSEXETF",
+        "SETFNIF50",
+        "MONIFTY100",
+        "MONIFTY500",
+    ];
+    let pref_rank = preferred.iter().position(|p| *p == sym).unwrap_or(preferred.len());
+    (kind_rank, pref_rank, item.symbol.as_str())
+}
+
 fn looks_like_etf(symbol: &str) -> bool {
     let s = symbol.trim().to_ascii_uppercase();
     s.ends_with("BEES")
@@ -730,6 +793,12 @@ pub(crate) async fn get_catalog(
                 .push(entry(StudyAssetClass::FnoStock));
             continue;
         }
+        if id.exchange == Exchange::Nse && looks_like_index_or_proxy(&id.symbol) {
+            buckets
+                .get_mut(&StudyAssetClass::Index)
+                .unwrap()
+                .push(entry(StudyAssetClass::Index));
+        }
         if looks_like_etf(&id.symbol) {
             let mut e = entry(StudyAssetClass::Etf);
             e.instrument_kind = InstrumentKind::Etf;
@@ -747,6 +816,10 @@ pub(crate) async fn get_catalog(
                 .unwrap()
                 .push(entry(StudyAssetClass::FnoStock));
         }
+    }
+
+    if let Some(index_items) = buckets.get_mut(&StudyAssetClass::Index) {
+        index_items.sort_by(|a, b| index_sort_rank(a).cmp(&index_sort_rank(b)));
     }
 
     let groups: Vec<AssetClassCatalogGroup> = ordered_classes

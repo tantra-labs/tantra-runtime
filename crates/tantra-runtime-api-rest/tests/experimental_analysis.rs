@@ -231,6 +231,14 @@ async fn catalog_groups_multi_asset_universe_and_schedules() {
             .unwrap_or_else(|| panic!("missing group {key}"))
     };
 
+    let index_syms: Vec<&str> = find_group("index")["instruments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["symbol"].as_str().unwrap())
+        .collect();
+    assert!(index_syms.contains(&"NIFTYBEES"), "got {index_syms:?}");
+
     let fno_syms: Vec<&str> = find_group("fno_stock")["instruments"]
         .as_array()
         .unwrap()
