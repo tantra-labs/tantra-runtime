@@ -17,7 +17,9 @@ use std::collections::BTreeMap;
 use tantra_core::{InstrumentId, OrderSide, OrderStatus, OrderType, Price, Quantity, TimeInForce};
 use tantra_risk::{RiskLimits, RiskRefusal};
 use tantra_runtime_api::experimental_analysis::{
-    ExperimentalCatalogResponse, ExperimentalReturnsRequest, ExperimentalReturnsResponse,
+    ExperimentalCatalogResponse, ExperimentalCorrelationRequest, ExperimentalCorrelationResponse,
+    ExperimentalIntradayRequest, ExperimentalIntradayResponse, ExperimentalReturnsRequest,
+    ExperimentalReturnsResponse,
 };
 use tantra_runtime_api::profile::{
     LayoutDocument, LayoutsResponse, Module, ModulesResponse, Profile, ProfileRevision, Source,
@@ -1566,6 +1568,24 @@ impl OpenApiDocument {
             returns_req_schema.clone(),
         );
         schemas.insert("ExperimentalReturnsResponse".to_string(), ret_schema);
+        let intraday_req_schema = register_schema::<ExperimentalIntradayRequest>(&mut schemas);
+        let intraday_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalIntradayResponse>>(&mut schemas);
+        let intra_schema = register_schema::<ExperimentalIntradayResponse>(&mut schemas);
+        let corr_req_schema = register_schema::<ExperimentalCorrelationRequest>(&mut schemas);
+        let corr_resp_schema =
+            register_schema::<ResponseEnvelope<ExperimentalCorrelationResponse>>(&mut schemas);
+        let corr_schema = register_schema::<ExperimentalCorrelationResponse>(&mut schemas);
+        schemas.insert(
+            "ExperimentalIntradayRequest".to_string(),
+            intraday_req_schema.clone(),
+        );
+        schemas.insert("ExperimentalIntradayResponse".to_string(), intra_schema);
+        schemas.insert(
+            "ExperimentalCorrelationRequest".to_string(),
+            corr_req_schema.clone(),
+        );
+        schemas.insert("ExperimentalCorrelationResponse".to_string(), corr_schema);
 
         paths.insert(
             "/experimental-analysis/catalog".to_string(),
@@ -1626,6 +1646,85 @@ impl OpenApiDocument {
                                 "application/json".to_string(),
                                 MediaType {
                                     schema: returns_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        paths.insert(
+            "/experimental-analysis/intraday".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary: "Evaluate intraday movement, gaps, 5-day moves, cycle progress & 15m ORB flip".to_string(),
+                    operation_id: "postExperimentalAnalysisIntraday".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: intraday_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Intraday, gap, 5-day, cycle-progress & 15m ORB report".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: intraday_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/experimental-analysis/correlation".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["experimental-analysis".to_string()],
+                    summary: "Evaluate cross-asset Pearson/Spearman correlation matrix & rolling pair spread".to_string(),
+                    operation_id: "postExperimentalAnalysisCorrelation".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: corr_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Cross-asset correlation matrix & rolling spread report".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: corr_resp_schema,
                                 },
                             )]),
                         },

@@ -73,6 +73,8 @@ const ROUTES: &[(&str, &str)] = &[
     ("post", "/approval/reject"),
     ("get", "/experimental-analysis/catalog"),
     ("post", "/experimental-analysis/returns"),
+    ("post", "/experimental-analysis/intraday"),
+    ("post", "/experimental-analysis/correlation"),
     ("get", "/screener/scan"),
     ("get", "/journals/{id}"),
     ("get", "/trade-journal/accounts"),

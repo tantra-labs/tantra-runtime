@@ -1,5 +1,6 @@
-//! REST handlers for `Experimental-Analysis` (`/experimental-analysis/catalog` and
-//! `/experimental-analysis/returns`).
+//! REST handlers for `Experimental-Analysis` (`/experimental-analysis/catalog`,
+//! `/experimental-analysis/returns`, `/experimental-analysis/intraday`, and
+//! `/experimental-analysis/correlation`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::str::FromStr;
@@ -8,28 +9,33 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
-use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Timelike as _, Utc};
 use serde_json::json;
 use tantra_core::rust_decimal::Decimal;
 use tantra_core::{Exchange, InstrumentId};
 use tantra_market_finance::calendar::{MarketCalendar, Session};
 use tantra_market_finance::studies::{
-    self, ExperimentalStudyConfig, OhlcvBar, PeriodScheduleKind as DomainSchedule,
-    ReturnCalcKind as DomainCalc, StudyAssetClass as DomainAssetClass, StudyError,
-    SubCycleKind as DomainSubCycle,
+    self, ExperimentalStudyConfig, IntradayBar, OhlcvBar, OrbConfig,
+    PeriodScheduleKind as DomainSchedule, ReturnCalcKind as DomainCalc,
+    RollBasisMode as DomainRollMode, SpreadCostConfig, StudyAssetClass as DomainAssetClass,
+    StudyError, SubCycleKind as DomainSubCycle,
 };
 use tantra_market_store::CorporateActionsProjectionReader;
 use tantra_runtime_api::{
-    AssetClassCatalogGroup, CatalogInstrumentEntry, DailyOhlcRow, DailyOhlcSummary,
-    DataSourceStatus, ErrorCode, ErrorDetail, ExperimentalCatalogQuery,
-    ExperimentalCatalogResponse, ExperimentalReturnsRequest, ExperimentalReturnsResponse,
-    ForwardConditionEvent, ForwardConditionalGroup, GreenVsRedComparison, MagnitudePdfBucket,
+    AssetClassCatalogGroup, CatalogInstrumentEntry, CycleProgressAnalysis, CycleProgressDecile,
+    DailyOhlcRow, DailyOhlcSummary, DataSourceStatus, ErrorCode, ErrorDetail,
+    ExperimentalCatalogQuery, ExperimentalCatalogResponse, ExperimentalCorrelationRequest,
+    ExperimentalCorrelationResponse, ExperimentalIntradayRequest, ExperimentalIntradayResponse,
+    ExperimentalReturnsRequest, ExperimentalReturnsResponse, ForwardConditionEvent,
+    ForwardConditionalGroup, FrictionSummary, GapAnalysis, GapBucketRow, GapEventRow,
+    GreenVsRedComparison, IntradayMovementAnalysis, IntradaySlotStat, MagnitudePdfBucket,
     MarkovAnalysis, MarkovCurrentPrediction, MarkovState, MarkovStateProbability,
-    MarkovTransitionRow, OutlierAnalysis, OutlierKpis, OutlierPeriodPoint, OutlierStatus,
-    PeriodPoint, PeriodScheduleKind, PolarityStats, ProbabilityLevelRow, ReturnBucketRow,
-    ReturnCalcKind, ReturnKpis, ReturnPercentiles, ScheduleOption, SideStreakStats, StreakAnalysis,
-    StreakDetail, StreakDirection, StreakLengthBucket, StreakSummary, StudyAssetClass,
-    SubCycleKind, wire::InstrumentKind,
+    MarkovTransitionRow, OrbBacktestResult, OrbEquityPoint, OrbTradeRow, OutlierAnalysis,
+    OutlierKpis, OutlierPeriodPoint, OutlierStatus, PeriodPoint, PeriodScheduleKind, PolarityStats,
+    ProbabilityLevelRow, ReturnBucketRow, ReturnCalcKind, ReturnKpis, ReturnPercentiles,
+    RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint, RollingPairPoint, ScheduleOption,
+    SideStreakStats, StreakAnalysis, StreakDetail, StreakDirection, StreakLengthBucket,
+    StreakSummary, StudyAssetClass, SubCycleKind, wire::InstrumentKind,
 };
 use tantra_runtime_backtest::NseTradingCalendar;
 
@@ -93,6 +99,223 @@ fn parse_study_instrument_id(raw: &str) -> Result<InstrumentId, ErrorDetail> {
     })
 }
 
+fn parse_date_range(start_raw: &str, end_raw: &str) -> Result<(NaiveDate, NaiveDate), ErrorDetail> {
+    let start_date = match NaiveDate::parse_from_str(start_raw.trim(), "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => {
+            return Err(invalid_field(
+                "start_date",
+                "invalid_date",
+                "start_date must be YYYY-MM-DD",
+            ));
+        }
+    };
+    let end_date = match NaiveDate::parse_from_str(end_raw.trim(), "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => {
+            return Err(invalid_field(
+                "end_date",
+                "invalid_date",
+                "end_date must be YYYY-MM-DD",
+            ));
+        }
+    };
+    if start_date >= end_date {
+        return Err(invalid_field(
+            "end_date",
+            "empty_range",
+            "start_date must be strictly before end_date",
+        ));
+    }
+    Ok((start_date, end_date))
+}
+
+async fn resolve_study_instrument(
+    state: &AppState,
+    parsed_id: &InstrumentId,
+) -> Result<crate::market_feed::wire::Instrument, Response> {
+    match state.instruments.get_instrument(parsed_id).await {
+        Ok(Some(inst)) => Ok(inst),
+        Ok(None) => match state.instruments.list_instruments().await {
+            Ok(all) => match all.into_iter().find(|item| {
+                item.id().exchange == parsed_id.exchange
+                    && item.id().symbol.eq_ignore_ascii_case(&parsed_id.symbol)
+            }) {
+                Some(found) => Ok(found),
+                None => Err(instrument_not_found(parsed_id)),
+            },
+            Err(err) => Err(port_failure(err)),
+        },
+        Err(err) => Err(port_failure(err)),
+    }
+}
+
+async fn load_daily_study_bars(
+    state: &AppState,
+    canonical_id: &InstrumentId,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    with_corporate_actions: bool,
+) -> Result<Vec<OhlcvBar>, Response> {
+    let from_utc: DateTime<Utc> = (start_date - Duration::days(1))
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc();
+    let to_utc: DateTime<Utc> = (end_date + Duration::days(2))
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc();
+    let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
+    let bar_req = match BarRequest::new(
+        canonical_id.clone(),
+        spec,
+        Some(UnixNanos::from_datetime(from_utc)),
+        Some(UnixNanos::from_datetime(to_utc)),
+    ) {
+        Ok(r) => r,
+        Err(err) => return Err(port_failure(err)),
+    };
+    let raw_bars = match state.bars.read_bars(&bar_req).await {
+        Ok(b) => b,
+        Err(err) => return Err(port_failure(err)),
+    };
+
+    let mut dividends: HashMap<NaiveDate, Decimal> = HashMap::new();
+    let mut splits: HashMap<NaiveDate, Decimal> = HashMap::new();
+    if with_corporate_actions && let Some(root) = state.lakehouse_root() {
+        let ca_reader = CorporateActionsProjectionReader::new(root);
+        if let Ok(actions) = ca_reader.read() {
+            let id_upper = canonical_id.to_string().to_ascii_uppercase();
+            let sym_upper = canonical_id.symbol.to_ascii_uppercase();
+            for act in actions {
+                let act_upper = act.instrument.to_ascii_uppercase();
+                let matches_inst = act_upper == id_upper
+                    || act_upper.ends_with(&format!(":{sym_upper}"))
+                    || act_upper.contains(&format!(":{sym_upper}-"));
+                if !matches_inst {
+                    continue;
+                }
+                match act.action_type.to_ascii_lowercase().as_str() {
+                    "dividend" => {
+                        if let Some(val) = act.per_share {
+                            *dividends.entry(act.ex_date).or_insert(Decimal::ZERO) += val;
+                        }
+                    }
+                    "split" => {
+                        if let (Some(old_s), Some(new_s)) = (act.old_shares, act.new_shares)
+                            && old_s > 0
+                        {
+                            let ratio = (Decimal::from(new_s) / Decimal::from(old_s)).round_dp(4);
+                            splits.insert(act.ex_date, ratio);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let ist_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
+    let mut dedup_bars: BTreeMap<NaiveDate, OhlcvBar> = BTreeMap::new();
+    for bar in raw_bars {
+        let d = bar
+            .ts_event()
+            .to_datetime()
+            .with_timezone(&ist_offset)
+            .date_naive();
+        if d < start_date || d > end_date {
+            continue;
+        }
+        dedup_bars.insert(
+            d,
+            OhlcvBar {
+                date: d,
+                open: Decimal::from_f64_retain(bar.open())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                high: Decimal::from_f64_retain(bar.high())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                low: Decimal::from_f64_retain(bar.low())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                close: Decimal::from_f64_retain(bar.close())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                volume: Decimal::from_f64_retain(bar.volume())
+                    .unwrap_or_default()
+                    .round_dp(2),
+                dividend: dividends.get(&d).copied().unwrap_or(Decimal::ZERO),
+                split_factor: splits.get(&d).copied().unwrap_or(Decimal::ZERO),
+            },
+        );
+    }
+
+    Ok(dedup_bars.into_values().collect())
+}
+
+async fn load_5m_intraday_bars(
+    state: &AppState,
+    canonical_id: &InstrumentId,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> Vec<IntradayBar> {
+    let from_utc: DateTime<Utc> = (start_date - Duration::days(1))
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc();
+    let to_utc: DateTime<Utc> = (end_date + Duration::days(2))
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc();
+    let spec = BarSpecification::new(5, BarAggregation::Minute, PriceType::Last);
+    let Ok(bar_req) = BarRequest::new(
+        canonical_id.clone(),
+        spec,
+        Some(UnixNanos::from_datetime(from_utc)),
+        Some(UnixNanos::from_datetime(to_utc)),
+    ) else {
+        return Vec::new();
+    };
+    let Ok(raw_bars) = state.bars.read_bars(&bar_req).await else {
+        return Vec::new();
+    };
+
+    let ist_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
+    let mut dedup: BTreeMap<(NaiveDate, u16), IntradayBar> = BTreeMap::new();
+    for bar in raw_bars {
+        let dt_ist = bar.ts_event().to_datetime().with_timezone(&ist_offset);
+        let d = dt_ist.date_naive();
+        if d < start_date || d > end_date {
+            continue;
+        }
+        let minute_of_day = (dt_ist.hour() * 60 + dt_ist.minute()) as u16;
+        dedup.insert(
+            (d, minute_of_day),
+            IntradayBar {
+                date: d,
+                minute_of_day,
+                open: Decimal::from_f64_retain(bar.open())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                high: Decimal::from_f64_retain(bar.high())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                low: Decimal::from_f64_retain(bar.low())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                close: Decimal::from_f64_retain(bar.close())
+                    .unwrap_or_default()
+                    .round_dp(4),
+                volume: Decimal::from_f64_retain(bar.volume())
+                    .unwrap_or_default()
+                    .round_dp(2),
+            },
+        );
+    }
+    dedup.into_values().collect()
+}
+
 fn to_domain_asset_class(v: StudyAssetClass) -> DomainAssetClass {
     match v {
         StudyAssetClass::Index => DomainAssetClass::Index,
@@ -129,6 +352,22 @@ fn to_domain_calc(v: ReturnCalcKind) -> DomainCalc {
         ReturnCalcKind::OpenToClose => DomainCalc::OpenToClose,
         ReturnCalcKind::HighToLow => DomainCalc::HighToLow,
         ReturnCalcKind::CloseToClose => DomainCalc::CloseToClose,
+    }
+}
+
+fn to_domain_roll_mode(v: RollBasisMode) -> DomainRollMode {
+    match v {
+        RollBasisMode::GrossSpot => DomainRollMode::GrossSpot,
+        RollBasisMode::IncludeRollBasis => DomainRollMode::IncludeRollBasis,
+        RollBasisMode::NetAfterSpreadAndCosts => DomainRollMode::NetAfterSpreadAndCosts,
+    }
+}
+
+fn from_domain_roll_mode(v: DomainRollMode) -> RollBasisMode {
+    match v {
+        DomainRollMode::GrossSpot => RollBasisMode::GrossSpot,
+        DomainRollMode::IncludeRollBasis => RollBasisMode::IncludeRollBasis,
+        DomainRollMode::NetAfterSpreadAndCosts => RollBasisMode::NetAfterSpreadAndCosts,
     }
 }
 
@@ -405,7 +644,6 @@ pub(crate) async fn get_catalog(
             fno_contract_count += 1;
             let sym = inst.id().symbol.to_ascii_uppercase();
             fno_underlyings.insert(sym.clone());
-            // Strip trailing contract suffixes if e.g. RELIANCE26JANFUT
             let base: String = sym
                 .chars()
                 .take_while(|c| c.is_ascii_alphabetic() || *c == '&')
@@ -482,7 +720,6 @@ pub(crate) async fn get_catalog(
             continue;
         }
 
-        // Cash Equity (also exposed in F&O Stocks if F&O-eligible)
         buckets
             .get_mut(&StudyAssetClass::Equity)
             .unwrap()
@@ -606,9 +843,23 @@ fn map_bucket_row(b: &studies::ReturnBucketRow) -> ReturnBucketRow {
     }
 }
 
+fn map_slot_stat(s: studies::IntradaySlotStat) -> IntradaySlotStat {
+    IntradaySlotStat {
+        slot_label: s.slot_label,
+        minute_of_day: s.minute_of_day,
+        bar_count: s.bar_count,
+        avg_range_pct: s.avg_range_pct,
+        max_range_pct: s.max_range_pct,
+        avg_abs_move_pct: s.avg_abs_move_pct,
+        avg_volume: s.avg_volume,
+        hod_count: s.hod_count,
+        lod_count: s.lod_count,
+    }
+}
+
 /// `POST /experimental-analysis/returns`: runs complete multi-asset period return,
-/// streak, Markov, distribution, probability-level, conditional forward, and survivability
-/// outlier computations on `1d` historical bars.
+/// F&O spread/basis/cost adjustment, streak, Markov, distribution, probability-level,
+/// conditional forward, and survivability outlier computations on `1d` historical bars.
 pub(crate) async fn post_returns(
     State(state): State<Arc<AppState>>,
     ApiJson(req): ApiJson<ExperimentalReturnsRequest>,
@@ -617,34 +868,10 @@ pub(crate) async fn post_returns(
         Ok(id) => id,
         Err(detail) => return unprocessable(detail),
     };
-
-    let start_date = match NaiveDate::parse_from_str(req.start_date.trim(), "%Y-%m-%d") {
-        Ok(d) => d,
-        Err(_) => {
-            return unprocessable(invalid_field(
-                "start_date",
-                "invalid_date",
-                "start_date must be YYYY-MM-DD",
-            ));
-        }
+    let (start_date, end_date) = match parse_date_range(&req.start_date, &req.end_date) {
+        Ok(range) => range,
+        Err(detail) => return unprocessable(detail),
     };
-    let end_date = match NaiveDate::parse_from_str(req.end_date.trim(), "%Y-%m-%d") {
-        Ok(d) => d,
-        Err(_) => {
-            return unprocessable(invalid_field(
-                "end_date",
-                "invalid_date",
-                "end_date must be YYYY-MM-DD",
-            ));
-        }
-    };
-    if start_date >= end_date {
-        return unprocessable(invalid_field(
-            "end_date",
-            "empty_range",
-            "start_date must be strictly before end_date",
-        ));
-    }
 
     let ma_window = req.ma_window.unwrap_or(20);
     if !(2..=120).contains(&ma_window) {
@@ -672,123 +899,37 @@ pub(crate) async fn post_returns(
             "tail_threshold_pct must be > 0 and <= 50",
         ));
     }
+    let spread_slippage_bps = req.spread_slippage_bps.unwrap_or(Decimal::ZERO);
+    if spread_slippage_bps < Decimal::ZERO || spread_slippage_bps > Decimal::from(500) {
+        return unprocessable(invalid_field(
+            "spread_slippage_bps",
+            "out_of_range",
+            "spread_slippage_bps must be between 0 and 500 bps",
+        ));
+    }
+    let futures_roll_basis_bps = req.futures_roll_basis_bps.unwrap_or(Decimal::ZERO);
+    if futures_roll_basis_bps < Decimal::from(-500) || futures_roll_basis_bps > Decimal::from(500) {
+        return unprocessable(invalid_field(
+            "futures_roll_basis_bps",
+            "out_of_range",
+            "futures_roll_basis_bps must be between -500 and +500 bps",
+        ));
+    }
+
     let ohlc_page = req.ohlc_page.unwrap_or(1).max(1);
     let ohlc_page_size = req.ohlc_page_size.unwrap_or(50).clamp(10, 500);
 
-    // Resolve instrument record cleanly (falling back across token/isin variants).
-    let instrument = match state.instruments.get_instrument(&parsed_id).await {
-        Ok(Some(inst)) => inst,
-        Ok(None) => match state.instruments.list_instruments().await {
-            Ok(all) => match all.into_iter().find(|item| {
-                item.id().exchange == parsed_id.exchange
-                    && item.id().symbol.eq_ignore_ascii_case(&parsed_id.symbol)
-            }) {
-                Some(found) => found,
-                None => return instrument_not_found(&parsed_id),
-            },
-            Err(err) => return port_failure(err),
-        },
-        Err(err) => return port_failure(err),
+    let instrument = match resolve_study_instrument(&state, &parsed_id).await {
+        Ok(inst) => inst,
+        Err(resp) => return resp,
     };
     let canonical_id = instrument.id().clone();
 
-    // Load 1d bars across padded UTC bounds, then normalize to IST calendar dates.
-    let from_utc: DateTime<Utc> = (start_date - Duration::days(1))
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc();
-    let to_utc: DateTime<Utc> = (end_date + Duration::days(2))
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc();
-    let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
-    let bar_req = match BarRequest::new(
-        canonical_id.clone(),
-        spec,
-        Some(UnixNanos::from_datetime(from_utc)),
-        Some(UnixNanos::from_datetime(to_utc)),
-    ) {
-        Ok(r) => r,
-        Err(err) => return port_failure(err),
-    };
-    let raw_bars = match state.bars.read_bars(&bar_req).await {
-        Ok(b) => b,
-        Err(err) => return port_failure(err),
-    };
-
-    // Map optional corporate actions (dividends / splits) from Lakehouse if configured.
-    let mut dividends: HashMap<NaiveDate, Decimal> = HashMap::new();
-    let mut splits: HashMap<NaiveDate, Decimal> = HashMap::new();
-    if let Some(root) = state.lakehouse_root() {
-        let ca_reader = CorporateActionsProjectionReader::new(root);
-        if let Ok(actions) = ca_reader.read() {
-            let id_upper = canonical_id.to_string().to_ascii_uppercase();
-            let sym_upper = canonical_id.symbol.to_ascii_uppercase();
-            for act in actions {
-                let act_upper = act.instrument.to_ascii_uppercase();
-                let matches_inst = act_upper == id_upper
-                    || act_upper.ends_with(&format!(":{sym_upper}"))
-                    || act_upper.contains(&format!(":{sym_upper}-"));
-                if !matches_inst {
-                    continue;
-                }
-                match act.action_type.to_ascii_lowercase().as_str() {
-                    "dividend" => {
-                        if let Some(val) = act.per_share {
-                            *dividends.entry(act.ex_date).or_insert(Decimal::ZERO) += val;
-                        }
-                    }
-                    "split" => {
-                        if let (Some(old_s), Some(new_s)) = (act.old_shares, act.new_shares)
-                            && old_s > 0
-                        {
-                            let ratio = (Decimal::from(new_s) / Decimal::from(old_s)).round_dp(4);
-                            splits.insert(act.ex_date, ratio);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    let ist_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
-    let mut dedup_bars: BTreeMap<NaiveDate, OhlcvBar> = BTreeMap::new();
-    for bar in raw_bars {
-        let d = bar
-            .ts_event()
-            .to_datetime()
-            .with_timezone(&ist_offset)
-            .date_naive();
-        if d < start_date || d > end_date {
-            continue;
-        }
-        dedup_bars.insert(
-            d,
-            OhlcvBar {
-                date: d,
-                open: Decimal::from_f64_retain(bar.open())
-                    .unwrap_or_default()
-                    .round_dp(4),
-                high: Decimal::from_f64_retain(bar.high())
-                    .unwrap_or_default()
-                    .round_dp(4),
-                low: Decimal::from_f64_retain(bar.low())
-                    .unwrap_or_default()
-                    .round_dp(4),
-                close: Decimal::from_f64_retain(bar.close())
-                    .unwrap_or_default()
-                    .round_dp(4),
-                volume: Decimal::from_f64_retain(bar.volume())
-                    .unwrap_or_default()
-                    .round_dp(2),
-                dividend: dividends.get(&d).copied().unwrap_or(Decimal::ZERO),
-                split_factor: splits.get(&d).copied().unwrap_or(Decimal::ZERO),
-            },
-        );
-    }
-
-    let study_bars: Vec<OhlcvBar> = dedup_bars.into_values().collect();
+    let study_bars =
+        match load_daily_study_bars(&state, &canonical_id, start_date, end_date, true).await {
+            Ok(bars) => bars,
+            Err(resp) => return resp,
+        };
     if study_bars.is_empty() {
         return failure(
             StatusCode::NOT_FOUND,
@@ -832,6 +973,13 @@ pub(crate) async fn post_returns(
     };
     let calendar = RuntimeNseCalendar(cal_inner);
 
+    let spread_cost = SpreadCostConfig {
+        mode: to_domain_roll_mode(req.roll_basis_mode),
+        spread_slippage_bps,
+        futures_roll_basis_bps,
+        include_statutory_costs: req.include_statutory_costs,
+    };
+
     let cfg = ExperimentalStudyConfig {
         symbol: canonical_id.symbol.clone(),
         asset_class: to_domain_asset_class(req.asset_class),
@@ -842,6 +990,7 @@ pub(crate) async fn post_returns(
         outlier_coverage_pct,
         tail_threshold_pct,
         live_spot_override: live_spot_price,
+        spread_cost,
     };
 
     let report = match studies::evaluate_returns_study(&study_bars, &calendar, &cfg) {
@@ -867,7 +1016,7 @@ pub(crate) async fn post_returns(
         && req.period != PeriodScheduleKind::WeekPlusOne
         && req.period != PeriodScheduleKind::Daily
     {
-        let (p1_periods, _) = studies::slice_periods(
+        let (mut p1_periods, _) = studies::slice_periods(
             &study_bars,
             &cfg.symbol,
             cfg.asset_class,
@@ -875,6 +1024,14 @@ pub(crate) async fn post_returns(
             DomainSubCycle::PlusOne,
             cfg.calc_kind,
             &calendar,
+        );
+        studies::apply_spread_and_basis(
+            &mut p1_periods,
+            cfg.asset_class,
+            &canonical_id.to_string(),
+            cfg.calc_kind,
+            &cfg.spread_cost,
+            ma_window,
         );
         if p1_periods.len() >= 2 {
             let b1 = studies::analyze_distributions_and_outliers(
@@ -920,6 +1077,20 @@ pub(crate) async fn post_returns(
         Vec::new()
     };
 
+    let friction_summary = report.friction_summary.map(|f| FrictionSummary {
+        mode: from_domain_roll_mode(f.mode),
+        gross_avg_return_pct: f.gross_avg_return_pct,
+        net_avg_return_pct: f.net_avg_return_pct,
+        gross_sharpe_ratio: f.gross_sharpe_ratio,
+        net_sharpe_ratio: f.net_sharpe_ratio,
+        gross_profit_factor: f.gross_profit_factor,
+        net_profit_factor: f.net_profit_factor,
+        per_period_spread_bps: f.per_period_spread_bps,
+        per_period_statutory_bps: f.per_period_statutory_bps,
+        per_period_basis_bps: f.per_period_basis_bps,
+        cumulative_net_delta_pct: f.cumulative_net_delta_pct,
+    });
+
     let resp = ExperimentalReturnsResponse {
         instrument_id: canonical_id.to_string(),
         symbol: canonical_id.symbol.clone(),
@@ -946,6 +1117,7 @@ pub(crate) async fn post_returns(
             "Store BarReader".to_string()
         },
         period_count: report.period_series.len(),
+        friction_summary,
         kpis: ReturnKpis {
             total_periods: report.period_series.len(),
             avg_return_pct: report.kpis.avg_return_pct,
@@ -1217,4 +1389,396 @@ pub(crate) async fn post_returns(
     };
 
     success(resp)
+}
+
+/// `POST /experimental-analysis/intraday`: computes Phase 2 Intraday Movement (`5m`),
+/// Overnight Gaps (`1d`), Rolling 5-Day Moves (`1d`), Cycle Progress Cone (`0-100%`),
+/// and 15m ORB Flip Backtest (`5m`, honest `available: false` when `5m` bars are missing).
+pub(crate) async fn post_intraday(
+    State(state): State<Arc<AppState>>,
+    ApiJson(req): ApiJson<ExperimentalIntradayRequest>,
+) -> Response {
+    let parsed_id = match parse_study_instrument_id(&req.instrument_id) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+    let (start_date, end_date) = match parse_date_range(&req.start_date, &req.end_date) {
+        Ok(range) => range,
+        Err(detail) => return unprocessable(detail),
+    };
+
+    let tail_threshold_pct = req.tail_threshold_pct.unwrap_or_else(|| Decimal::from(2));
+    if tail_threshold_pct <= Decimal::ZERO || tail_threshold_pct > Decimal::from(50) {
+        return unprocessable(invalid_field(
+            "tail_threshold_pct",
+            "out_of_range",
+            "tail_threshold_pct must be > 0 and <= 50",
+        ));
+    }
+    let opening_range_minutes = req.opening_range_minutes.unwrap_or(15);
+    if !(5..=60).contains(&opening_range_minutes) {
+        return unprocessable(invalid_field(
+            "opening_range_minutes",
+            "out_of_range",
+            "opening_range_minutes must be between 5 and 60 minutes",
+        ));
+    }
+    let max_flips_per_day = req.max_flips_per_day.unwrap_or(2);
+    if max_flips_per_day > 10 {
+        return unprocessable(invalid_field(
+            "max_flips_per_day",
+            "out_of_range",
+            "max_flips_per_day must be <= 10",
+        ));
+    }
+    let stop_loss_pct = req.stop_loss_pct.unwrap_or(Decimal::ZERO);
+    if stop_loss_pct < Decimal::ZERO || stop_loss_pct > Decimal::from(25) {
+        return unprocessable(invalid_field(
+            "stop_loss_pct",
+            "out_of_range",
+            "stop_loss_pct must be between 0 and 25",
+        ));
+    }
+    let target_pct = req.target_pct.unwrap_or(Decimal::ZERO);
+    if target_pct < Decimal::ZERO || target_pct > Decimal::from(50) {
+        return unprocessable(invalid_field(
+            "target_pct",
+            "out_of_range",
+            "target_pct must be between 0 and 50",
+        ));
+    }
+    let spread_slippage_bps = req.spread_slippage_bps.unwrap_or(Decimal::ZERO);
+    if spread_slippage_bps < Decimal::ZERO || spread_slippage_bps > Decimal::from(500) {
+        return unprocessable(invalid_field(
+            "spread_slippage_bps",
+            "out_of_range",
+            "spread_slippage_bps must be between 0 and 500",
+        ));
+    }
+
+    let instrument = match resolve_study_instrument(&state, &parsed_id).await {
+        Ok(inst) => inst,
+        Err(resp) => return resp,
+    };
+    let canonical_id = instrument.id().clone();
+
+    let daily_bars =
+        match load_daily_study_bars(&state, &canonical_id, start_date, end_date, false).await {
+            Ok(bars) => bars,
+            Err(resp) => return resp,
+        };
+    if daily_bars.is_empty() {
+        return failure(
+            StatusCode::NOT_FOUND,
+            ErrorDetail::new(
+                ErrorCode::NotFound,
+                format!(
+                    "no daily bars available for {canonical_id} between {start_date} and {end_date}"
+                ),
+            ),
+        );
+    }
+
+    // Load 5m bars honestly (if absent, return `available: false` for intraday & ORB).
+    let bars_5m = load_5m_intraday_bars(&state, &canonical_id, start_date, end_date).await;
+
+    let cal_inner = match state.lakehouse_root() {
+        Some(root) => NseTradingCalendar::from_data_root(root),
+        None => NseTradingCalendar::new(),
+    };
+    let calendar = RuntimeNseCalendar(cal_inner);
+    let domain_asset = to_domain_asset_class(req.asset_class);
+    let domain_schedule = to_domain_schedule(req.period);
+
+    let (periods, _) = studies::slice_periods(
+        &daily_bars,
+        &canonical_id.symbol,
+        domain_asset,
+        domain_schedule,
+        DomainSubCycle::Current,
+        DomainCalc::OpenToClose,
+        &calendar,
+    );
+
+    let intra = studies::analyze_intraday_movement(&bars_5m);
+    let gaps = studies::analyze_gaps(&daily_bars, &bars_5m);
+    let five_day = studies::analyze_rolling_5day(&daily_bars, tail_threshold_pct);
+    let cycle_progress = studies::analyze_cycle_progress(&daily_bars, &periods);
+    let orb = studies::run_orb15_flip_backtest(
+        &bars_5m,
+        domain_asset,
+        &canonical_id.to_string(),
+        &OrbConfig {
+            opening_range_minutes,
+            max_flips_per_day,
+            stop_loss_pct,
+            target_pct,
+            spread_slippage_bps,
+            include_statutory_costs: req.include_statutory_costs,
+        },
+    );
+
+    let resp = ExperimentalIntradayResponse {
+        instrument_id: canonical_id.to_string(),
+        symbol: canonical_id.symbol.clone(),
+        exchange: canonical_id.exchange.to_string(),
+        asset_class: req.asset_class,
+        period: req.period,
+        start_date: req.start_date,
+        end_date: req.end_date,
+        intraday: IntradayMovementAnalysis {
+            available: intra.available,
+            total_sessions: intra.total_sessions,
+            avg_session_range_pct: intra.avg_session_range_pct,
+            peak_volatility_slot: intra.peak_volatility_slot,
+            most_common_hod_slot: intra.most_common_hod_slot,
+            most_common_lod_slot: intra.most_common_lod_slot,
+            slots_15m: intra.slots_15m.into_iter().map(map_slot_stat).collect(),
+            slots_hourly: intra.slots_hourly.into_iter().map(map_slot_stat).collect(),
+        },
+        gaps: GapAnalysis {
+            total_sessions: gaps.total_sessions,
+            gap_up_count: gaps.gap_up_count,
+            gap_down_count: gaps.gap_down_count,
+            avg_gap_up_pct: gaps.avg_gap_up_pct,
+            avg_gap_down_pct: gaps.avg_gap_down_pct,
+            gap_up_fill_rate_pct: gaps.gap_up_fill_rate_pct,
+            gap_down_fill_rate_pct: gaps.gap_down_fill_rate_pct,
+            gap_up_follow_pct: gaps.gap_up_follow_pct,
+            gap_down_follow_pct: gaps.gap_down_follow_pct,
+            buckets: gaps
+                .buckets
+                .into_iter()
+                .map(|b| GapBucketRow {
+                    label: b.label,
+                    count: b.count,
+                    share_pct: b.share_pct,
+                    fill_rate_pct: b.fill_rate_pct,
+                    avg_intraday_follow_pct: b.avg_intraday_follow_pct,
+                })
+                .collect(),
+            recent_events: gaps
+                .recent_events
+                .into_iter()
+                .map(|e| GapEventRow {
+                    date: e.date.format("%Y-%m-%d").to_string(),
+                    prev_close: e.prev_close,
+                    open: e.open,
+                    close: e.close,
+                    gap_pct: e.gap_pct,
+                    intraday_return_pct: e.intraday_return_pct,
+                    filled: e.filled,
+                })
+                .collect(),
+        },
+        five_day: RollingFiveDayAnalysis {
+            sample_count: five_day.sample_count,
+            avg_return_pct: five_day.avg_return_pct,
+            std_dev_pct: five_day.std_dev_pct,
+            positive_pct: five_day.positive_pct,
+            p99_pct: five_day.p99_pct,
+            p95_pct: five_day.p95_pct,
+            p50_pct: five_day.p50_pct,
+            p5_pct: five_day.p5_pct,
+            p1_pct: five_day.p1_pct,
+            after_surge_next_5d_avg_pct: five_day.after_surge_next_5d_avg_pct,
+            after_drop_next_5d_avg_pct: five_day.after_drop_next_5d_avg_pct,
+            series: five_day
+                .series
+                .into_iter()
+                .map(|pt| RollingFiveDayPoint {
+                    date: pt.date.format("%Y-%m-%d").to_string(),
+                    close: pt.close,
+                    return_5d_pct: pt.return_5d_pct,
+                })
+                .collect(),
+        },
+        cycle_progress: CycleProgressAnalysis {
+            cycle_count: cycle_progress.cycle_count,
+            deciles: cycle_progress
+                .deciles
+                .into_iter()
+                .map(|d| CycleProgressDecile {
+                    progress_pct: d.progress_pct,
+                    sample_count: d.sample_count,
+                    mean_pct: d.mean_pct,
+                    p10_pct: d.p10_pct,
+                    p25_pct: d.p25_pct,
+                    p50_pct: d.p50_pct,
+                    p75_pct: d.p75_pct,
+                    p90_pct: d.p90_pct,
+                })
+                .collect(),
+        },
+        orb_backtest: OrbBacktestResult {
+            available: orb.available,
+            total_trades: orb.total_trades,
+            winning_trades: orb.winning_trades,
+            win_rate_pct: orb.win_rate_pct,
+            gross_return_pct: orb.gross_return_pct,
+            total_friction_pct: orb.total_friction_pct,
+            net_return_pct: orb.net_return_pct,
+            profit_factor: orb.profit_factor,
+            max_drawdown_pct: orb.max_drawdown_pct,
+            avg_trade_net_pct: orb.avg_trade_net_pct,
+            equity_curve: orb
+                .equity_curve
+                .into_iter()
+                .map(|pt| OrbEquityPoint {
+                    date: pt.date.format("%Y-%m-%d").to_string(),
+                    cumulative_gross_pct: pt.cumulative_gross_pct,
+                    cumulative_net_pct: pt.cumulative_net_pct,
+                })
+                .collect(),
+            trades: orb
+                .trades
+                .into_iter()
+                .map(|t| OrbTradeRow {
+                    date: t.date.format("%Y-%m-%d").to_string(),
+                    direction: t.direction,
+                    flip_index: t.flip_index,
+                    or_high: t.or_high,
+                    or_low: t.or_low,
+                    entry_price: t.entry_price,
+                    exit_price: t.exit_price,
+                    exit_reason: t.exit_reason,
+                    gross_return_pct: t.gross_return_pct,
+                    friction_bps: t.friction_bps,
+                    net_return_pct: t.net_return_pct,
+                })
+                .collect(),
+        },
+    };
+
+    success(resp)
+}
+
+/// `POST /experimental-analysis/correlation`: computes N×N Pearson & Spearman correlation
+/// matrices, rolling pair beta, and normalized relative spread curves across 2..=12 instruments.
+pub(crate) async fn post_correlation(
+    State(state): State<Arc<AppState>>,
+    ApiJson(req): ApiJson<ExperimentalCorrelationRequest>,
+) -> Response {
+    let (start_date, end_date) = match parse_date_range(&req.start_date, &req.end_date) {
+        Ok(range) => range,
+        Err(detail) => return unprocessable(detail),
+    };
+
+    let primary_parsed = match parse_study_instrument_id(&req.primary_id) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+    let benchmark_parsed = match parse_study_instrument_id(&req.benchmark_id) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+
+    let rolling_window = req.rolling_window.unwrap_or(20);
+    if !(5..=250).contains(&rolling_window) {
+        return unprocessable(invalid_field(
+            "rolling_window",
+            "out_of_range",
+            "rolling_window must be between 5 and 250 sessions",
+        ));
+    }
+
+    // Collect deduplicated symbol list ensuring both primary and benchmark are included.
+    let mut requested: Vec<InstrumentId> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for raw in std::iter::once(&req.primary_id)
+        .chain(std::iter::once(&req.benchmark_id))
+        .chain(req.symbols.iter())
+    {
+        let Ok(id) = parse_study_instrument_id(raw) else {
+            return unprocessable(invalid_field(
+                "symbols",
+                "invalid_instrument_id",
+                format!("invalid instrument id {raw:?} in correlation symbols"),
+            ));
+        };
+        let key = id.to_string().to_ascii_uppercase();
+        if seen.insert(key) {
+            requested.push(id);
+        }
+    }
+
+    if !(2..=12).contains(&requested.len()) {
+        return unprocessable(invalid_field(
+            "symbols",
+            "invalid_symbol_count",
+            "correlation analysis requires between 2 and 12 distinct instruments",
+        ));
+    }
+
+    let primary_inst = match resolve_study_instrument(&state, &primary_parsed).await {
+        Ok(inst) => inst,
+        Err(resp) => return resp,
+    };
+    let primary_canon = primary_inst.id().to_string();
+
+    let benchmark_inst = match resolve_study_instrument(&state, &benchmark_parsed).await {
+        Ok(inst) => inst,
+        Err(resp) => return resp,
+    };
+    let benchmark_canon = benchmark_inst.id().to_string();
+
+    let mut series: Vec<(String, Vec<OhlcvBar>)> = Vec::with_capacity(requested.len());
+    for candidate_id in &requested {
+        let Ok(inst) = resolve_study_instrument(&state, candidate_id).await else {
+            continue;
+        };
+        let cid = inst.id().clone();
+        if let Ok(bars) = load_daily_study_bars(&state, &cid, start_date, end_date, false).await
+            && !bars.is_empty()
+        {
+            series.push((cid.to_string(), bars));
+        }
+    }
+
+    if series.len() < 2 {
+        return unprocessable(invalid_field(
+            "symbols",
+            "insufficient_instruments",
+            "at least 2 instruments must have daily bars in the selected date window",
+        ));
+    }
+
+    let corr = studies::analyze_cross_asset_correlation(
+        &series,
+        &primary_canon,
+        &benchmark_canon,
+        rolling_window,
+    );
+    if corr.aligned_sessions == 0 {
+        return unprocessable(invalid_field(
+            "benchmark_id",
+            "no_overlapping_sessions",
+            "no overlapping trading dates between primary and benchmark instruments",
+        ));
+    }
+
+    success(ExperimentalCorrelationResponse {
+        labels: corr.labels,
+        primary_id: corr.primary_id,
+        benchmark_id: corr.benchmark_id,
+        rolling_window: corr.rolling_window,
+        aligned_sessions: corr.aligned_sessions,
+        pearson_matrix: corr.pearson_matrix,
+        spearman_matrix: corr.spearman_matrix,
+        pair_beta: corr.pair_beta,
+        pair_pearson: corr.pair_pearson,
+        pair_spearman: corr.pair_spearman,
+        latest_raw_spread: corr.latest_raw_spread,
+        latest_relative_spread_pct: corr.latest_relative_spread_pct,
+        rolling_series: corr
+            .rolling_series
+            .into_iter()
+            .map(|pt| RollingPairPoint {
+                date: pt.date.format("%Y-%m-%d").to_string(),
+                rolling_corr: pt.rolling_corr,
+                relative_spread_pct: pt.relative_spread_pct,
+                raw_spread: pt.raw_spread,
+            })
+            .collect(),
+    })
 }

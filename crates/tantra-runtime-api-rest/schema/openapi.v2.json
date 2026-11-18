@@ -606,6 +606,303 @@
       "patch": null,
       "delete": null
     },
+    "/experimental-analysis/correlation": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate cross-asset Pearson/Spearman correlation matrix & rolling pair spread",
+        "operationId": "postExperimentalAnalysisCorrelation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalCorrelationRequest",
+                "description": "Request payload for `POST /experimental-analysis/correlation`.",
+                "type": "object",
+                "required": [
+                  "benchmark_id",
+                  "end_date",
+                  "primary_id",
+                  "start_date",
+                  "symbols"
+                ],
+                "properties": {
+                  "benchmark_id": {
+                    "description": "Benchmark instrument ID for rolling beta & spread curves.",
+                    "type": "string"
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "primary_id": {
+                    "description": "Primary instrument ID (`EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "rolling_window": {
+                    "description": "Rolling window in overlapping sessions (`5..=250`, default `20`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "symbols": {
+                    "description": "List of instrument IDs to include in the `N × N` correlation matrix (`2..=12`).",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cross-asset correlation matrix & rolling spread report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalCorrelationResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalCorrelationResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/experimental-analysis/intraday": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate intraday movement, gaps, 5-day moves, cycle progress & 15m ORB flip",
+        "operationId": "postExperimentalAnalysisIntraday",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalIntradayRequest",
+                "description": "Request payload for `POST /experimental-analysis/intraday`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class used for cycle-progress slicing and statutory fee mapping.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "include_statutory_costs": {
+                    "description": "Whether to deduct statutory exchange/STT fees per ORB trade.",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "max_flips_per_day": {
+                    "description": "Maximum flips per day in ORB simulation (`0..=10`, default `2`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "opening_range_minutes": {
+                    "description": "Opening range width in minutes (`5..=60`, default `15`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint16",
+                    "minimum": 0.0
+                  },
+                  "period": {
+                    "description": "Period schedule for Cycle Progress (0% → 100%) cone.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Round-trip bid-ask spread slippage per ORB trade in bps (`0..=500`, default `0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "stop_loss_pct": {
+                    "description": "Fixed percentage stop-loss if tighter than opposite OR boundary (`0` disables).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "tail_threshold_pct": {
+                    "description": "Large-move threshold % for 5-day exhaustion calculation (default `2.0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "target_pct": {
+                    "description": "Fixed percentage take-profit target (`0` holds to EOD/flip).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Intraday, gap, 5-day, cycle-progress & 15m ORB report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalIntradayResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalIntradayResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/experimental-analysis/returns": {
       "get": null,
       "post": {
@@ -651,6 +948,19 @@
                   "end_date": {
                     "description": "Inclusive end date (`YYYY-MM-DD`).",
                     "type": "string"
+                  },
+                  "futures_roll_basis_bps": {
+                    "description": "Futures rollover / carry basis adjustment per period in bps (`-500..=500`, default `0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "include_statutory_costs": {
+                    "description": "Deduct Indian statutory F&O/cash turnover charges when in `net_after_spread_and_costs`.",
+                    "default": false,
+                    "type": "boolean"
                   },
                   "instrument_id": {
                     "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or bare symbol resolved cleanly).",
@@ -698,6 +1008,23 @@
                         "$ref": "#/definitions/PeriodScheduleKind"
                       }
                     ]
+                  },
+                  "roll_basis_mode": {
+                    "description": "F&O return adjustment mode (default `gross_spot`).",
+                    "default": "gross_spot",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/RollBasisMode"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Round-trip bid-ask spread slippage in basis points (`0..=500`, default `0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
                   },
                   "start_date": {
                     "description": "Inclusive start date (`YYYY-MM-DD`).",
@@ -3602,6 +3929,87 @@
           }
         }
       },
+      "CycleProgressAnalysis": {
+        "description": "Tab 6: Intra-cycle progress (0% → 100%) normalized drift cone.",
+        "type": "object",
+        "required": [
+          "cycle_count",
+          "deciles"
+        ],
+        "properties": {
+          "cycle_count": {
+            "description": "Number of multi-bar cycles contributing to the cone.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "deciles": {
+            "description": "11 normalized progress deciles (`0%` through `100%`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/CycleProgressDecile"
+            }
+          }
+        }
+      },
+      "CycleProgressDecile": {
+        "description": "One normalized progress decile (`0%, 10%, ..., 100%`) along a period cycle.",
+        "type": "object",
+        "required": [
+          "mean_pct",
+          "p10_pct",
+          "p25_pct",
+          "p50_pct",
+          "p75_pct",
+          "p90_pct",
+          "progress_pct",
+          "sample_count"
+        ],
+        "properties": {
+          "mean_pct": {
+            "description": "Mean cumulative drift from period entry (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p10_pct": {
+            "description": "10th percentile drift (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p25_pct": {
+            "description": "25th percentile drift (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p50_pct": {
+            "description": "Median cumulative drift (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p75_pct": {
+            "description": "75th percentile drift (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p90_pct": {
+            "description": "90th percentile drift (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "progress_pct": {
+            "description": "Normalized cycle completion percentage (`0, 10, 20, ..., 100`).",
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0.0
+          },
+          "sample_count": {
+            "description": "Number of periods contributing to this decile.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
       "DailyOhlcRow": {
         "description": "Single session row inside the paginated `Daily OHLC Data` table.",
         "type": "object",
@@ -3933,6 +4341,351 @@
           }
         }
       },
+      "ExperimentalCorrelationRequest": {
+        "title": "ExperimentalCorrelationRequest",
+        "description": "Request payload for `POST /experimental-analysis/correlation`.",
+        "type": "object",
+        "required": [
+          "benchmark_id",
+          "end_date",
+          "primary_id",
+          "start_date",
+          "symbols"
+        ],
+        "properties": {
+          "benchmark_id": {
+            "description": "Benchmark instrument ID for rolling beta & spread curves.",
+            "type": "string"
+          },
+          "end_date": {
+            "description": "Inclusive end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "primary_id": {
+            "description": "Primary instrument ID (`EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE`).",
+            "type": "string"
+          },
+          "rolling_window": {
+            "description": "Rolling window in overlapping sessions (`5..=250`, default `20`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "start_date": {
+            "description": "Inclusive start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "symbols": {
+            "description": "List of instrument IDs to include in the `N × N` correlation matrix (`2..=12`).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentalCorrelationResponse": {
+        "title": "ExperimentalCorrelationResponse",
+        "description": "Response payload for `POST /experimental-analysis/correlation`.",
+        "type": "object",
+        "required": [
+          "aligned_sessions",
+          "benchmark_id",
+          "labels",
+          "latest_raw_spread",
+          "latest_relative_spread_pct",
+          "pair_beta",
+          "pair_pearson",
+          "pair_spearman",
+          "pearson_matrix",
+          "primary_id",
+          "rolling_series",
+          "rolling_window",
+          "spearman_matrix"
+        ],
+        "properties": {
+          "aligned_sessions": {
+            "description": "Overlapping sessions between primary and benchmark.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "benchmark_id": {
+            "description": "Comparison benchmark ID.",
+            "type": "string"
+          },
+          "labels": {
+            "description": "Labels corresponding to matrix rows & columns.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latest_raw_spread": {
+            "description": "Latest raw close spread (`primary - benchmark`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "latest_relative_spread_pct": {
+            "description": "Latest normalized spread (% outperformance since start of aligned window).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pair_beta": {
+            "description": "Empirical OLS Beta of primary relative to benchmark.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pair_pearson": {
+            "description": "Full-sample Pearson correlation between primary and benchmark.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pair_spearman": {
+            "description": "Full-sample Spearman correlation between primary and benchmark.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pearson_matrix": {
+            "description": "`N × N` Pearson correlation matrix.",
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+              }
+            }
+          },
+          "primary_id": {
+            "description": "Primary instrument ID.",
+            "type": "string"
+          },
+          "rolling_series": {
+            "description": "Rolling correlation and spread curve.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/RollingPairPoint"
+            }
+          },
+          "rolling_window": {
+            "description": "Rolling window length used.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "spearman_matrix": {
+            "description": "`N × N` Spearman rank correlation matrix.",
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+              }
+            }
+          }
+        }
+      },
+      "ExperimentalIntradayRequest": {
+        "title": "ExperimentalIntradayRequest",
+        "description": "Request payload for `POST /experimental-analysis/intraday`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "end_date",
+          "instrument_id",
+          "period",
+          "start_date"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class used for cycle-progress slicing and statutory fee mapping.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "Inclusive end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "include_statutory_costs": {
+            "description": "Whether to deduct statutory exchange/STT fees per ORB trade.",
+            "default": false,
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+            "type": "string"
+          },
+          "max_flips_per_day": {
+            "description": "Maximum flips per day in ORB simulation (`0..=10`, default `2`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "opening_range_minutes": {
+            "description": "Opening range width in minutes (`5..=60`, default `15`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0.0
+          },
+          "period": {
+            "description": "Period schedule for Cycle Progress (0% → 100%) cone.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "spread_slippage_bps": {
+            "description": "Round-trip bid-ask spread slippage per ORB trade in bps (`0..=500`, default `0`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Inclusive start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "stop_loss_pct": {
+            "description": "Fixed percentage stop-loss if tighter than opposite OR boundary (`0` disables).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "tail_threshold_pct": {
+            "description": "Large-move threshold % for 5-day exhaustion calculation (default `2.0`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "target_pct": {
+            "description": "Fixed percentage take-profit target (`0` holds to EOD/flip).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentalIntradayResponse": {
+        "title": "ExperimentalIntradayResponse",
+        "description": "Combined Phase 2 Intraday / Gap / 5-Day / Cycle Progress / 15m ORB response.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "cycle_progress",
+          "end_date",
+          "exchange",
+          "five_day",
+          "gaps",
+          "instrument_id",
+          "intraday",
+          "orb_backtest",
+          "period",
+          "start_date",
+          "symbol"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class evaluated.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "cycle_progress": {
+            "description": "Tab 6: Intra-cycle 0% → 100% progress drift cone.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/CycleProgressAnalysis"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "End date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "exchange": {
+            "description": "Exchange code.",
+            "type": "string"
+          },
+          "five_day": {
+            "description": "Tab 5: Rolling 5-day move quantiles & exhaustion response.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/RollingFiveDayAnalysis"
+              }
+            ]
+          },
+          "gaps": {
+            "description": "Tab 4: Overnight gap distribution & fill probabilities.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/GapAnalysis"
+              }
+            ]
+          },
+          "instrument_id": {
+            "description": "Analyzed canonical instrument ID.",
+            "type": "string"
+          },
+          "intraday": {
+            "description": "Tab 3: Intraday movement & HOD/LOD clock profile (honest `available: false` if no 5m bars).",
+            "allOf": [
+              {
+                "$ref": "#/definitions/IntradayMovementAnalysis"
+              }
+            ]
+          },
+          "orb_backtest": {
+            "description": "Tab 10: 15m Opening Range Breakout + Flip simulation (honest `available: false` if no 5m bars).",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OrbBacktestResult"
+              }
+            ]
+          },
+          "period": {
+            "description": "Cycle progress schedule applied.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PeriodScheduleKind"
+              }
+            ]
+          },
+          "start_date": {
+            "description": "Start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Symbol.",
+            "type": "string"
+          }
+        }
+      },
       "ExperimentalReturnsRequest": {
         "title": "ExperimentalReturnsRequest",
         "description": "Request payload for `POST /experimental-analysis/returns`.",
@@ -3965,6 +4718,19 @@
           "end_date": {
             "description": "Inclusive end date (`YYYY-MM-DD`).",
             "type": "string"
+          },
+          "futures_roll_basis_bps": {
+            "description": "Futures rollover / carry basis adjustment per period in bps (`-500..=500`, default `0`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "include_statutory_costs": {
+            "description": "Deduct Indian statutory F&O/cash turnover charges when in `net_after_spread_and_costs`.",
+            "default": false,
+            "type": "boolean"
           },
           "instrument_id": {
             "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or bare symbol resolved cleanly).",
@@ -4012,6 +4778,23 @@
                 "$ref": "#/definitions/PeriodScheduleKind"
               }
             ]
+          },
+          "roll_basis_mode": {
+            "description": "F&O return adjustment mode (default `gross_spot`).",
+            "default": "gross_spot",
+            "allOf": [
+              {
+                "$ref": "#/definitions/RollBasisMode"
+              }
+            ]
+          },
+          "spread_slippage_bps": {
+            "description": "Round-trip bid-ask spread slippage in basis points (`0..=500`, default `0`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
           },
           "start_date": {
             "description": "Inclusive start date (`YYYY-MM-DD`).",
@@ -4171,6 +4954,17 @@
             "anyOf": [
               {
                 "$ref": "#/definitions/ForwardConditionalGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "friction_summary": {
+            "description": "Optional F&O spread, roll-basis & statutory cost reconciliation summary.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/FrictionSummary"
               },
               {
                 "type": "null"
@@ -4389,6 +5183,250 @@
           }
         }
       },
+      "FrictionSummary": {
+        "description": "Gross vs Net comparison summary quantifying F&O spread, basis, and statutory fee drag.",
+        "type": "object",
+        "required": [
+          "cumulative_net_delta_pct",
+          "gross_avg_return_pct",
+          "gross_profit_factor",
+          "gross_sharpe_ratio",
+          "mode",
+          "net_avg_return_pct",
+          "net_profit_factor",
+          "net_sharpe_ratio",
+          "per_period_basis_bps",
+          "per_period_spread_bps",
+          "per_period_statutory_bps"
+        ],
+        "properties": {
+          "cumulative_net_delta_pct": {
+            "description": "Cumulative percentage-point impact across all evaluated periods (`sum(net - gross)`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gross_avg_return_pct": {
+            "description": "Gross arithmetic average period return (%) before friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gross_profit_factor": {
+            "description": "Gross profit factor.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gross_sharpe_ratio": {
+            "description": "Gross period Sharpe ratio.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "mode": {
+            "description": "Active roll/friction adjustment mode.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/RollBasisMode"
+              }
+            ]
+          },
+          "net_avg_return_pct": {
+            "description": "Net arithmetic average period return (%) after spread, basis, and statutory costs.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_profit_factor": {
+            "description": "Net profit factor after friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_sharpe_ratio": {
+            "description": "Net period Sharpe ratio after friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "per_period_basis_bps": {
+            "description": "Configured futures roll/carry basis adjustment per period (bps).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "per_period_spread_bps": {
+            "description": "Configured round-trip bid-ask spread slippage per period (bps).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "per_period_statutory_bps": {
+            "description": "Round-trip statutory derivative turnover charge per period (bps).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "GapAnalysis": {
+        "description": "Tab 4: Overnight gap distribution, fill probability & continuation expectancy.",
+        "type": "object",
+        "required": [
+          "avg_gap_down_pct",
+          "avg_gap_up_pct",
+          "buckets",
+          "gap_down_count",
+          "gap_down_fill_rate_pct",
+          "gap_down_follow_pct",
+          "gap_up_count",
+          "gap_up_fill_rate_pct",
+          "gap_up_follow_pct",
+          "recent_events",
+          "total_sessions"
+        ],
+        "properties": {
+          "avg_gap_down_pct": {
+            "description": "Average negative gap magnitude (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_gap_up_pct": {
+            "description": "Average positive gap magnitude (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "buckets": {
+            "description": "Bucketed distribution + conditional fill & follow-through rates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/GapBucketRow"
+            }
+          },
+          "gap_down_count": {
+            "description": "Count of gap-down sessions (`gap_pct < 0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "gap_down_fill_rate_pct": {
+            "description": "Overall gap-down fill probability (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gap_down_follow_pct": {
+            "description": "Average open-to-close fade/continuation after a gap down (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gap_up_count": {
+            "description": "Count of gap-up sessions (`gap_pct > 0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "gap_up_fill_rate_pct": {
+            "description": "Overall gap-up fill probability (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gap_up_follow_pct": {
+            "description": "Average open-to-close fade/continuation after a gap up (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "recent_events": {
+            "description": "Most recent gap events (up to 40 rows).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/GapEventRow"
+            }
+          },
+          "total_sessions": {
+            "description": "Total sessions evaluated (`daily_bars.len() - 1`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "GapBucketRow": {
+        "description": "One bucket row in the Overnight Gap distribution table.",
+        "type": "object",
+        "required": [
+          "avg_intraday_follow_pct",
+          "count",
+          "fill_rate_pct",
+          "label",
+          "share_pct"
+        ],
+        "properties": {
+          "avg_intraday_follow_pct": {
+            "description": "Mean intraday open-to-close move (%) following gaps in this bucket.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "count": {
+            "description": "Observed count.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "fill_rate_pct": {
+            "description": "Gap-fill rate (%) inside this bucket.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "label": {
+            "description": "Display bucket label (e.g. `\"+0.5% to +1.0%\"`).",
+            "type": "string"
+          },
+          "share_pct": {
+            "description": "Share of all gap sessions (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "GapEventRow": {
+        "description": "Individual notable overnight gap record.",
+        "type": "object",
+        "required": [
+          "close",
+          "date",
+          "filled",
+          "gap_pct",
+          "intraday_return_pct",
+          "open",
+          "prev_close"
+        ],
+        "properties": {
+          "close": {
+            "description": "Current close.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "date": {
+            "description": "Session date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "filled": {
+            "description": "Whether the session touched `prev_close` (gap filled).",
+            "type": "boolean"
+          },
+          "gap_pct": {
+            "description": "Overnight gap %.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "intraday_return_pct": {
+            "description": "Intraday open-to-close return %.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "open": {
+            "description": "Current open.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "prev_close": {
+            "description": "Prior close.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
       "GreenVsRedComparison": {
         "description": "Green vs Red split comparison bundle.",
         "type": "object",
@@ -4583,6 +5621,128 @@
             ]
           }
         ]
+      },
+      "IntradayMovementAnalysis": {
+        "description": "Tab 3: Intraday movement, session range & HOD/LOD clock profile.",
+        "type": "object",
+        "required": [
+          "available",
+          "avg_session_range_pct",
+          "most_common_hod_slot",
+          "most_common_lod_slot",
+          "peak_volatility_slot",
+          "slots_15m",
+          "slots_hourly",
+          "total_sessions"
+        ],
+        "properties": {
+          "available": {
+            "description": "Whether `5m`/intraday bars were available for this instrument.",
+            "type": "boolean"
+          },
+          "avg_session_range_pct": {
+            "description": "Average session high-low range (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "most_common_hod_slot": {
+            "description": "Most frequent High-of-Day clock slot.",
+            "type": "string"
+          },
+          "most_common_lod_slot": {
+            "description": "Most frequent Low-of-Day clock slot.",
+            "type": "string"
+          },
+          "peak_volatility_slot": {
+            "description": "15-minute slot with peak average volatility.",
+            "type": "string"
+          },
+          "slots_15m": {
+            "description": "Breakdown across 15-minute buckets.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/IntradaySlotStat"
+            }
+          },
+          "slots_hourly": {
+            "description": "Breakdown across 60-minute hourly buckets.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/IntradaySlotStat"
+            }
+          },
+          "total_sessions": {
+            "description": "Number of distinct trading sessions with intraday bars.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "IntradaySlotStat": {
+        "description": "Statistics for one time-of-day intraday bucket (`15m` or `60m`).",
+        "type": "object",
+        "required": [
+          "avg_abs_move_pct",
+          "avg_range_pct",
+          "avg_volume",
+          "bar_count",
+          "hod_count",
+          "lod_count",
+          "max_range_pct",
+          "minute_of_day",
+          "slot_label"
+        ],
+        "properties": {
+          "avg_abs_move_pct": {
+            "description": "Mean absolute close-to-open move % `|close - open| / open * 100`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_range_pct": {
+            "description": "Mean intra-bar range % `(high - low) / open * 100`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_volume": {
+            "description": "Average bar volume.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "bar_count": {
+            "description": "Number of intraday bars observed in this clock slot.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "hod_count": {
+            "description": "Number of sessions whose High-of-Day occurred inside this slot.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "lod_count": {
+            "description": "Number of sessions whose Low-of-Day occurred inside this slot.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "max_range_pct": {
+            "description": "Maximum observed range % in this slot.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "minute_of_day": {
+            "description": "Minute offset from midnight local exchange time (`0..1440`).",
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0.0
+          },
+          "slot_label": {
+            "description": "Human-readable clock slot (`HH:MM`, e.g. `\"09:15\"`).",
+            "type": "string"
+          }
+        }
       },
       "LayoutDocument": {
         "title": "LayoutDocument",
@@ -4900,6 +6060,188 @@
             "additionalProperties": {
               "$ref": "#/definitions/Module"
             }
+          }
+        }
+      },
+      "OrbBacktestResult": {
+        "description": "Tab 10: Complete 15m Opening Range Breakout + Flip simulation result.",
+        "type": "object",
+        "required": [
+          "available",
+          "avg_trade_net_pct",
+          "equity_curve",
+          "gross_return_pct",
+          "max_drawdown_pct",
+          "net_return_pct",
+          "profit_factor",
+          "total_friction_pct",
+          "total_trades",
+          "trades",
+          "win_rate_pct",
+          "winning_trades"
+        ],
+        "properties": {
+          "available": {
+            "description": "Whether `5m` intraday bars were available to run the simulation.",
+            "type": "boolean"
+          },
+          "avg_trade_net_pct": {
+            "description": "Mean net return per trade (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "equity_curve": {
+            "description": "Cumulative gross vs net equity curve by session date.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OrbEquityPoint"
+            }
+          },
+          "gross_return_pct": {
+            "description": "Cumulative sum of gross trade returns (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_drawdown_pct": {
+            "description": "Maximum peak-to-trough net return drawdown (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_return_pct": {
+            "description": "Cumulative sum of net trade returns (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "profit_factor": {
+            "description": "Empirical net profit factor.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "total_friction_pct": {
+            "description": "Total spread + statutory friction deducted (% points).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "total_trades": {
+            "description": "Total simulated trades across all sessions.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "trades": {
+            "description": "Most recent simulated trade legs (up to 100).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OrbTradeRow"
+            }
+          },
+          "win_rate_pct": {
+            "description": "Win rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "winning_trades": {
+            "description": "Count of winning trades (`net_return_pct > 0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "OrbEquityPoint": {
+        "description": "Equity curve sample point for ORB backtest visualization.",
+        "type": "object",
+        "required": [
+          "cumulative_gross_pct",
+          "cumulative_net_pct",
+          "date"
+        ],
+        "properties": {
+          "cumulative_gross_pct": {
+            "description": "Cumulative gross return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "cumulative_net_pct": {
+            "description": "Cumulative net return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "date": {
+            "description": "Session date (`YYYY-MM-DD`).",
+            "type": "string"
+          }
+        }
+      },
+      "OrbTradeRow": {
+        "description": "One simulated intraday ORB trade leg.",
+        "type": "object",
+        "required": [
+          "date",
+          "direction",
+          "entry_price",
+          "exit_price",
+          "exit_reason",
+          "flip_index",
+          "friction_bps",
+          "gross_return_pct",
+          "net_return_pct",
+          "or_high",
+          "or_low"
+        ],
+        "properties": {
+          "date": {
+            "description": "Session date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "direction": {
+            "description": "`\"long\"` or `\"short\"`.",
+            "type": "string"
+          },
+          "entry_price": {
+            "description": "Entry price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "exit_price": {
+            "description": "Exit price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "exit_reason": {
+            "description": "Exit reason (`\"target\"`, `\"stop_flip\"`, `\"stop_max_flips\"`, `\"eod\"`).",
+            "type": "string"
+          },
+          "flip_index": {
+            "description": "Flip sequence inside session (`0` = initial breakout, `1` = first flip, etc.).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "friction_bps": {
+            "description": "Deducted spread + statutory cost friction (bps).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gross_return_pct": {
+            "description": "Gross trade return % before spread & fees.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_return_pct": {
+            "description": "Net trade return % after spread & fees.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "or_high": {
+            "description": "Opening range high for the session.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "or_low": {
+            "description": "Opening range low for the session.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
           }
         }
       },
@@ -7071,6 +8413,171 @@
             }
           }
         ]
+      },
+      "RollBasisMode": {
+        "description": "F&O return adjustment regime applied over sliced periods.",
+        "oneOf": [
+          {
+            "description": "Unadjusted spot / bar returns.",
+            "type": "string",
+            "enum": [
+              "gross_spot"
+            ]
+          },
+          {
+            "description": "Applies futures rollover/carry basis (`futures_roll_basis_bps`) to spot periods.",
+            "type": "string",
+            "enum": [
+              "include_roll_basis"
+            ]
+          },
+          {
+            "description": "Applies rollover basis AND deducts bid-ask spread slippage + statutory exchange/STT costs.",
+            "type": "string",
+            "enum": [
+              "net_after_spread_and_costs"
+            ]
+          }
+        ]
+      },
+      "RollingFiveDayAnalysis": {
+        "description": "Tab 5: Rolling 5-trading-day move distribution & exhaustion profile.",
+        "type": "object",
+        "required": [
+          "after_drop_next_5d_avg_pct",
+          "after_surge_next_5d_avg_pct",
+          "avg_return_pct",
+          "p1_pct",
+          "p50_pct",
+          "p5_pct",
+          "p95_pct",
+          "p99_pct",
+          "positive_pct",
+          "sample_count",
+          "series",
+          "std_dev_pct"
+        ],
+        "properties": {
+          "after_drop_next_5d_avg_pct": {
+            "description": "Average forward 5-day return after `5d <= -tail_threshold_pct` (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "after_surge_next_5d_avg_pct": {
+            "description": "Average forward 5-day return after `5d >= +tail_threshold_pct` (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "avg_return_pct": {
+            "description": "Mean 5-day return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p1_pct": {
+            "description": "1st percentile 5-day move (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p50_pct": {
+            "description": "Median 5-day move (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p5_pct": {
+            "description": "5th percentile 5-day move (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p95_pct": {
+            "description": "95th percentile 5-day move (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p99_pct": {
+            "description": "99th percentile 5-day move (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "positive_pct": {
+            "description": "Share of positive 5-day moves (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sample_count": {
+            "description": "Total 5-day windows evaluated.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "series": {
+            "description": "Time series points for chart rendering.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/RollingFiveDayPoint"
+            }
+          },
+          "std_dev_pct": {
+            "description": "Sample standard deviation of 5-day returns (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "RollingFiveDayPoint": {
+        "description": "One point in the Rolling 5-Day Move trajectory.",
+        "type": "object",
+        "required": [
+          "close",
+          "date",
+          "return_5d_pct"
+        ],
+        "properties": {
+          "close": {
+            "description": "Session close.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "date": {
+            "description": "Session end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "return_5d_pct": {
+            "description": "Trailing 5-trading-day return (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "RollingPairPoint": {
+        "description": "One rolling correlation & spread sample between primary and comparison benchmark.",
+        "type": "object",
+        "required": [
+          "date",
+          "raw_spread",
+          "relative_spread_pct",
+          "rolling_corr"
+        ],
+        "properties": {
+          "date": {
+            "description": "Trading date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "raw_spread": {
+            "description": "Raw price spread `(Primary_close - Benchmark_close)`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "relative_spread_pct": {
+            "description": "Relative normalized spread `(Primary_idx - Benchmark_idx)` in percentage points.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "rolling_corr": {
+            "description": "Trailing `rolling_window` Pearson correlation (`-1..=1`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
       },
       "ScheduleOption": {
         "description": "Period schedule metadata advertised for an asset class.",

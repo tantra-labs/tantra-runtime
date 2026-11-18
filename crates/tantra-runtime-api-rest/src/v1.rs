@@ -248,6 +248,14 @@ pub fn router() -> Router<Arc<AppState>> {
             "/experimental-analysis/returns",
             post(experimental_analysis::post_returns),
         )
+        .route(
+            "/experimental-analysis/intraday",
+            post(experimental_analysis::post_intraday),
+        )
+        .route(
+            "/experimental-analysis/correlation",
+            post(experimental_analysis::post_correlation),
+        )
         .route("/journals/:id", get(runs::get_journal_by_id))
         // Trade-performance journal (distinct from run/backtest journals and
         // the operator journal): backed by tantra-ledger-performance.

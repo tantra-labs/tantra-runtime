@@ -38,14 +38,18 @@ pub use cache::{CacheKey, CachedResult, ResultCache, canonical_json_bytes};
 pub use capabilities::{Capabilities, CapabilityManifest};
 pub use chat_adapters::{LedgerPortfolioReader, RuntimeMarketReader, RuntimeSnapshotSource};
 pub use experimental_analysis::{
-    AssetClassCatalogGroup, CatalogInstrumentEntry, DailyOhlcRow, DailyOhlcSummary,
-    DataSourceStatus, ExperimentalCatalogQuery, ExperimentalCatalogResponse,
-    ExperimentalReturnsRequest, ExperimentalReturnsResponse, ForwardConditionEvent,
-    ForwardConditionalGroup, GreenVsRedComparison, MagnitudePdfBucket, MarkovAnalysis,
-    MarkovCurrentPrediction, MarkovState, MarkovStateProbability, MarkovTransitionRow,
+    AssetClassCatalogGroup, CatalogInstrumentEntry, CycleProgressAnalysis, CycleProgressDecile,
+    DailyOhlcRow, DailyOhlcSummary, DataSourceStatus, ExperimentalCatalogQuery,
+    ExperimentalCatalogResponse, ExperimentalCorrelationRequest, ExperimentalCorrelationResponse,
+    ExperimentalIntradayRequest, ExperimentalIntradayResponse, ExperimentalReturnsRequest,
+    ExperimentalReturnsResponse, ForwardConditionEvent, ForwardConditionalGroup, FrictionSummary,
+    GapAnalysis, GapBucketRow, GapEventRow, GreenVsRedComparison, IntradayMovementAnalysis,
+    IntradaySlotStat, MagnitudePdfBucket, MarkovAnalysis, MarkovCurrentPrediction, MarkovState,
+    MarkovStateProbability, MarkovTransitionRow, OrbBacktestResult, OrbEquityPoint, OrbTradeRow,
     OutlierAnalysis, OutlierKpis, OutlierPeriodPoint, OutlierStatus, PeriodPoint,
     PeriodScheduleKind, PolarityStats, ProbabilityLevelRow, ReturnBucketRow, ReturnCalcKind,
-    ReturnKpis, ReturnPercentiles, ScheduleOption, SideStreakStats, StreakAnalysis, StreakDetail,
+    ReturnKpis, ReturnPercentiles, RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint,
+    RollingPairPoint, ScheduleOption, SideStreakStats, StreakAnalysis, StreakDetail,
     StreakDirection, StreakLengthBucket, StreakSummary, StudyAssetClass, SubCycleKind,
 };
 pub use ingest::{MAX_INGEST_BARS, check_ingest_batch};

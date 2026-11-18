@@ -104,6 +104,32 @@ pub enum ReturnCalcKind {
     CloseToClose,
 }
 
+/// F&O return adjustment regime applied over sliced periods.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RollBasisMode {
+    /// Unadjusted spot / bar returns.
+    #[default]
+    GrossSpot,
+    /// Applies futures rollover/carry basis (`futures_roll_basis_bps`) to spot periods.
+    IncludeRollBasis,
+    /// Applies rollover basis AND deducts bid-ask spread slippage + statutory exchange/STT costs.
+    NetAfterSpreadAndCosts,
+}
+
 /// Directional polarity of a streak (`0%` neutral periods are excluded).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -266,6 +292,45 @@ pub struct ExperimentalReturnsRequest {
     /// Rows per page for `daily_ohlc_rows` (`10..=500`, default `50`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ohlc_page_size: Option<usize>,
+    /// F&O return adjustment mode (default `gross_spot`).
+    #[serde(default)]
+    pub roll_basis_mode: RollBasisMode,
+    /// Round-trip bid-ask spread slippage in basis points (`0..=500`, default `0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_slippage_bps: Option<Decimal>,
+    /// Futures rollover / carry basis adjustment per period in bps (`-500..=500`, default `0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub futures_roll_basis_bps: Option<Decimal>,
+    /// Deduct Indian statutory F&O/cash turnover charges when in `net_after_spread_and_costs`.
+    #[serde(default)]
+    pub include_statutory_costs: bool,
+}
+
+/// Gross vs Net comparison summary quantifying F&O spread, basis, and statutory fee drag.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct FrictionSummary {
+    /// Active roll/friction adjustment mode.
+    pub mode: RollBasisMode,
+    /// Gross arithmetic average period return (%) before friction.
+    pub gross_avg_return_pct: Decimal,
+    /// Net arithmetic average period return (%) after spread, basis, and statutory costs.
+    pub net_avg_return_pct: Decimal,
+    /// Gross period Sharpe ratio.
+    pub gross_sharpe_ratio: Decimal,
+    /// Net period Sharpe ratio after friction.
+    pub net_sharpe_ratio: Decimal,
+    /// Gross profit factor.
+    pub gross_profit_factor: Decimal,
+    /// Net profit factor after friction.
+    pub net_profit_factor: Decimal,
+    /// Configured round-trip bid-ask spread slippage per period (bps).
+    pub per_period_spread_bps: Decimal,
+    /// Round-trip statutory derivative turnover charge per period (bps).
+    pub per_period_statutory_bps: Decimal,
+    /// Configured futures roll/carry basis adjustment per period (bps).
+    pub per_period_basis_bps: Decimal,
+    /// Cumulative percentage-point impact across all evaluated periods (`sum(net - gross)`).
+    pub cumulative_net_delta_pct: Decimal,
 }
 
 /// 3×3 KPI strip for Tab 1 (`Returns Analysis`).
@@ -737,6 +802,9 @@ pub struct ExperimentalReturnsResponse {
     pub source_label: String,
     /// Total sliced periods analyzed.
     pub period_count: usize,
+    /// Optional F&O spread, roll-basis & statutory cost reconciliation summary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub friction_summary: Option<FrictionSummary>,
     /// 3×3 Return KPIs.
     pub kpis: ReturnKpis,
     /// Chronological period return series with rolling SMA.
@@ -778,4 +846,375 @@ pub struct ExperimentalReturnsResponse {
     pub daily_ohlc_page_size: usize,
     /// Current page of daily OHLC rows (newest-first).
     pub daily_ohlc_rows: Vec<DailyOhlcRow>,
+}
+
+/// Statistics for one time-of-day intraday bucket (`15m` or `60m`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct IntradaySlotStat {
+    /// Human-readable clock slot (`HH:MM`, e.g. `"09:15"`).
+    pub slot_label: String,
+    /// Minute offset from midnight local exchange time (`0..1440`).
+    pub minute_of_day: u16,
+    /// Number of intraday bars observed in this clock slot.
+    pub bar_count: usize,
+    /// Mean intra-bar range % `(high - low) / open * 100`.
+    pub avg_range_pct: Decimal,
+    /// Maximum observed range % in this slot.
+    pub max_range_pct: Decimal,
+    /// Mean absolute close-to-open move % `|close - open| / open * 100`.
+    pub avg_abs_move_pct: Decimal,
+    /// Average bar volume.
+    pub avg_volume: Decimal,
+    /// Number of sessions whose High-of-Day occurred inside this slot.
+    pub hod_count: usize,
+    /// Number of sessions whose Low-of-Day occurred inside this slot.
+    pub lod_count: usize,
+}
+
+/// Tab 3: Intraday movement, session range & HOD/LOD clock profile.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct IntradayMovementAnalysis {
+    /// Whether `5m`/intraday bars were available for this instrument.
+    pub available: bool,
+    /// Number of distinct trading sessions with intraday bars.
+    pub total_sessions: usize,
+    /// Average session high-low range (%).
+    pub avg_session_range_pct: Decimal,
+    /// 15-minute slot with peak average volatility.
+    pub peak_volatility_slot: String,
+    /// Most frequent High-of-Day clock slot.
+    pub most_common_hod_slot: String,
+    /// Most frequent Low-of-Day clock slot.
+    pub most_common_lod_slot: String,
+    /// Breakdown across 15-minute buckets.
+    pub slots_15m: Vec<IntradaySlotStat>,
+    /// Breakdown across 60-minute hourly buckets.
+    pub slots_hourly: Vec<IntradaySlotStat>,
+}
+
+/// One bucket row in the Overnight Gap distribution table.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct GapBucketRow {
+    /// Display bucket label (e.g. `"+0.5% to +1.0%"`).
+    pub label: String,
+    /// Observed count.
+    pub count: usize,
+    /// Share of all gap sessions (%).
+    pub share_pct: Decimal,
+    /// Gap-fill rate (%) inside this bucket.
+    pub fill_rate_pct: Decimal,
+    /// Mean intraday open-to-close move (%) following gaps in this bucket.
+    pub avg_intraday_follow_pct: Decimal,
+}
+
+/// Individual notable overnight gap record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct GapEventRow {
+    /// Session date (`YYYY-MM-DD`).
+    pub date: String,
+    /// Prior close.
+    pub prev_close: Decimal,
+    /// Current open.
+    pub open: Decimal,
+    /// Current close.
+    pub close: Decimal,
+    /// Overnight gap %.
+    pub gap_pct: Decimal,
+    /// Intraday open-to-close return %.
+    pub intraday_return_pct: Decimal,
+    /// Whether the session touched `prev_close` (gap filled).
+    pub filled: bool,
+}
+
+/// Tab 4: Overnight gap distribution, fill probability & continuation expectancy.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct GapAnalysis {
+    /// Total sessions evaluated (`daily_bars.len() - 1`).
+    pub total_sessions: usize,
+    /// Count of gap-up sessions (`gap_pct > 0`).
+    pub gap_up_count: usize,
+    /// Count of gap-down sessions (`gap_pct < 0`).
+    pub gap_down_count: usize,
+    /// Average positive gap magnitude (%).
+    pub avg_gap_up_pct: Decimal,
+    /// Average negative gap magnitude (%).
+    pub avg_gap_down_pct: Decimal,
+    /// Overall gap-up fill probability (%).
+    pub gap_up_fill_rate_pct: Decimal,
+    /// Overall gap-down fill probability (%).
+    pub gap_down_fill_rate_pct: Decimal,
+    /// Average open-to-close fade/continuation after a gap up (%).
+    pub gap_up_follow_pct: Decimal,
+    /// Average open-to-close fade/continuation after a gap down (%).
+    pub gap_down_follow_pct: Decimal,
+    /// Bucketed distribution + conditional fill & follow-through rates.
+    pub buckets: Vec<GapBucketRow>,
+    /// Most recent gap events (up to 40 rows).
+    pub recent_events: Vec<GapEventRow>,
+}
+
+/// One point in the Rolling 5-Day Move trajectory.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RollingFiveDayPoint {
+    /// Session end date (`YYYY-MM-DD`).
+    pub date: String,
+    /// Session close.
+    pub close: Decimal,
+    /// Trailing 5-trading-day return (%).
+    pub return_5d_pct: Decimal,
+}
+
+/// Tab 5: Rolling 5-trading-day move distribution & exhaustion profile.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RollingFiveDayAnalysis {
+    /// Total 5-day windows evaluated.
+    pub sample_count: usize,
+    /// Mean 5-day return (%).
+    pub avg_return_pct: Decimal,
+    /// Sample standard deviation of 5-day returns (%).
+    pub std_dev_pct: Decimal,
+    /// Share of positive 5-day moves (%).
+    pub positive_pct: Decimal,
+    /// 99th percentile 5-day move (%).
+    pub p99_pct: Decimal,
+    /// 95th percentile 5-day move (%).
+    pub p95_pct: Decimal,
+    /// Median 5-day move (%).
+    pub p50_pct: Decimal,
+    /// 5th percentile 5-day move (%).
+    pub p5_pct: Decimal,
+    /// 1st percentile 5-day move (%).
+    pub p1_pct: Decimal,
+    /// Average forward 5-day return after `5d >= +tail_threshold_pct` (%).
+    pub after_surge_next_5d_avg_pct: Decimal,
+    /// Average forward 5-day return after `5d <= -tail_threshold_pct` (%).
+    pub after_drop_next_5d_avg_pct: Decimal,
+    /// Time series points for chart rendering.
+    pub series: Vec<RollingFiveDayPoint>,
+}
+
+/// One normalized progress decile (`0%, 10%, ..., 100%`) along a period cycle.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CycleProgressDecile {
+    /// Normalized cycle completion percentage (`0, 10, 20, ..., 100`).
+    pub progress_pct: u16,
+    /// Number of periods contributing to this decile.
+    pub sample_count: usize,
+    /// Mean cumulative drift from period entry (%).
+    pub mean_pct: Decimal,
+    /// 10th percentile drift (%).
+    pub p10_pct: Decimal,
+    /// 25th percentile drift (%).
+    pub p25_pct: Decimal,
+    /// Median cumulative drift (%).
+    pub p50_pct: Decimal,
+    /// 75th percentile drift (%).
+    pub p75_pct: Decimal,
+    /// 90th percentile drift (%).
+    pub p90_pct: Decimal,
+}
+
+/// Tab 6: Intra-cycle progress (0% → 100%) normalized drift cone.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CycleProgressAnalysis {
+    /// Number of multi-bar cycles contributing to the cone.
+    pub cycle_count: usize,
+    /// 11 normalized progress deciles (`0%` through `100%`).
+    pub deciles: Vec<CycleProgressDecile>,
+}
+
+/// One simulated intraday ORB trade leg.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct OrbTradeRow {
+    /// Session date (`YYYY-MM-DD`).
+    pub date: String,
+    /// `"long"` or `"short"`.
+    pub direction: String,
+    /// Flip sequence inside session (`0` = initial breakout, `1` = first flip, etc.).
+    pub flip_index: usize,
+    /// Opening range high for the session.
+    pub or_high: Decimal,
+    /// Opening range low for the session.
+    pub or_low: Decimal,
+    /// Entry price.
+    pub entry_price: Decimal,
+    /// Exit price.
+    pub exit_price: Decimal,
+    /// Exit reason (`"target"`, `"stop_flip"`, `"stop_max_flips"`, `"eod"`).
+    pub exit_reason: String,
+    /// Gross trade return % before spread & fees.
+    pub gross_return_pct: Decimal,
+    /// Deducted spread + statutory cost friction (bps).
+    pub friction_bps: Decimal,
+    /// Net trade return % after spread & fees.
+    pub net_return_pct: Decimal,
+}
+
+/// Equity curve sample point for ORB backtest visualization.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct OrbEquityPoint {
+    /// Session date (`YYYY-MM-DD`).
+    pub date: String,
+    /// Cumulative gross return (%).
+    pub cumulative_gross_pct: Decimal,
+    /// Cumulative net return (%).
+    pub cumulative_net_pct: Decimal,
+}
+
+/// Tab 10: Complete 15m Opening Range Breakout + Flip simulation result.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct OrbBacktestResult {
+    /// Whether `5m` intraday bars were available to run the simulation.
+    pub available: bool,
+    /// Total simulated trades across all sessions.
+    pub total_trades: usize,
+    /// Count of winning trades (`net_return_pct > 0`).
+    pub winning_trades: usize,
+    /// Win rate (%).
+    pub win_rate_pct: Decimal,
+    /// Cumulative sum of gross trade returns (%).
+    pub gross_return_pct: Decimal,
+    /// Total spread + statutory friction deducted (% points).
+    pub total_friction_pct: Decimal,
+    /// Cumulative sum of net trade returns (%).
+    pub net_return_pct: Decimal,
+    /// Empirical net profit factor.
+    pub profit_factor: Decimal,
+    /// Maximum peak-to-trough net return drawdown (%).
+    pub max_drawdown_pct: Decimal,
+    /// Mean net return per trade (%).
+    pub avg_trade_net_pct: Decimal,
+    /// Cumulative gross vs net equity curve by session date.
+    pub equity_curve: Vec<OrbEquityPoint>,
+    /// Most recent simulated trade legs (up to 100).
+    pub trades: Vec<OrbTradeRow>,
+}
+
+/// Request payload for `POST /experimental-analysis/intraday`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalIntradayRequest {
+    /// Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).
+    pub instrument_id: String,
+    /// Asset class used for cycle-progress slicing and statutory fee mapping.
+    pub asset_class: StudyAssetClass,
+    /// Period schedule for Cycle Progress (0% → 100%) cone.
+    pub period: PeriodScheduleKind,
+    /// Inclusive start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Inclusive end date (`YYYY-MM-DD`).
+    pub end_date: String,
+    /// Large-move threshold % for 5-day exhaustion calculation (default `2.0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tail_threshold_pct: Option<Decimal>,
+    /// Opening range width in minutes (`5..=60`, default `15`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening_range_minutes: Option<u16>,
+    /// Maximum flips per day in ORB simulation (`0..=10`, default `2`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_flips_per_day: Option<usize>,
+    /// Fixed percentage stop-loss if tighter than opposite OR boundary (`0` disables).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_loss_pct: Option<Decimal>,
+    /// Fixed percentage take-profit target (`0` holds to EOD/flip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_pct: Option<Decimal>,
+    /// Round-trip bid-ask spread slippage per ORB trade in bps (`0..=500`, default `0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread_slippage_bps: Option<Decimal>,
+    /// Whether to deduct statutory exchange/STT fees per ORB trade.
+    #[serde(default)]
+    pub include_statutory_costs: bool,
+}
+
+/// Combined Phase 2 Intraday / Gap / 5-Day / Cycle Progress / 15m ORB response.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExperimentalIntradayResponse {
+    /// Analyzed canonical instrument ID.
+    pub instrument_id: String,
+    /// Symbol.
+    pub symbol: String,
+    /// Exchange code.
+    pub exchange: String,
+    /// Asset class evaluated.
+    pub asset_class: StudyAssetClass,
+    /// Cycle progress schedule applied.
+    pub period: PeriodScheduleKind,
+    /// Start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// End date (`YYYY-MM-DD`).
+    pub end_date: String,
+    /// Tab 3: Intraday movement & HOD/LOD clock profile (honest `available: false` if no 5m bars).
+    pub intraday: IntradayMovementAnalysis,
+    /// Tab 4: Overnight gap distribution & fill probabilities.
+    pub gaps: GapAnalysis,
+    /// Tab 5: Rolling 5-day move quantiles & exhaustion response.
+    pub five_day: RollingFiveDayAnalysis,
+    /// Tab 6: Intra-cycle 0% → 100% progress drift cone.
+    pub cycle_progress: CycleProgressAnalysis,
+    /// Tab 10: 15m Opening Range Breakout + Flip simulation (honest `available: false` if no 5m bars).
+    pub orb_backtest: OrbBacktestResult,
+}
+
+/// One rolling correlation & spread sample between primary and comparison benchmark.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RollingPairPoint {
+    /// Trading date (`YYYY-MM-DD`).
+    pub date: String,
+    /// Trailing `rolling_window` Pearson correlation (`-1..=1`).
+    pub rolling_corr: Decimal,
+    /// Relative normalized spread `(Primary_idx - Benchmark_idx)` in percentage points.
+    pub relative_spread_pct: Decimal,
+    /// Raw price spread `(Primary_close - Benchmark_close)`.
+    pub raw_spread: Decimal,
+}
+
+/// Request payload for `POST /experimental-analysis/correlation`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalCorrelationRequest {
+    /// Primary instrument ID (`EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE`).
+    pub primary_id: String,
+    /// Benchmark instrument ID for rolling beta & spread curves.
+    pub benchmark_id: String,
+    /// List of instrument IDs to include in the `N × N` correlation matrix (`2..=12`).
+    pub symbols: Vec<String>,
+    /// Inclusive start date (`YYYY-MM-DD`).
+    pub start_date: String,
+    /// Inclusive end date (`YYYY-MM-DD`).
+    pub end_date: String,
+    /// Rolling window in overlapping sessions (`5..=250`, default `20`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rolling_window: Option<usize>,
+}
+
+/// Response payload for `POST /experimental-analysis/correlation`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExperimentalCorrelationResponse {
+    /// Labels corresponding to matrix rows & columns.
+    pub labels: Vec<String>,
+    /// Primary instrument ID.
+    pub primary_id: String,
+    /// Comparison benchmark ID.
+    pub benchmark_id: String,
+    /// Rolling window length used.
+    pub rolling_window: usize,
+    /// Overlapping sessions between primary and benchmark.
+    pub aligned_sessions: usize,
+    /// `N × N` Pearson correlation matrix.
+    pub pearson_matrix: Vec<Vec<Decimal>>,
+    /// `N × N` Spearman rank correlation matrix.
+    pub spearman_matrix: Vec<Vec<Decimal>>,
+    /// Empirical OLS Beta of primary relative to benchmark.
+    pub pair_beta: Decimal,
+    /// Full-sample Pearson correlation between primary and benchmark.
+    pub pair_pearson: Decimal,
+    /// Full-sample Spearman correlation between primary and benchmark.
+    pub pair_spearman: Decimal,
+    /// Latest raw close spread (`primary - benchmark`).
+    pub latest_raw_spread: Decimal,
+    /// Latest normalized spread (% outperformance since start of aligned window).
+    pub latest_relative_spread_pct: Decimal,
+    /// Rolling correlation and spread curve.
+    pub rolling_series: Vec<RollingPairPoint>,
 }

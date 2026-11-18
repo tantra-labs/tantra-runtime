@@ -416,6 +416,8 @@ pub static ENDPOINTS: &[(&str, &str)] = &[
     ("GET", "/depth/{id}"),
     ("GET", "/experimental-analysis/catalog"),
     ("POST", "/experimental-analysis/returns"),
+    ("POST", "/experimental-analysis/intraday"),
+    ("POST", "/experimental-analysis/correlation"),
     ("GET", "/screener/scan"),
     ("GET", "/strategies"),
     ("POST", "/strategies"),

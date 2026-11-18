@@ -1,14 +1,17 @@
-//! Integration tests for `GET /experimental-analysis/catalog` and
-//! `POST /experimental-analysis/returns` through the real v1/v2 routers.
+//! Integration tests for `GET /experimental-analysis/catalog`,
+//! `POST /experimental-analysis/returns`, `POST /experimental-analysis/intraday`,
+//! and `POST /experimental-analysis/correlation` through the real v1/v2 routers.
 
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use chrono::NaiveDate;
+use chrono::{Datelike as _, NaiveDate, TimeZone as _, Utc};
 use serde_json::{Value, json};
+use std::sync::Arc;
 use tantra_core::{Exchange, InstrumentId};
+use tantra_runtime_api_rest::market_feed::ports::{BarReader, BarRequest, PortResult};
 use tantra_runtime_api_rest::market_feed::wire::{
-    BarAggregation, BarSpecification, PriceType, UnixNanos,
+    Bar, BarAggregation, BarSpecification, PriceType, UnixNanos,
 };
 use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
 use tantra_runtime_api_rest::{AppState, api_router_with};
@@ -67,19 +70,104 @@ fn synthetic_daily_slice(
     builder.finish().unwrap()
 }
 
-use chrono::Datelike as _;
+fn synthetic_5m_slice(
+    exchange: Exchange,
+    symbol: &str,
+    start: NaiveDate,
+    days: usize,
+) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
+    let spec = BarSpecification::new(5, BarAggregation::Minute, PriceType::Last);
+    let mut builder = ColumnarSliceBuilder::new(InstrumentId::new(exchange, symbol), spec);
+    let mut cur = start;
+    let mut count = 0usize;
+    let ist_offset = chrono::FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
+    while count < days {
+        let wd = cur.weekday();
+        if wd != chrono::Weekday::Sat && wd != chrono::Weekday::Sun {
+            // Build 8 x 5m bars from 09:15 IST to 09:50 IST with breakout + flip + close action.
+            let base_p = 2400.0 + (count as f64) * 10.0;
+            let offsets = [
+                (0.0, 6.0, -4.0, 2.0),        // 09:15 OR
+                (2.0, 8.0, -2.0, 4.0),        // 09:20 OR
+                (4.0, 7.0, -3.0, 5.0),        // 09:25 OR (ORH = base+8, ORL = base-4)
+                (5.0, 18.0, 2.0, 15.0),       // 09:30 breaks above ORH -> enters long @ base+15
+                (15.0, 16.0, -9.0, -6.0),     // 09:35 hits stop (ORL) -> flips short
+                (-6.0, -2.0, -22.0, -18.0),   // 09:40 rallies lower -> short in profit
+                (-18.0, -10.0, -25.0, -20.0), // 09:45 continuation
+                (-20.0, -14.0, -24.0, -16.0), // 09:50 EOD exit
+            ];
+            for (slot_idx, (o, h, l, c)) in offsets.iter().enumerate() {
+                let minute = 9 * 60 + 15 + (slot_idx as u32) * 5;
+                let dt_ist = ist_offset
+                    .from_local_datetime(&cur.and_hms_opt(minute / 60, minute % 60, 0).unwrap())
+                    .unwrap();
+                let dt_utc = dt_ist.with_timezone(&Utc);
+                builder
+                    .push(
+                        UnixNanos::from_datetime(dt_utc),
+                        base_p + o,
+                        base_p + h,
+                        base_p + l,
+                        base_p + c,
+                        15_000.0 + (slot_idx as f64) * 1_000.0,
+                    )
+                    .unwrap();
+            }
+            count += 1;
+        }
+        cur = cur.succ_opt().unwrap();
+    }
+    builder.finish().unwrap()
+}
+
+#[derive(Clone, Debug)]
+struct MultiTfBarReader {
+    daily: Arc<DatasetReader>,
+    min5: Arc<DatasetReader>,
+}
+
+#[axum::async_trait]
+impl BarReader for MultiTfBarReader {
+    async fn read_bars(&self, request: &BarRequest) -> PortResult<Vec<Bar>> {
+        if request.spec().aggregation() == BarAggregation::Minute && request.spec().step() == 5 {
+            self.min5.read_bars(request).await
+        } else {
+            self.daily.read_bars(request).await
+        }
+    }
+}
 
 fn test_app() -> Router {
     let start = NaiveDate::from_ymd_opt(2025, 6, 16).unwrap();
-    let dataset = Dataset::from_slices(vec![
+    let daily_dataset = Dataset::from_slices(vec![
         synthetic_daily_slice(Exchange::Nse, "RELIANCE", start, 95),
         synthetic_daily_slice(Exchange::Nse, "NIFTYBEES", start, 30),
-        synthetic_daily_slice(Exchange::Nse, "TANLA", start, 30),
+        synthetic_daily_slice(Exchange::Nse, "TANLA", start, 95),
         synthetic_daily_slice(Exchange::Cds, "USDINR", start, 30),
-        synthetic_daily_slice(Exchange::Mcx, "GOLD", start, 30),
+        synthetic_daily_slice(Exchange::Mcx, "GOLD", start, 95),
     ])
     .unwrap();
-    api_router_with(AppState::from_reader(DatasetReader::from_dataset(dataset)))
+    let min5_dataset = Dataset::from_slices(vec![synthetic_5m_slice(
+        Exchange::Nse,
+        "RELIANCE",
+        start,
+        12,
+    )])
+    .unwrap();
+    let daily_reader = Arc::new(DatasetReader::from_dataset(daily_dataset));
+    let min5_reader = Arc::new(DatasetReader::from_dataset(min5_dataset));
+    let bar_reader = Arc::new(MultiTfBarReader {
+        daily: Arc::clone(&daily_reader),
+        min5: min5_reader,
+    });
+    api_router_with(AppState::new(
+        Arc::clone(&daily_reader)
+            as Arc<dyn tantra_runtime_api_rest::market_feed::ports::InstrumentMaster>,
+        bar_reader,
+        Arc::clone(&daily_reader)
+            as Arc<dyn tantra_runtime_api_rest::market_feed::ports::QuoteReader>,
+        daily_reader as Arc<dyn tantra_runtime_api_rest::market_feed::ports::DepthReader>,
+    ))
 }
 
 async fn get_json(app: &Router, uri: &str) -> (StatusCode, Value) {
@@ -254,7 +342,7 @@ async fn returns_unknown_instrument_answers_404() {
 }
 
 #[tokio::test]
-async fn returns_evaluates_full_study_and_respects_v1_v2_envelopes() {
+async fn returns_evaluates_full_study_and_fno_spread_reconciliation() {
     let app = test_app();
     let payload = json!({
         "instrument_id": "RELIANCE.NSE",
@@ -282,6 +370,7 @@ async fn returns_evaluates_full_study_and_respects_v1_v2_envelopes() {
     let data = &body_v2["data"];
 
     assert_eq!(data["instrument_id"], "NSE:RELIANCE");
+    assert!(data["friction_summary"].is_null());
     assert!(data["period_count"].as_u64().unwrap() >= 10);
     assert!(
         data["regime_note"]
@@ -305,6 +394,37 @@ async fn returns_evaluates_full_study_and_respects_v1_v2_envelopes() {
     assert_eq!(data["daily_ohlc_total_rows"].as_u64().unwrap(), 95);
     assert_eq!(data["daily_ohlc_rows"].as_array().unwrap().len(), 25);
 
+    // Also test F&O spread + statutory fee + futures roll basis reconciliation
+    let mut spread_payload = payload.clone();
+    spread_payload["roll_basis_mode"] = json!("net_after_spread_and_costs");
+    spread_payload["spread_slippage_bps"] = json!("10");
+    spread_payload["futures_roll_basis_bps"] = json!("5");
+    spread_payload["include_statutory_costs"] = json!(true);
+
+    let (status_spread, body_spread) = post_json(
+        &app,
+        "/api/v2/experimental-analysis/returns",
+        spread_payload,
+    )
+    .await;
+    assert_eq!(status_spread, StatusCode::OK, "{body_spread}");
+    let fs = &body_spread["data"]["friction_summary"];
+    assert!(
+        fs.is_object(),
+        "expected friction_summary object: {body_spread}"
+    );
+    assert_eq!(fs["mode"], "net_after_spread_and_costs");
+    assert_eq!(fs["per_period_spread_bps"], "10");
+    assert_eq!(fs["per_period_basis_bps"], "5");
+    assert!(
+        fs["per_period_statutory_bps"]
+            .as_str()
+            .unwrap()
+            .parse::<f64>()
+            .unwrap()
+            > 0.0
+    );
+
     // Also test v1 envelope & EXCHANGE:SYMBOL alternate id syntax
     let mut payload_v1 = payload;
     payload_v1["instrument_id"] = json!("NSE:RELIANCE");
@@ -313,4 +433,86 @@ async fn returns_evaluates_full_study_and_respects_v1_v2_envelopes() {
     assert_eq!(status_v1, StatusCode::OK, "{body_v1}");
     assert_eq!(body_v1["api_version"], "v1");
     assert_eq!(body_v1["data"]["period_count"], data["period_count"]);
+}
+
+#[tokio::test]
+async fn intraday_evaluates_5m_orb_and_reports_honest_unavailable_without_5m() {
+    let app = test_app();
+
+    // 1. RELIANCE has both 1d and 5m bars -> full intraday + ORB simulation available
+    let (status, body) = post_json(
+        &app,
+        "/api/v2/experimental-analysis/intraday",
+        json!({
+            "instrument_id": "NSE:RELIANCE",
+            "asset_class": "fno_stock",
+            "period": "weekly_expiry",
+            "start_date": "2025-06-16",
+            "end_date": "2025-11-15",
+            "tail_threshold_pct": "2",
+            "opening_range_minutes": 15,
+            "max_flips_per_day": 2,
+            "spread_slippage_bps": "8",
+            "include_statutory_costs": true
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let d = &body["data"];
+    assert_eq!(d["intraday"]["available"], true);
+    assert!(d["intraday"]["total_sessions"].as_u64().unwrap() >= 10);
+    assert!(d["gaps"]["total_sessions"].as_u64().unwrap() >= 80);
+    assert!(d["five_day"]["sample_count"].as_u64().unwrap() >= 80);
+    assert_eq!(d["cycle_progress"]["deciles"].as_array().unwrap().len(), 11);
+    assert_eq!(d["orb_backtest"]["available"], true);
+    assert!(d["orb_backtest"]["total_trades"].as_u64().unwrap() >= 10);
+
+    // 2. TANLA has only 1d bars -> gaps/5-day/cycle_progress work, intraday & orb report available=false
+    let (status2, body2) = post_json(
+        &app,
+        "/api/v2/experimental-analysis/intraday",
+        json!({
+            "instrument_id": "NSE:TANLA",
+            "asset_class": "equity",
+            "period": "calendar_weekly",
+            "start_date": "2025-06-16",
+            "end_date": "2025-11-15"
+        }),
+    )
+    .await;
+    assert_eq!(status2, StatusCode::OK, "{body2}");
+    let d2 = &body2["data"];
+    assert_eq!(d2["intraday"]["available"], false);
+    assert_eq!(d2["orb_backtest"]["available"], false);
+    assert!(d2["gaps"]["total_sessions"].as_u64().unwrap() >= 80);
+    assert_eq!(
+        d2["cycle_progress"]["deciles"].as_array().unwrap().len(),
+        11
+    );
+}
+
+#[tokio::test]
+async fn correlation_computes_symmetric_matrices_and_rolling_spread() {
+    let app = test_app();
+    let (status, body) = post_json(
+        &app,
+        "/api/v2/experimental-analysis/correlation",
+        json!({
+            "primary_id": "NSE:RELIANCE",
+            "benchmark_id": "MCX:GOLD",
+            "symbols": ["NSE:RELIANCE", "NSE:TANLA", "MCX:GOLD"],
+            "start_date": "2025-06-16",
+            "end_date": "2025-11-15",
+            "rolling_window": 15
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let d = &body["data"];
+    assert_eq!(d["labels"].as_array().unwrap().len(), 3);
+    assert_eq!(d["pearson_matrix"].as_array().unwrap().len(), 3);
+    assert_eq!(d["spearman_matrix"].as_array().unwrap().len(), 3);
+    assert_eq!(d["rolling_window"], 15);
+    assert!(d["aligned_sessions"].as_u64().unwrap() >= 80);
+    assert!(!d["rolling_series"].as_array().unwrap().is_empty());
 }
