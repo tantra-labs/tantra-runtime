@@ -19,10 +19,9 @@ use tantra_risk::{RiskLimits, RiskRefusal};
 use tantra_runtime_api::experimental_analysis::{
     ExperimentalCatalogResponse, ExperimentalCorrelationRequest, ExperimentalCorrelationResponse,
     ExperimentalEventStudyRequest, ExperimentalEventStudyResponse, ExperimentalForecastRequest,
-    ExperimentalForecastResponse, ExperimentalOptionsOverlayRequest,
-    ExperimentalOptionsOverlayResponse, ExperimentalOutlierNewsRequest,
-    ExperimentalOutlierNewsResponse,
-    ExperimentalIntradayRequest, ExperimentalIntradayResponse, ExperimentalReturnsRequest,
+    ExperimentalForecastResponse, ExperimentalIntradayRequest, ExperimentalIntradayResponse,
+    ExperimentalOptionsOverlayRequest, ExperimentalOptionsOverlayResponse,
+    ExperimentalOutlierNewsRequest, ExperimentalOutlierNewsResponse, ExperimentalReturnsRequest,
     ExperimentalReturnsResponse,
 };
 use tantra_runtime_api::profile::{
@@ -1594,28 +1593,40 @@ impl OpenApiDocument {
         let ov_resp_schema =
             register_schema::<ResponseEnvelope<ExperimentalOptionsOverlayResponse>>(&mut schemas);
         let ov_schema = register_schema::<ExperimentalOptionsOverlayResponse>(&mut schemas);
-        schemas.insert("ExperimentalOptionsOverlayRequest".to_string(), ov_req_schema.clone());
+        schemas.insert(
+            "ExperimentalOptionsOverlayRequest".to_string(),
+            ov_req_schema.clone(),
+        );
         schemas.insert("ExperimentalOptionsOverlayResponse".to_string(), ov_schema);
 
         let fc_req_schema = register_schema::<ExperimentalForecastRequest>(&mut schemas);
         let fc_resp_schema =
             register_schema::<ResponseEnvelope<ExperimentalForecastResponse>>(&mut schemas);
         let fc_schema = register_schema::<ExperimentalForecastResponse>(&mut schemas);
-        schemas.insert("ExperimentalForecastRequest".to_string(), fc_req_schema.clone());
+        schemas.insert(
+            "ExperimentalForecastRequest".to_string(),
+            fc_req_schema.clone(),
+        );
         schemas.insert("ExperimentalForecastResponse".to_string(), fc_schema);
 
         let ev_req_schema = register_schema::<ExperimentalEventStudyRequest>(&mut schemas);
         let ev_resp_schema =
             register_schema::<ResponseEnvelope<ExperimentalEventStudyResponse>>(&mut schemas);
         let ev_schema = register_schema::<ExperimentalEventStudyResponse>(&mut schemas);
-        schemas.insert("ExperimentalEventStudyRequest".to_string(), ev_req_schema.clone());
+        schemas.insert(
+            "ExperimentalEventStudyRequest".to_string(),
+            ev_req_schema.clone(),
+        );
         schemas.insert("ExperimentalEventStudyResponse".to_string(), ev_schema);
 
         let nw_req_schema = register_schema::<ExperimentalOutlierNewsRequest>(&mut schemas);
         let nw_resp_schema =
             register_schema::<ResponseEnvelope<ExperimentalOutlierNewsResponse>>(&mut schemas);
         let nw_schema = register_schema::<ExperimentalOutlierNewsResponse>(&mut schemas);
-        schemas.insert("ExperimentalOutlierNewsRequest".to_string(), nw_req_schema.clone());
+        schemas.insert(
+            "ExperimentalOutlierNewsRequest".to_string(),
+            nw_req_schema.clone(),
+        );
         schemas.insert("ExperimentalOutlierNewsResponse".to_string(), nw_schema);
 
         paths.insert(
@@ -1775,7 +1786,8 @@ impl OpenApiDocument {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
-                    summary: "Evaluate multi-leg F&O options overlay & live bid-ask strike lab".to_string(),
+                    summary: "Evaluate multi-leg F&O options overlay & live bid-ask strike lab"
+                        .to_string(),
                     operation_id: "postExperimentalAnalysisOptionsOverlay".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
@@ -1790,7 +1802,8 @@ impl OpenApiDocument {
                     responses: BTreeMap::from([(
                         "200".to_string(),
                         Response {
-                            description: "Multi-leg options overlay & strike lab report".to_string(),
+                            description: "Multi-leg options overlay & strike lab report"
+                                .to_string(),
                             content: BTreeMap::from([(
                                 "application/json".to_string(),
                                 MediaType {
@@ -1814,7 +1827,8 @@ impl OpenApiDocument {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
-                    summary: "Evaluate Markov + volatility regime analog quantile forecast".to_string(),
+                    summary: "Evaluate Markov + volatility regime analog quantile forecast"
+                        .to_string(),
                     operation_id: "postExperimentalAnalysisForecast".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
@@ -1829,7 +1843,9 @@ impl OpenApiDocument {
                     responses: BTreeMap::from([(
                         "200".to_string(),
                         Response {
-                            description: "Markov + volatility analog quantile fan & historical episodes".to_string(),
+                            description:
+                                "Markov + volatility analog quantile fan & historical episodes"
+                                    .to_string(),
                             content: BTreeMap::from([(
                                 "application/json".to_string(),
                                 MediaType {
@@ -1892,7 +1908,9 @@ impl OpenApiDocument {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
-                    summary: "Retrieve dated archival news, macro releases & filings for outlier windows".to_string(),
+                    summary:
+                        "Retrieve dated archival news, macro releases & filings for outlier windows"
+                            .to_string(),
                     operation_id: "postExperimentalAnalysisOutlierNews".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
@@ -1907,7 +1925,8 @@ impl OpenApiDocument {
                     responses: BTreeMap::from([(
                         "200".to_string(),
                         Response {
-                            description: "Outlier window news, macro calendar & filings items".to_string(),
+                            description: "Outlier window news, macro calendar & filings items"
+                                .to_string(),
                             content: BTreeMap::from([(
                                 "application/json".to_string(),
                                 MediaType {

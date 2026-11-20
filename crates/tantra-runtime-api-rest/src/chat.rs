@@ -337,7 +337,8 @@ impl ChatRuntime {
         // The market reader deliberately wires no live `TradeReader`: no broker trade feed
         // exists in this runtime yet (real feeds remain `tantra-market` gaps 0001/0002), so
         // `quote` honestly falls back to the bid/ask midpoint until one is attached.
-        let mut snapshot = FeedSnapshotSource::new(instruments.clone()).with_risk_engine(risk_engine);
+        let mut snapshot =
+            FeedSnapshotSource::new(instruments.clone()).with_risk_engine(risk_engine);
         if let Some(regime_instrument) = std::env::var("TANTRA_REGIME_INSTRUMENT")
             .ok()
             .and_then(|raw| crate::chat_market::parse_instrument(&raw))
@@ -380,14 +381,13 @@ impl ChatRuntime {
         // answer real realized P&L per account/date range (see `crate::chat_tax`).
         let tax: Arc<dyn tantra_agent_chat_tools::ports::tax::TaxReportReader> =
             Arc::new(crate::chat_tax::FeedTaxReportReader::new(shared_ledger));
-        let study: Arc<dyn tantra_agent_chat_tools::ports::study::StudyReader> = Arc::new(
-            crate::experimental_analysis::FeedStudyReader::new(
+        let study: Arc<dyn tantra_agent_chat_tools::ports::study::StudyReader> =
+            Arc::new(crate::experimental_analysis::FeedStudyReader::new(
                 instruments,
                 bars,
                 quotes,
                 data_root.to_path_buf(),
-            ),
-        );
+            ));
         tantra_agent_chat_tools::catalog::register_read_only_tools_with_studies(
             &mut registry,
             portfolio,

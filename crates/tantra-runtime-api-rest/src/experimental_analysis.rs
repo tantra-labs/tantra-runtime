@@ -7,11 +7,16 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Timelike as _, Utc};
 use serde_json::json;
+use tantra_agent_chat_tools::ports::error::PortError;
+use tantra_agent_chat_tools::ports::study::{
+    StudyProbabilityLevel, StudyReader, StudySummarySnapshot,
+};
 use tantra_core::rust_decimal::Decimal;
 use tantra_core::{Exchange, InstrumentId};
 use tantra_market_finance::calendar::{MarketCalendar, Session};
@@ -21,33 +26,27 @@ use tantra_market_finance::studies::{
     RollBasisMode as DomainRollMode, SpreadCostConfig, StudyAssetClass as DomainAssetClass,
     StudyError, SubCycleKind as DomainSubCycle,
 };
-use async_trait::async_trait;
-use tantra_agent_chat_tools::ports::error::PortError;
-use tantra_agent_chat_tools::ports::study::{
-    StudyProbabilityLevel, StudyReader, StudySummarySnapshot,
-};
 use tantra_market_store::{
     CorporateActionsProjectionReader, EconomicCalendarProjectionReader, FilingsProjectionReader,
     InstrumentChainReader, NewsProjectionReader,
 };
 use tantra_runtime_api::{
-    AssetClassCatalogGroup, CatalogInstrumentEntry, CycleProgressAnalysis, CycleProgressDecile,
-    DailyOhlcRow, DailyOhlcSummary, DataSourceStatus, ErrorCode, ErrorDetail,
-    ExperimentalCatalogQuery, ExperimentalCatalogResponse, ExperimentalCorrelationRequest,
-    ExperimentalCorrelationResponse, ExperimentalIntradayRequest, ExperimentalIntradayResponse,
-    ExperimentalReturnsRequest, ExperimentalReturnsResponse, ForwardConditionEvent,
-    ForwardConditionalGroup, FrictionSummary, GapAnalysis, GapBucketRow, GapEventRow,
-    GreenVsRedComparison, IntradayMovementAnalysis, IntradaySlotStat, MagnitudePdfBucket,
-    MarkovAnalysis, MarkovCurrentPrediction, MarkovState, MarkovStateProbability,
-    MarkovTransitionRow, OrbBacktestResult, OrbEquityPoint, OrbTradeRow, OutlierAnalysis,
-    OutlierKpis, OutlierPeriodPoint, OutlierStatus, PeriodPoint, PeriodScheduleKind, PolarityStats,
-    ProbabilityLevelRow, ReturnBucketRow, ReturnCalcKind, ReturnKpis, ReturnPercentiles,
-    ExperimentalEventStudyRequest, ExperimentalEventStudyResponse, ExperimentalForecastRequest,
-    ExperimentalForecastResponse, ExperimentalOptionsOverlayRequest,
+    AnalogEpisode, AssetClassCatalogGroup, CatalogInstrumentEntry, CycleProgressAnalysis,
+    CycleProgressDecile, DailyOhlcRow, DailyOhlcSummary, DataSourceStatus, ErrorCode, ErrorDetail,
+    EventStudyRow, EventWindowPoint, ExperimentalCatalogQuery, ExperimentalCatalogResponse,
+    ExperimentalCorrelationRequest, ExperimentalCorrelationResponse, ExperimentalEventStudyRequest,
+    ExperimentalEventStudyResponse, ExperimentalForecastRequest, ExperimentalForecastResponse,
+    ExperimentalIntradayRequest, ExperimentalIntradayResponse, ExperimentalOptionsOverlayRequest,
     ExperimentalOptionsOverlayResponse, ExperimentalOutlierNewsRequest,
-    ExperimentalOutlierNewsResponse, AnalogEpisode, EventStudyRow, EventWindowPoint,
-    ForecastHorizonStep, OptionLegSpec, OptionOverlayStrategy, OutlierNewsItem,
-    OverlayEquityPoint, RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint,
+    ExperimentalOutlierNewsResponse, ExperimentalReturnsRequest, ExperimentalReturnsResponse,
+    ForecastHorizonStep, ForwardConditionEvent, ForwardConditionalGroup, FrictionSummary,
+    GapAnalysis, GapBucketRow, GapEventRow, GreenVsRedComparison, IntradayMovementAnalysis,
+    IntradaySlotStat, MagnitudePdfBucket, MarkovAnalysis, MarkovCurrentPrediction, MarkovState,
+    MarkovStateProbability, MarkovTransitionRow, OptionLegSpec, OptionOverlayStrategy,
+    OrbBacktestResult, OrbEquityPoint, OrbTradeRow, OutlierAnalysis, OutlierKpis, OutlierNewsItem,
+    OutlierPeriodPoint, OutlierStatus, OverlayEquityPoint, PeriodPoint, PeriodScheduleKind,
+    PolarityStats, ProbabilityLevelRow, ReturnBucketRow, ReturnCalcKind, ReturnKpis,
+    ReturnPercentiles, RollBasisMode, RollingFiveDayAnalysis, RollingFiveDayPoint,
     RollingPairPoint, ScheduleOption, SideStreakStats, StreakAnalysis, StreakDetail,
     StreakDirection, StreakLengthBucket, StreakSummary, StrikeLabRow, StudyAssetClass,
     StudyEventKind, SubCycleKind, VolatilityRegime, wire::InstrumentKind,
@@ -440,7 +439,11 @@ fn looks_like_index_or_proxy(symbol: &str) -> bool {
 }
 
 fn index_sort_rank(item: &CatalogInstrumentEntry) -> (u8, usize, &str) {
-    let kind_rank = if item.instrument_kind == InstrumentKind::Index { 0 } else { 1 };
+    let kind_rank = if item.instrument_kind == InstrumentKind::Index {
+        0
+    } else {
+        1
+    };
     let sym = item.symbol.trim().to_ascii_uppercase();
     let preferred = [
         "NIFTY50",
@@ -456,7 +459,10 @@ fn index_sort_rank(item: &CatalogInstrumentEntry) -> (u8, usize, &str) {
         "MONIFTY100",
         "MONIFTY500",
     ];
-    let pref_rank = preferred.iter().position(|p| *p == sym).unwrap_or(preferred.len());
+    let pref_rank = preferred
+        .iter()
+        .position(|p| *p == sym)
+        .unwrap_or(preferred.len());
     (kind_rank, pref_rank, item.symbol.as_str())
 }
 
@@ -1873,7 +1879,6 @@ pub(crate) async fn post_correlation(
     })
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 3 Handlers: Options Overlay, Analog Forecast, Event Studies & News
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1954,7 +1959,9 @@ pub(crate) async fn post_options_overlay(
         Err(detail) => return unprocessable(detail),
     };
 
-    let target_short_prob_pct = req.target_short_prob_pct.unwrap_or_else(|| Decimal::from(80));
+    let target_short_prob_pct = req
+        .target_short_prob_pct
+        .unwrap_or_else(|| Decimal::from(80));
     if target_short_prob_pct < Decimal::from(55) || target_short_prob_pct > Decimal::from(98) {
         return unprocessable(invalid_field(
             "target_short_prob_pct",
@@ -1962,9 +1969,7 @@ pub(crate) async fn post_options_overlay(
             "target_short_prob_pct must be between 55 and 98",
         ));
     }
-    let wing_width_pct = req
-        .wing_width_pct
-        .unwrap_or_else(|| Decimal::from(3));
+    let wing_width_pct = req.wing_width_pct.unwrap_or_else(|| Decimal::from(3));
     if wing_width_pct < Decimal::new(5, 1) || wing_width_pct > Decimal::from(15) {
         return unprocessable(invalid_field(
             "wing_width_pct",
@@ -1987,8 +1992,8 @@ pub(crate) async fn post_options_overlay(
     };
     let canonical_id = instrument.id().clone();
     let lot_size = Decimal::from_f64_retain(instrument.lot_size()).unwrap_or(Decimal::ONE);
-    let tick_size = Decimal::from_f64_retain(instrument.tick_size())
-        .unwrap_or_else(|| Decimal::new(5, 2));
+    let tick_size =
+        Decimal::from_f64_retain(instrument.tick_size()).unwrap_or_else(|| Decimal::new(5, 2));
 
     let daily_bars =
         match load_daily_study_bars(&state, &canonical_id, start_date, end_date, false).await {
@@ -2363,7 +2368,8 @@ pub(crate) async fn post_events(
     {
         let bench_id = bench_inst.id().clone();
         if bench_id != canonical_id
-            && let Ok(bb) = load_daily_study_bars(&state, &bench_id, start_date, end_date, false).await
+            && let Ok(bb) =
+                load_daily_study_bars(&state, &bench_id, start_date, end_date, false).await
             && !bb.is_empty()
         {
             benchmark_symbol = Some(bench_id.to_string());
@@ -2386,10 +2392,7 @@ pub(crate) async fn post_events(
                             continue;
                         }
                         let ty = act.action_type.to_ascii_lowercase();
-                        if matches!(
-                            ty.as_str(),
-                            "buyback" | "bonus" | "split" | "rights"
-                        ) {
+                        if matches!(ty.as_str(), "buyback" | "bonus" | "split" | "rights") {
                             let detail = if let Some(p) = act.per_share {
                                 Some(format!("Amount/Share: {p} {}", act.currency))
                             } else if let (Some(o), Some(n)) = (act.old_shares, act.new_shares) {
@@ -2401,7 +2404,10 @@ pub(crate) async fn post_events(
                                 event_date: act.ex_date,
                                 symbol: sym_label.clone(),
                                 kind: studies::StudyEventKind::Buyback,
-                                title: format!("Corporate Action: {}", act.action_type.to_uppercase()),
+                                title: format!(
+                                    "Corporate Action: {}",
+                                    act.action_type.to_uppercase()
+                                ),
                                 detail,
                             });
                         }
@@ -2651,7 +2657,9 @@ pub(crate) async fn post_outlier_news(
         .unwrap_or_else(|| match req.asset_class {
             StudyAssetClass::Commodity => "crude oil opec gold fed macro".to_string(),
             StudyAssetClass::Forex => "rbi fed currency dollar usd inr macro".to_string(),
-            StudyAssetClass::Index => format!("{} market economy finance macro", canonical_id.symbol),
+            StudyAssetClass::Index => {
+                format!("{} market economy finance macro", canonical_id.symbol)
+            }
             StudyAssetClass::Etf => format!("{} etf flows macro index", canonical_id.symbol),
             StudyAssetClass::FnoStock | StudyAssetClass::Equity => {
                 format!("{} earnings macro corporate event", canonical_id.symbol)
@@ -2779,7 +2787,10 @@ pub(crate) async fn post_outlier_news(
                     kind: "corporate_action".to_string(),
                     date: act.ex_date.format("%Y-%m-%d").to_string(),
                     published_at: format!("{}T00:00:00Z", act.ex_date),
-                    title: format!("Corporate Action: {} ({})", act.action_type, canonical_id.symbol),
+                    title: format!(
+                        "Corporate Action: {} ({})",
+                        act.action_type, canonical_id.symbol
+                    ),
                     source: "Corporate Actions Registry".to_string(),
                     url: None,
                     summary: act
@@ -3025,11 +3036,8 @@ impl StudyReader for FeedStudyReader {
             None => NseTradingCalendar::new(),
         };
         let calendar = RuntimeNseCalendar(cal_inner);
-        let domain_asset = parse_chat_asset_class(
-            asset_class,
-            canonical_id.exchange,
-            &canonical_id.symbol,
-        );
+        let domain_asset =
+            parse_chat_asset_class(asset_class, canonical_id.exchange, &canonical_id.symbol);
         let domain_schedule = parse_chat_schedule(period, domain_asset);
         let domain_calc = parse_chat_calc(calc_type);
 
@@ -3108,13 +3116,23 @@ impl StudyReader for FeedStudyReader {
                 .forward_conditional
                 .after_large_pos_events
                 .is_empty())
-            .then_some(report.distributions.forward_conditional.after_large_pos_mean_pct),
+            .then_some(
+                report
+                    .distributions
+                    .forward_conditional
+                    .after_large_pos_mean_pct,
+            ),
             after_big_down_next_avg_pct: (!report
                 .distributions
                 .forward_conditional
                 .after_large_neg_events
                 .is_empty())
-            .then_some(report.distributions.forward_conditional.after_large_neg_mean_pct),
+            .then_some(
+                report
+                    .distributions
+                    .forward_conditional
+                    .after_large_neg_mean_pct,
+            ),
         })
     }
 }

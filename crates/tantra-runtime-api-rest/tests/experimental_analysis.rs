@@ -529,7 +529,6 @@ async fn correlation_computes_symmetric_matrices_and_rolling_spread() {
     assert!(!d["rolling_series"].as_array().unwrap().is_empty());
 }
 
-
 fn date32_days(y: i32, m: u32, d: u32) -> i32 {
     let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
     i32::try_from((NaiveDate::from_ymd_opt(y, m, d).unwrap() - epoch).num_days()).unwrap()
@@ -599,7 +598,7 @@ fn write_synthetic_lakehouse_projections(root: &std::path::Path) {
             Arc::new(Date32Array::from(vec![date32_days(2025, 9, 10)])),
             Arc::new(StringArray::from(vec!["NSE:RELIANCE"])),
             Arc::new(StringArray::from(vec!["financial_results"])),
-            Arc::new(StringArray::from(vec!["Q2 Unaudited Results"] )),
+            Arc::new(StringArray::from(vec!["Q2 Unaudited Results"])),
             Arc::new(StringArray::from(vec![Some("https://example.com/q2")])),
         ],
     )
@@ -679,10 +678,14 @@ fn write_synthetic_lakehouse_projections(root: &std::path::Path) {
             Arc::new(Date32Array::from(vec![date32_days(2025, 8, 4)])),
             Arc::new(StringArray::from(vec!["2025-08-04T09:15:00Z"])),
             Arc::new(StringArray::from(vec!["art-1"])),
-            Arc::new(StringArray::from(vec!["Reliance announces tender buyback record date"])),
+            Arc::new(StringArray::from(vec![
+                "Reliance announces tender buyback record date",
+            ])),
             Arc::new(StringArray::from(vec!["NSE Wires"])),
             Arc::new(StringArray::from(vec!["https://example.com/news/1"])),
-            Arc::new(StringArray::from(vec![Some("Tender offer approved by board")])),
+            Arc::new(StringArray::from(vec![Some(
+                "Tender offer approved by board",
+            )])),
             Arc::new(StringArray::from(vec!["NSE:RELIANCE"])),
         ],
     )
@@ -871,6 +874,12 @@ async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() 
         .iter()
         .map(|i| i["kind"].as_str().unwrap())
         .collect();
-    assert!(kinds.contains(&"news"), "expected expanded news hit: {kinds:?}");
-    assert!(kinds.contains(&"corporate_action"), "expected buyback hit: {kinds:?}");
+    assert!(
+        kinds.contains(&"news"),
+        "expected expanded news hit: {kinds:?}"
+    );
+    assert!(
+        kinds.contains(&"corporate_action"),
+        "expected buyback hit: {kinds:?}"
+    );
 }

@@ -1219,24 +1219,12 @@ pub struct ExperimentalCorrelationResponse {
     pub rolling_series: Vec<RollingPairPoint>,
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 3 DTOs: Options Overlay, Forecasting, Event Studies & Outlier News
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Option overlay strategy family evaluated in Tab 8 & Tab 9.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    Serialize,
-    Deserialize,
-    JsonSchema,
-)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OptionOverlayStrategy {
     /// Long 1× underlying + Short 1× OTM Call at empirical target probability strike.
@@ -1572,9 +1560,7 @@ pub struct ExperimentalForecastResponse {
 }
 
 /// Event study category aligned across Phase 3 Event Modes & Tab 12.
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum StudyEventKind {
     /// Share buyback / tender / bonus / corporate action.
