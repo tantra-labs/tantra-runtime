@@ -67,6 +67,13 @@ pub struct AuthConfig {
     pub jwt_config: Option<JwtConfig>,
 }
 
+impl AuthConfig {
+    /// Whether any auth mechanism (token file or JWT validator) is configured.
+    pub fn is_enabled(&self) -> bool {
+        self.tokens_file.is_some() || self.jwt_config.is_some()
+    }
+}
+
 /// Token record as stored in the token file
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
@@ -245,6 +252,72 @@ pub enum RouteScope {
     /// `token_id` (the `/profile` routes: a token manages only its own profile).
     Authenticated,
 }
+
+/// Scope rows for routes mounted only under `/api/v2` (library, signal study, canonical
+/// `/studies/experimental-analysis/*`). Without a row a route is public, so every v2-only
+/// route must be listed here.
+pub const V2_ONLY_SCOPES: &[(&str, &str, RouteScope)] = &[
+    (
+        "GET",
+        "/studies/library/entries",
+        RouteScope::Required("read"),
+    ),
+    (
+        "GET",
+        "/studies/library/entries/{id}",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/indicators/compute",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/signal-study",
+        RouteScope::Required("read"),
+    ),
+    (
+        "GET",
+        "/studies/experimental-analysis/catalog",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/experimental-analysis/returns",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/experimental-analysis/intraday",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/experimental-analysis/correlation",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/experimental-analysis/options-overlay",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/experimental-analysis/forecast",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/experimental-analysis/events",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/studies/experimental-analysis/outlier-news",
+        RouteScope::Required("read"),
+    ),
+];
 
 /// The canonical route-to-scope map (ADR 0023 §2).
 ///
@@ -459,6 +532,14 @@ pub fn scope_for(method: &str, path: &str) -> Option<RouteScope> {
         .strip_prefix("/api/v1")
         .or_else(|| path.strip_prefix("/api/v2"))
         .unwrap_or(path);
+    // Routes that exist only under /api/v2 (never a route a v1/root path may reach).
+    if path.starts_with("/api/v2/")
+        && let Some((_, _, scope)) = V2_ONLY_SCOPES.iter().find(|(m, pattern, _)| {
+            m.eq_ignore_ascii_case(method) && path_matches(pattern, unversioned_path)
+        })
+    {
+        return Some(*scope);
+    }
     ROUTE_SCOPES
         .iter()
         .find(|(m, pattern, _)| {
@@ -507,7 +588,7 @@ pub fn unscoped_routes(routes: &[(&str, &str)]) -> Vec<String> {
 /// The auth layer that wraps a token store
 #[derive(Clone)]
 pub struct AuthLayer {
-    store: FileTokenStore,
+    store: Option<FileTokenStore>,
     audit_log_path: Option<PathBuf>,
     jwt_config: Option<JwtConfig>,
 }
@@ -516,6 +597,15 @@ impl AuthLayer {
     /// Creates a new auth layer with the given token store and audit log path.
     pub fn new(
         store: FileTokenStore,
+        audit_log_path: Option<PathBuf>,
+        jwt_config: Option<JwtConfig>,
+    ) -> Self {
+        Self::from_parts(Some(store), audit_log_path, jwt_config)
+    }
+
+    /// Creates an auth layer from an optional token store: a JWT-only deployment has no token file.
+    pub fn from_parts(
+        store: Option<FileTokenStore>,
         audit_log_path: Option<PathBuf>,
         jwt_config: Option<JwtConfig>,
     ) -> Self {
@@ -618,7 +708,7 @@ impl AuthLayer {
         };
 
         // First, try file-based token validation (backward compatible)
-        if let Ok(info) = self.store.validate(token) {
+        if let Some(info) = self.store.as_ref().and_then(|st| st.validate(token).ok()) {
             if required.is_some_and(|r| !info.scopes.iter().any(|s| s == r)) {
                 let required = required.unwrap_or_default();
                 self.audit(AuditEntry {

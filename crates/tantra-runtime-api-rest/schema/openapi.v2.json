@@ -3496,6 +3496,1524 @@
       "patch": null,
       "delete": null
     },
+    "/studies/experimental-analysis/catalog": {
+      "get": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Multi-asset study catalog and schedule metadata (canonical; supersedes /experimental-analysis/catalog)",
+        "operationId": "studies_getExperimentalAnalysisCatalog",
+        "parameters": [
+          {
+            "name": "asset_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Multi-asset statistical workbench catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalCatalogResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalCatalogResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/experimental-analysis/correlation": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate cross-asset Pearson/Spearman correlation matrix & rolling pair spread (canonical; supersedes /experimental-analysis/correlation)",
+        "operationId": "studies_postExperimentalAnalysisCorrelation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalCorrelationRequest",
+                "description": "Request payload for `POST /experimental-analysis/correlation`.",
+                "type": "object",
+                "required": [
+                  "benchmark_id",
+                  "end_date",
+                  "primary_id",
+                  "start_date",
+                  "symbols"
+                ],
+                "properties": {
+                  "benchmark_id": {
+                    "description": "Benchmark instrument ID for rolling beta & spread curves.",
+                    "type": "string"
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "primary_id": {
+                    "description": "Primary instrument ID (`EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "rolling_window": {
+                    "description": "Rolling window in overlapping sessions (`5..=250`, default `20`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "symbols": {
+                    "description": "List of instrument IDs to include in the `N × N` correlation matrix (`2..=12`).",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cross-asset correlation matrix & rolling spread report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalCorrelationResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalCorrelationResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/experimental-analysis/events": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate [-20d, +20d] CAR event reaction study for buybacks, earnings, macro & F&O rebalance (canonical; supersedes /experimental-analysis/events)",
+        "operationId": "studies_postExperimentalAnalysisEvents",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalEventStudyRequest",
+                "description": "Request payload for `POST /experimental-analysis/events`.",
+                "type": "object",
+                "required": [
+                  "end_date",
+                  "instrument_id",
+                  "mode",
+                  "start_date"
+                ],
+                "properties": {
+                  "benchmark_id": {
+                    "description": "Optional benchmark instrument ID for abnormal return subtraction (e.g. `\"NSE:NIFTY50\"`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "macro_country": {
+                    "description": "Optional ISO country filter for `macro` mode (`\"IN\"`, `\"US\"`, etc.).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "mode": {
+                    "description": "Event study category (`buyback`, `earnings`, `macro`, `fno_rebalance`).",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyEventKind"
+                      }
+                    ]
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Benchmark-adjusted CAR[-20d, +20d] event study report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalEventStudyResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalEventStudyResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/experimental-analysis/forecast": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate Markov + volatility regime analog quantile forecast (canonical; supersedes /experimental-analysis/forecast)",
+        "operationId": "studies_postExperimentalAnalysisForecast",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalForecastRequest",
+                "description": "Request payload for `POST /experimental-analysis/forecast`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class context.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "calc_type": {
+                    "description": "Return formula (`open_to_close`, `high_to_low`, `close_to_close`).",
+                    "default": "open_to_close",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/ReturnCalcKind"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "futures_roll_basis_bps": {
+                    "description": "Optional futures roll basis adjustment in bps.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "horizon_steps": {
+                    "description": "Forward forecast horizon in periods (`1..=12`, default `6`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "include_statutory_costs": {
+                    "description": "Whether to deduct statutory costs when in net mode.",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "period": {
+                    "description": "Period schedule.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "roll_basis_mode": {
+                    "description": "Optional F&O spread/basis adjustment mode.",
+                    "default": "gross_spot",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/RollBasisMode"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Optional spread slippage in bps.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Markov + volatility analog quantile fan & historical episodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalForecastResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalForecastResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/experimental-analysis/intraday": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate intraday movement, gaps, 5-day moves, cycle progress & 15m ORB flip (canonical; supersedes /experimental-analysis/intraday)",
+        "operationId": "studies_postExperimentalAnalysisIntraday",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalIntradayRequest",
+                "description": "Request payload for `POST /experimental-analysis/intraday`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class used for cycle-progress slicing and statutory fee mapping.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "include_statutory_costs": {
+                    "description": "Whether to deduct statutory exchange/STT fees per ORB trade.",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "max_flips_per_day": {
+                    "description": "Maximum flips per day in ORB simulation (`0..=10`, default `2`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "opening_range_minutes": {
+                    "description": "Opening range width in minutes (`5..=60`, default `15`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint16",
+                    "minimum": 0.0
+                  },
+                  "period": {
+                    "description": "Period schedule for Cycle Progress (0% → 100%) cone.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Round-trip bid-ask spread slippage per ORB trade in bps (`0..=500`, default `0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "stop_loss_pct": {
+                    "description": "Fixed percentage stop-loss if tighter than opposite OR boundary (`0` disables).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "tail_threshold_pct": {
+                    "description": "Large-move threshold % for 5-day exhaustion calculation (default `2.0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "target_pct": {
+                    "description": "Fixed percentage take-profit target (`0` holds to EOD/flip).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Intraday, gap, 5-day, cycle-progress & 15m ORB report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalIntradayResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalIntradayResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/experimental-analysis/options-overlay": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate multi-leg F&O options overlay & live bid-ask strike lab (canonical; supersedes /experimental-analysis/options-overlay)",
+        "operationId": "studies_postExperimentalAnalysisOptionsOverlay",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalOptionsOverlayRequest",
+                "description": "Request payload for `POST /experimental-analysis/options-overlay`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class context for schedule slicing and exchange fee tier.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "include_statutory_costs": {
+                    "description": "Whether to deduct statutory Indian derivative turnover charges.",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "period": {
+                    "description": "Period slicing schedule.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Fallback round-trip spread slippage in bps (`0..=500`, default `15`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "strategy": {
+                    "description": "Option overlay strategy family (default `covered_call`).",
+                    "default": "covered_call",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/OptionOverlayStrategy"
+                      }
+                    ]
+                  },
+                  "target_short_prob_pct": {
+                    "description": "Target non-exceedance probability (`55..=98`, default `80`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "wing_width_pct": {
+                    "description": "Protective wing width percentage (`0.5..=15.0`, default `3.0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Multi-leg options overlay & strike lab report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalOptionsOverlayResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalOptionsOverlayResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/experimental-analysis/outlier-news": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Retrieve dated archival news, macro releases & filings for outlier windows (canonical; supersedes /experimental-analysis/outlier-news)",
+        "operationId": "studies_postExperimentalAnalysisOutlierNews",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalOutlierNewsRequest",
+                "description": "Request payload for `POST /experimental-analysis/outlier-news`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "instrument_id",
+                  "window_end",
+                  "window_start"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class hint for default macro/catalyst keywords.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or `SYMBOL.EXCHANGE`).",
+                    "type": "string"
+                  },
+                  "keywords": {
+                    "description": "Optional search keywords (space-separated).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "limit": {
+                    "description": "Maximum items to return (`1..=50`, default `20`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "window_end": {
+                    "description": "Outlier period end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "window_start": {
+                    "description": "Outlier period start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Outlier window news, macro calendar & filings items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalOutlierNewsResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalOutlierNewsResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/experimental-analysis/returns": {
+      "get": null,
+      "post": {
+        "tags": [
+          "experimental-analysis"
+        ],
+        "summary": "Evaluate period returns, streaks, Markov, distribution, and outlier study (canonical; supersedes /experimental-analysis/returns)",
+        "operationId": "studies_postExperimentalAnalysisReturns",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExperimentalReturnsRequest",
+                "description": "Request payload for `POST /experimental-analysis/returns`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "period",
+                  "start_date"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class used for schedule adaptation.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "calc_type": {
+                    "description": "Open-to-Close, High-to-Low, or Close-to-Close.",
+                    "default": "open_to_close",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/ReturnCalcKind"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Inclusive end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "futures_roll_basis_bps": {
+                    "description": "Futures rollover / carry basis adjustment per period in bps (`-500..=500`, default `0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "include_statutory_costs": {
+                    "description": "Deduct Indian statutory F&O/cash turnover charges when in `net_after_spread_and_costs`.",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` instrument ID (or bare symbol resolved cleanly).",
+                    "type": "string"
+                  },
+                  "ma_window": {
+                    "description": "Moving average window in periods (`2..=120`, default `20`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "ohlc_page": {
+                    "description": "1-based page number for `daily_ohlc_rows` pagination (default `1`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "ohlc_page_size": {
+                    "description": "Rows per page for `daily_ohlc_rows` (`10..=500`, default `50`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "outlier_coverage_pct": {
+                    "description": "Outlier survivability boundary coverage `%` (`50..=99`, default `90`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "period": {
+                    "description": "Period slicing schedule.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/PeriodScheduleKind"
+                      }
+                    ]
+                  },
+                  "roll_basis_mode": {
+                    "description": "F&O return adjustment mode (default `gross_spot`).",
+                    "default": "gross_spot",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/RollBasisMode"
+                      }
+                    ]
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Round-trip bid-ask spread slippage in basis points (`0..=500`, default `0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "sub_cycle": {
+                    "description": "Current period vs `+1` carry horizon.",
+                    "default": "current",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/SubCycleKind"
+                      }
+                    ]
+                  },
+                  "tail_threshold_pct": {
+                    "description": "Large-move threshold `%` for conditional forward accordions (default `2.0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Complete statistical & outlier returns study",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExperimentalReturnsResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExperimentalReturnsResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/indicators/compute": {
+      "get": null,
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Compute a library indicator over bars",
+        "operationId": "postStudiesIndicatorsCompute",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "IndicatorComputeRequest",
+                "description": "Body of `POST /studies/indicators/compute`.",
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "bars": {
+                    "description": "Inline bar rows (at most 5000). Exactly one of `bars` / `bars_file`.",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": true
+                  },
+                  "bars_file": {
+                    "description": "Lakehouse ref or relative CSV path.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "description": "Library entry id.",
+                    "type": "string"
+                  },
+                  "instrument": {
+                    "description": "Instrument label.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "interval": {
+                    "description": "Bar interval.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "overlay_scene": {
+                    "description": "Also return an overlay scene.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "params": {
+                    "description": "Indicator parameters.",
+                    "default": {},
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "tail": {
+                    "description": "Trailing rows to return (at most 2000).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint32",
+                    "minimum": 0.0
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Response envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/library/entries": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Search the indicator/study library",
+        "operationId": "getStudiesLibraryEntries",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "family",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Response envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/library/entries/{id}": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Describe one library entry (markdown or json)",
+        "operationId": "getStudiesLibraryEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Response envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/signal-study": {
+      "get": null,
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Run a signal event study",
+        "operationId": "postStudiesSignalStudy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SignalStudyRequest",
+                "description": "Body of `POST /studies/signal-study`.",
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "bars": {
+                    "description": "Inline bar rows (at most 5000). Exactly one of `bars` / `bars_file`.",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": true
+                  },
+                  "bars_file": {
+                    "description": "Lakehouse ref or relative CSV path.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "direction": {
+                    "description": "Trade direction, `1` or `-1`.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int8"
+                  },
+                  "event_column": {
+                    "description": "Column carrying the event/signal.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "filter": {
+                    "description": "Optional event filter expression/object, forwarded as-is."
+                  },
+                  "horizons": {
+                    "description": "Forward horizons in bars (at most 10).",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "integer",
+                      "format": "uint32",
+                      "minimum": 0.0
+                    }
+                  },
+                  "id": {
+                    "description": "Library entry id.",
+                    "type": "string"
+                  },
+                  "instrument": {
+                    "description": "Instrument label.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "interval": {
+                    "description": "Bar interval.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "overlay_scene": {
+                    "description": "Also return an overlay scene.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "params": {
+                    "description": "Indicator parameters.",
+                    "default": {},
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Response envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/studies/strategy-loop/evaluate": {
       "get": null,
       "post": {
@@ -5563,6 +7081,20 @@
             "type": "string",
             "enum": [
               "rate_limited"
+            ]
+          },
+          {
+            "description": "A required backing service is down or not configured; retrying later may succeed.",
+            "type": "string",
+            "enum": [
+              "service_unavailable"
+            ]
+          },
+          {
+            "description": "A backing service answered with something this API cannot use.",
+            "type": "string",
+            "enum": [
+              "bad_gateway"
             ]
           }
         ]

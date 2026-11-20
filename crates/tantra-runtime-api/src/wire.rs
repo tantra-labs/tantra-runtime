@@ -172,6 +172,10 @@ pub enum ErrorCode {
     RiskInstrumentUnknown,
     /// A rate limit was exceeded (e.g. the approval queue is full).
     RateLimited,
+    /// A required backing service is down or not configured; retrying later may succeed.
+    ServiceUnavailable,
+    /// A backing service answered with something this API cannot use.
+    BadGateway,
 }
 
 impl ErrorCode {
@@ -194,12 +198,17 @@ impl ErrorCode {
             Self::RiskTickSizeViolation => "risk_tick_size_violation",
             Self::RiskInstrumentUnknown => "risk_instrument_unknown",
             Self::RateLimited => "rate_limited",
+            Self::ServiceUnavailable => "service_unavailable",
+            Self::BadGateway => "bad_gateway",
         }
     }
 
     /// Whether a caller that retries the identical request may succeed.
     pub fn retryable(&self) -> bool {
-        matches!(self, Self::Timeout | Self::RateLimited)
+        matches!(
+            self,
+            Self::Timeout | Self::RateLimited | Self::ServiceUnavailable
+        )
     }
 }
 

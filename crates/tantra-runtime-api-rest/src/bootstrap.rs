@@ -430,6 +430,13 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         state = state.with_tick_reader(reader);
     }
 
+    // Opt-in: the library MCP subprocess is spawned only when TANTRA_LIBRARY_MCP_CMD is set,
+    // sharing the state's lakehouse root with the strategy runner.
+    if std::env::var("TANTRA_LIBRARY_MCP_CMD").is_ok_and(|c| !c.trim().is_empty()) {
+        let cfg = crate::library_client::LibraryClientConfig::from_env(state.lakehouse_root());
+        state = state.with_library_client(crate::library_client::LibraryMcpClient::spawn(cfg));
+    }
+
     let state = state
         .with_profiles_dir(&config.runs.profiles_dir)
         .with_portfolios_dir(&config.runs.portfolios_dir);

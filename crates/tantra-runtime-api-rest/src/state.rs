@@ -222,6 +222,9 @@ pub struct AppState {
     lakehouse_root: Option<PathBuf>,
     /// Resolved Lakehouse v3 commit metadata captured when built via `from_lakehouse_v3`.
     data_commit: Option<ManifestCommit>,
+    /// Supervised client for the Python library MCP server (opt-in via
+    /// `TANTRA_LIBRARY_MCP_CMD`); `None` makes `/studies/library/*` answer 503.
+    library: Option<Arc<crate::library_client::LibraryMcpClient>>,
 }
 
 impl AppState {
@@ -265,6 +268,7 @@ impl AppState {
             shared_ledger: Arc::new(tantra_runtime_api::SharedLedger::new()),
             lakehouse_root: None,
             data_commit: None,
+            library: None,
         }
     }
 
@@ -488,6 +492,21 @@ impl AppState {
     pub fn with_block_deals(mut self, root: &std::path::Path) -> Self {
         self.block_deals = Some(BlockDealsProjectionReader::new(root));
         self
+    }
+
+    /// Attaches the library MCP client behind `/studies/library/*`, `/studies/indicators/compute`
+    /// and `/studies/signal-study`.
+    pub fn with_library_client(
+        mut self,
+        client: Arc<crate::library_client::LibraryMcpClient>,
+    ) -> Self {
+        self.library = Some(client);
+        self
+    }
+
+    /// The library MCP client, when configured.
+    pub fn library(&self) -> Option<&Arc<crate::library_client::LibraryMcpClient>> {
+        self.library.as_ref()
     }
 
     /// Configures a Lakehouse / catalog root directory for projection readers and calendars.

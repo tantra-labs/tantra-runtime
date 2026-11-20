@@ -2425,6 +2425,122 @@ impl OpenApiDocument {
         doc
     }
 
+    /// Registers the v2-only canonical study routes: the library/signal-study surface and the
+    /// `/studies/experimental-analysis/*` aliases of the (deprecated) v1-era paths.
+    fn add_v2_study_paths(&mut self) {
+        use crate::library_routes::{IndicatorComputeRequest, SignalStudyRequest};
+        let bearer = || {
+            vec![SecurityRequirement {
+                scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+            }]
+        };
+        let json_content = |schema: Schema| {
+            BTreeMap::from([("application/json".to_string(), MediaType { schema })])
+        };
+        let responses = |schema: Schema| {
+            BTreeMap::from([(
+                "200".to_string(),
+                Response {
+                    description: "Response envelope".to_string(),
+                    content: json_content(schema),
+                },
+            )])
+        };
+        let any_schema: Schema = schema_for!(serde_json::Value).schema.into();
+        let compute_req = register_schema::<IndicatorComputeRequest>(&mut self.components.schemas);
+        let study_req = register_schema::<SignalStudyRequest>(&mut self.components.schemas);
+
+        // Canonical aliases of the experimental-analysis operations.
+        let aliases: Vec<(String, PathItem)> = self
+            .paths
+            .iter()
+            .filter_map(|(path, item)| {
+                let rest = path.strip_prefix("/experimental-analysis/")?;
+                let mut item = item.clone();
+                for op in [&mut item.get, &mut item.post].into_iter().flatten() {
+                    op.operation_id = format!("studies_{}", op.operation_id);
+                    op.summary = format!("{} (canonical; supersedes {path})", op.summary);
+                }
+                Some((format!("/studies/experimental-analysis/{rest}"), item))
+            })
+            .collect();
+        self.paths.extend(aliases);
+
+        let empty = || PathItem {
+            get: None,
+            post: None,
+            put: None,
+            patch: None,
+            delete: None,
+        };
+        let mut search = empty();
+        search.get = Some(Operation {
+            tags: vec!["library".to_string()],
+            summary: "Search the indicator/study library".to_string(),
+            operation_id: "getStudiesLibraryEntries".to_string(),
+            parameters: vec![
+                query_param("query"),
+                query_param("kind"),
+                query_param("family"),
+                query_param("limit"),
+            ],
+            request_body: None,
+            responses: responses(any_schema.clone()),
+            security: bearer(),
+        });
+        self.paths
+            .insert("/studies/library/entries".to_string(), search);
+        let mut describe = empty();
+        describe.get = Some(Operation {
+            tags: vec!["library".to_string()],
+            summary: "Describe one library entry (markdown or json)".to_string(),
+            operation_id: "getStudiesLibraryEntry".to_string(),
+            parameters: vec![
+                Parameter {
+                    name: "id".to_string(),
+                    r#in: "path".to_string(),
+                    required: true,
+                    schema: schema_for!(String).schema.into(),
+                },
+                query_param("format"),
+            ],
+            request_body: None,
+            responses: responses(any_schema.clone()),
+            security: bearer(),
+        });
+        self.paths
+            .insert("/studies/library/entries/{id}".to_string(), describe);
+        for (path, op_id, summary, req) in [
+            (
+                "/studies/indicators/compute",
+                "postStudiesIndicatorsCompute",
+                "Compute a library indicator over bars",
+                compute_req,
+            ),
+            (
+                "/studies/signal-study",
+                "postStudiesSignalStudy",
+                "Run a signal event study",
+                study_req,
+            ),
+        ] {
+            let mut item = empty();
+            item.post = Some(Operation {
+                tags: vec!["library".to_string()],
+                summary: summary.to_string(),
+                operation_id: op_id.to_string(),
+                parameters: vec![],
+                request_body: Some(RequestBody {
+                    required: true,
+                    content: json_content(req),
+                }),
+                responses: responses(any_schema.clone()),
+                security: bearer(),
+            });
+            self.paths.insert(path.to_string(), item);
+        }
+    }
+
     /// Generate the OpenAPI 3.1 document for v2 (latest & recommended).
     pub fn generate_v2() -> Self {
         let mut doc = Self::generate();
@@ -2436,6 +2552,7 @@ impl OpenApiDocument {
             url: "/api/v2".to_string(),
             description: "Tantra REST API v2 (Latest & Recommended)".to_string(),
         }];
+        doc.add_v2_study_paths();
         doc
     }
 }

@@ -1,7 +1,20 @@
 # 0010 — Library MCP Client & REST Proxy (wiring plan)
 
-**Status**: Proposed — not wired (2026-11-20). Parent: root plan 0016 (Track T22.6). The library itself is
-implemented in `tantra-strategies` (plan 0005, package `tantra_library`, stdio server `tantra-library-mcp`).
+**Status**: Implemented 2026-11-20 (Track T22.6). Parent: root plan 0016. The library itself lives in
+`tantra-strategies` (plan 0005, package `tantra_library`, stdio server `tantra-library-mcp`).
+
+**Decided surface** (v2 only; `crates/tantra-runtime-api-rest/src/library_routes.rs`):
+`GET /api/v2/studies/library/entries`, `GET /api/v2/studies/library/entries/{id}` (`format=markdown|json`),
+`POST /api/v2/studies/indicators/compute`, `POST /api/v2/studies/signal-study`. All extract `Caller`, cap bodies
+at 4 MiB, validate inline bars (<= 5000), `tail` (<= 2000), horizons (<= 10), and reject absolute / `..` / NUL
+`bars_file` (400). `overlay_scene` is passed through to the tool. Errors: no client 503 `library_unavailable`;
+Unavailable 503; Busy 429; Timeout 504; Protocol/PayloadTooLarge 502; tool `unknown_entry` 404,
+`limit_exceeded` 413, other validation/compute codes 422.
+**Opt-in**: the subprocess is spawned only when `TANTRA_LIBRARY_MCP_CMD` is set; it shares the state's lakehouse
+root. `/health` reports `library: disabled|healthy|unhealthy`.
+**Consolidation**: canonical study surface is `/api/v2/studies/...`, including
+`/api/v2/studies/experimental-analysis/*`; `/api/v{1,2}/experimental-analysis/*` and `/api/v1/studies/*` keep
+working with RFC 8594 `Deprecation` + `Link: rel="successor-version"` headers.
 
 ## 0. Objective
 

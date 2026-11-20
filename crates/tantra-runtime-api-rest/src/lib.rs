@@ -49,6 +49,7 @@ mod experimental_analysis;
 mod ingest;
 mod journal;
 pub mod library_client;
+mod library_routes;
 mod market;
 pub mod market_feed;
 pub mod openapi;
@@ -269,6 +270,38 @@ pub async fn legacy_v1_deprecation_notice(
     }
 }
 
+/// Adds RFC 8594 `Deprecation` + successor `Link` headers to the superseded study paths
+/// (`/api/{v1,v2}/experimental-analysis/*`, `/api/v1/studies/*`); canonical home is
+/// `/api/v2/studies/...`.
+pub async fn legacy_studies_deprecation_notice(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let path = req.uri().path().to_owned();
+    let successor = ["/api/v1/", "/api/v2/"].iter().find_map(|p| {
+        let rest = path.strip_prefix(p)?;
+        if rest.starts_with("experimental-analysis/") {
+            Some(format!("/api/v2/studies/{rest}"))
+        } else if *p == "/api/v1/" && rest.starts_with("studies/") {
+            Some(format!("/api/v2/{rest}"))
+        } else {
+            None
+        }
+    });
+    let mut res = next.run(req).await;
+    if let Some(successor) = successor {
+        res.headers_mut().insert(
+            HeaderName::from_static("deprecation"),
+            HeaderValue::from_static("true"),
+        );
+        if let Ok(val) = HeaderValue::from_str(&format!("<{successor}>; rel=\"successor-version\""))
+        {
+            res.headers_mut().insert(axum::http::header::LINK, val);
+        }
+    }
+    res
+}
+
 /// Create the API router over an empty catalogue.
 pub fn api_router() -> Router {
     api_router_with(AppState::default())
@@ -303,15 +336,20 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
         .fallback(unknown_route)
         .method_not_allowed_fallback(unsupported_method)
         .with_state(state)
+        .layer(axum::middleware::from_fn(legacy_studies_deprecation_notice))
         .layer(CompressionLayer::new())
         .layer(cors_layer(config))
         .layer(TraceLayer::new_for_http());
 
     // Add auth middleware if configured
-    if let Some(tokens_file) = &config.auth.tokens_file {
+    if config.auth.is_enabled() {
         let audit_log_path = config.auth.audit_log_path.clone();
-        let store = FileTokenStore::new(tokens_file.clone()).expect("failed to load token file");
-        let auth_layer = Arc::new(AuthLayer::new(
+        let store = config
+            .auth
+            .tokens_file
+            .as_ref()
+            .map(|f| FileTokenStore::new(f.clone()).expect("failed to load token file"));
+        let auth_layer = Arc::new(AuthLayer::from_parts(
             store,
             audit_log_path,
             config.auth.jwt_config.clone(),

@@ -42,8 +42,17 @@ pub async fn get_capabilities(
 }
 
 /// Get health status.
-pub async fn get_health() -> Json<ResponseEnvelope<serde_json::Value>> {
-    Json(ApiResponse::success(serde_json::json!({"status": "ok"})))
+pub async fn get_health(
+    State(state): State<Arc<AppState>>,
+) -> Json<ResponseEnvelope<serde_json::Value>> {
+    let library = match state.library() {
+        None => "disabled",
+        Some(c) if c.is_healthy() => "healthy",
+        Some(_) => "unhealthy",
+    };
+    Json(ApiResponse::success(
+        serde_json::json!({"status": "ok", "library": library}),
+    ))
 }
 
 /// Get schema bundle — full OpenAPI 3.1 document.
