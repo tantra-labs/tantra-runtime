@@ -389,10 +389,11 @@ impl MarketReader for FeedMarketReader {
                 }
                 IndicatorKind::Cmo => {
                     let mut ind = Cmo::new(params[0]);
-                    for c in &closes {
-                        let _ = ind.update(*c);
+                    for b in &core_bars {
+                        let _ = ind.update(b.close.value());
                     }
-                    ind.value()
+                    // presentation boundary: chat payload is f64 for all indicators (tantra-market gap 0009)
+                    ind.value().and_then(|v| v.to_f64())
                 }
                 IndicatorKind::Macd => {
                     let mut ind = Macd::new(
@@ -417,7 +418,8 @@ impl MarketReader for FeedMarketReader {
                     for b in &core_bars {
                         let _ = ind.update(b);
                     }
-                    ind.value()
+                    // presentation boundary: chat payload is f64 for all indicators (tantra-market gap 0009)
+                    ind.value().and_then(|v| v.to_f64())
                 }
                 IndicatorKind::Adx => {
                     let mut ind = Adx::new(params[0]);
