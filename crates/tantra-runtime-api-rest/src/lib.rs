@@ -48,6 +48,7 @@ mod executor;
 mod experimental_analysis;
 mod ingest;
 mod journal;
+pub mod library_client;
 mod market;
 pub mod market_feed;
 pub mod openapi;

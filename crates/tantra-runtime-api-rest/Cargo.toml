@@ -62,6 +62,7 @@ sha2 = "0.10"
 rust_decimal.workspace = true
 rust_decimal_macros.workspace = true
 uuid.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
 arrow.workspace = true
