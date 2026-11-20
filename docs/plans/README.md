@@ -13,6 +13,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 | [0007](0007-group-screener-alerts.md) | Alpha-Style Group & Event Alerts Engine (`ScreenEdge` + `EventMatch`, multi-universe scoping, live + hourly/daily digests, preset packs, `/v1/alerts/*`, MCP wiring) | `tantra-runtime-persistence`, `tantra-runtime-api(-rest)` | Proposed (revised 2026-11-16) — research `docs/research/trendlyne-screener-alerts-mcp.md`; root plan `docs/plans/0010` (F7, F8 wiring) |
 | [0006](0006-trade-manager-backtest-and-synthetic-brackets.md) | TradeManager in Backtest, Synthetic Brackets, `/v1/trade-plan` | `tantra-runtime-backtest`, `tantra-runtime-actors`, `tantra-runtime-api-rest` | Proposed — root plan `docs/plans/0008` |
 | [0009](0009-experimental-analysis-statistical-rest-api.md) | `Experimental-Analysis` Statistical Studies & Event News REST API (`tantra-runtime-api::experimental_analysis` + `/api/v2/experimental-analysis/*`) | `tantra-runtime-api`, `tantra-runtime-api-rest` | Proposed (2026-11-18) — Track **T20.3**, root plan [`0014`](../../../docs/plans/0014-experimental-analysis-statistical-workbench.md); depends on `data 0010` + `market 0003` |
+| [0010](0010-library-rest-and-signal-study.md) | Library REST API, Port Adapter & Signal Study (`/api/v2/library/*`, `indicators/compute`, `experimental-analysis/signal-study`, v1/v2 reconciliation) | `tantra-runtime-api-rest`, `tantra-runtime-api` | Proposed (2026-11-20) — root plan 0016 / T22.3–T22.4, design only |
 
 ## Implemented Plans
 
