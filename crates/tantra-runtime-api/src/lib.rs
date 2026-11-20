@@ -31,6 +31,7 @@ pub mod screener;
 pub mod shared_ledger;
 pub mod strategies;
 pub mod strategy_ir;
+pub mod strategy_loop;
 pub mod verify;
 pub mod wire;
 
@@ -104,6 +105,19 @@ pub use strategies::{
 pub use strategy_ir::{
     IrError, StrategyIr, StrategyManifest, StrategySubscriptions, Subscriptions, TimeframeSpec,
     Universe,
+};
+pub use strategy_loop::{
+    ChartPointDto, ChartSeriesDto, ExpiryHedgeRequest, ExpiryHedgeResponse, HedgeLegDto,
+    HedgeLegSideDto, HedgeLevelOverlayDto, HedgeOptionKindDto, HedgeRecommendationDto,
+    HedgeStructureKindDto, HintAnnotationDto, HintMetricDto, HintSeverityDto, LevelLineDto,
+    LevelLineStyleDto, LoopBarDto, LoopEntryTriggerMode, LoopExpiryHorizon, LoopPipelineSpecDto,
+    LoopSessionPreset, LoopSessionSnapshotSummaryDto, LoopStopPolicyMode, LoopTimeframe,
+    MarkerKindDto, MarkerSideDto, OverlaySceneDto, PenetrationDistributionDto, SceneLayerGroupDto,
+    SceneLayerMaskDto, SignalDirectionDto, SignalMarkerDto, StopComparisonRowDto,
+    StopComparisonSummaryDto, StopKindDto, StopLineDto, StrategyLoopKpisDto, StrategyLoopRequest,
+    StrategyLoopResponse, StrategyParameterBoundsDto, StrategySweepRequest, StrategySweepResponse,
+    StrategyTradeSummaryDto, SweepCandidateResultDto, SweepKpiDeltaDto, TradeConnectorRayDto,
+    ZoneBandDto,
 };
 pub use verify::{VerifyStrategyRequest, VerifyStrategyResponse, verify_strategy};
 pub use wire::{

@@ -27,6 +27,10 @@ use tantra_runtime_api::experimental_analysis::{
 use tantra_runtime_api::profile::{
     LayoutDocument, LayoutsResponse, Module, ModulesResponse, Profile, ProfileRevision, Source,
 };
+use tantra_runtime_api::strategy_loop::{
+    ExpiryHedgeRequest, ExpiryHedgeResponse, OverlaySceneDto, StrategyLoopRequest,
+    StrategyLoopResponse, StrategySweepRequest, StrategySweepResponse,
+};
 use tantra_runtime_api::wire::{
     BarAggregation, ErrorCode, ErrorDetail, Instrument, InstrumentKind, PortfolioAccount,
     PortfolioHolding, PortfolioPosition, Position, PriceType, QuoteTick, ResponseEnvelope, Trade,
@@ -1629,6 +1633,40 @@ impl OpenApiDocument {
         );
         schemas.insert("ExperimentalOutlierNewsResponse".to_string(), nw_schema);
 
+        // Strategy-Loop evaluation, sweep & expiry hedge endpoints (Plan 0015 Phase 3)
+        let loop_eval_req_schema = register_schema::<StrategyLoopRequest>(&mut schemas);
+        let loop_eval_resp_schema =
+            register_schema::<ResponseEnvelope<StrategyLoopResponse>>(&mut schemas);
+        let loop_eval_schema = register_schema::<StrategyLoopResponse>(&mut schemas);
+        schemas.insert(
+            "StrategyLoopRequest".to_string(),
+            loop_eval_req_schema.clone(),
+        );
+        schemas.insert("StrategyLoopResponse".to_string(), loop_eval_schema);
+
+        let loop_sweep_req_schema = register_schema::<StrategySweepRequest>(&mut schemas);
+        let loop_sweep_resp_schema =
+            register_schema::<ResponseEnvelope<StrategySweepResponse>>(&mut schemas);
+        let loop_sweep_schema = register_schema::<StrategySweepResponse>(&mut schemas);
+        schemas.insert(
+            "StrategySweepRequest".to_string(),
+            loop_sweep_req_schema.clone(),
+        );
+        schemas.insert("StrategySweepResponse".to_string(), loop_sweep_schema);
+
+        let loop_hedge_req_schema = register_schema::<ExpiryHedgeRequest>(&mut schemas);
+        let loop_hedge_resp_schema =
+            register_schema::<ResponseEnvelope<ExpiryHedgeResponse>>(&mut schemas);
+        let loop_hedge_schema = register_schema::<ExpiryHedgeResponse>(&mut schemas);
+        schemas.insert(
+            "ExpiryHedgeRequest".to_string(),
+            loop_hedge_req_schema.clone(),
+        );
+        schemas.insert("ExpiryHedgeResponse".to_string(), loop_hedge_schema);
+
+        let overlay_scene_schema = register_schema::<OverlaySceneDto>(&mut schemas);
+        schemas.insert("OverlaySceneDto".to_string(), overlay_scene_schema);
+
         paths.insert(
             "/experimental-analysis/catalog".to_string(),
             PathItem {
@@ -1945,6 +1983,124 @@ impl OpenApiDocument {
             },
         );
 
+        paths.insert(
+            "/studies/strategy-loop/evaluate".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["strategy-loop".to_string()],
+                    summary: "Evaluate strategy loop pipeline, stop-hunt comparison, expiry hedge, and 6-layer OverlayScene".to_string(),
+                    operation_id: "postStrategyLoopEvaluate".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: loop_eval_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Strategy loop evaluation report and 6-layer OverlayScene".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: loop_eval_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/studies/strategy-loop/sweep".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["strategy-loop".to_string()],
+                    summary: "Run bounded IS/OOS parameter sweep with Walk-Forward Efficiency and Deflated Sharpe Ratio".to_string(),
+                    operation_id: "postStrategyLoopSweep".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: loop_sweep_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Bounded parameter sweep report with baseline vs winner OverlayScene".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: loop_sweep_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/studies/strategy-loop/recommend-hedge".to_string(),
+            PathItem {
+                get: None,
+                post: Some(Operation {
+                    tags: vec!["strategy-loop".to_string()],
+                    summary: "Synthesize expiry-aware F&O/commodity hedge structures from live option chain and outer-buffer tails".to_string(),
+                    operation_id: "postStrategyLoopRecommendHedge".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: BTreeMap::from([(
+                            "application/json".to_string(),
+                            MediaType {
+                                schema: loop_hedge_req_schema,
+                            },
+                        )]),
+                    }),
+                    responses: BTreeMap::from([(
+                        "200".to_string(),
+                        Response {
+                            description: "Expiry hedge synthesis across Day, Weekly, Monthly & CommodityCycle horizons".to_string(),
+                            content: BTreeMap::from([(
+                                "application/json".to_string(),
+                                MediaType {
+                                    schema: loop_hedge_resp_schema,
+                                },
+                            )]),
+                        },
+                    )]),
+                    security: vec![SecurityRequirement {
+                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+                    }],
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
         // Screener and run journals
         paths.insert(
             "/screener/scan".to_string(),
@@ -2217,6 +2373,10 @@ impl OpenApiDocument {
                 Tag {
                     name: "experimental-analysis".to_string(),
                     description: "Multi-asset statistical & event study workbench".to_string(),
+                },
+                Tag {
+                    name: "strategy-loop".to_string(),
+                    description: "Composable strategy loop evaluation, bounded parameter sweeps, 6-layer OverlayScene, and F&O expiry hedges".to_string(),
                 },
                 Tag {
                     name: "screener".to_string(),

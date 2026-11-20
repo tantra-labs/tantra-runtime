@@ -79,6 +79,9 @@ const ROUTES: &[(&str, &str)] = &[
     ("post", "/experimental-analysis/forecast"),
     ("post", "/experimental-analysis/events"),
     ("post", "/experimental-analysis/outlier-news"),
+    ("post", "/studies/strategy-loop/evaluate"),
+    ("post", "/studies/strategy-loop/sweep"),
+    ("post", "/studies/strategy-loop/recommend-hedge"),
     ("get", "/screener/scan"),
     ("get", "/journals/{id}"),
     ("get", "/trade-journal/accounts"),
@@ -126,6 +129,13 @@ fn wire_schemas_are_registered() {
         "Profile",
         "QuoteTick",
         "TradingState",
+        "StrategyLoopRequest",
+        "StrategyLoopResponse",
+        "StrategySweepRequest",
+        "StrategySweepResponse",
+        "ExpiryHedgeRequest",
+        "ExpiryHedgeResponse",
+        "OverlaySceneDto",
     ] {
         assert!(
             doc.components.schemas.contains_key(name),

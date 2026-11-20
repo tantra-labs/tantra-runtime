@@ -381,6 +381,13 @@ impl ChatRuntime {
         // answer real realized P&L per account/date range (see `crate::chat_tax`).
         let tax: Arc<dyn tantra_agent_chat_tools::ports::tax::TaxReportReader> =
             Arc::new(crate::chat_tax::FeedTaxReportReader::new(shared_ledger));
+        let strategy_runner: Arc<dyn tantra_agent_chat_tools::ports::strategy::StrategyRunner> =
+            Arc::new(crate::strategy_loop::RuntimeStrategyRunner::new(
+                instruments.clone(),
+                bars.clone(),
+                quotes.clone(),
+                Some(data_root.to_path_buf()),
+            ));
         let study: Arc<dyn tantra_agent_chat_tools::ports::study::StudyReader> =
             Arc::new(crate::experimental_analysis::FeedStudyReader::new(
                 instruments,
@@ -426,6 +433,14 @@ impl ChatRuntime {
             &mut registry,
             alert_reader,
             alert_writer,
+        );
+
+        // Strategy execution, bounded tuning & trade-suggestion tools (Plan 0015 Phase 3):
+        // backed by real `RuntimeStrategyRunner` over market catalog, historical bars, and
+        // live option chains (replacing `DefaultStrategyRunner` hardcoded stubs).
+        tantra_agent_chat_tools::catalog::register_strategy_tools(
+            &mut registry,
+            Some(strategy_runner),
         );
 
         // Sessions persist to the configured database via `SqlxSessionStore` (the embedded

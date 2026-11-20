@@ -3496,6 +3496,619 @@
       "patch": null,
       "delete": null
     },
+    "/studies/strategy-loop/evaluate": {
+      "get": null,
+      "post": {
+        "tags": [
+          "strategy-loop"
+        ],
+        "summary": "Evaluate strategy loop pipeline, stop-hunt comparison, expiry hedge, and 6-layer OverlayScene",
+        "operationId": "postStrategyLoopEvaluate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "StrategyLoopRequest",
+                "description": "Request for `POST /api/v2/studies/strategy-loop/evaluate`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "end_date",
+                  "instrument_id",
+                  "start_date",
+                  "strategy_id"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class context.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "atr_period": {
+                    "description": "ATR lookback period (`2..=100`, default `14`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "capital": {
+                    "description": "Optional allocated strategy capital in INR for equity risk % sizing (default `500000`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "end_date": {
+                    "description": "Inclusive study end date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "entry_trigger_mode": {
+                    "description": "Entry trigger mode override.",
+                    "default": "auto",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/LoopEntryTriggerMode"
+                      }
+                    ]
+                  },
+                  "expiry_horizon": {
+                    "description": "Target expiry horizon for derivative hedge synthesis.",
+                    "default": "weekly",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/LoopExpiryHorizon"
+                      }
+                    ]
+                  },
+                  "futures_roll_basis_bps": {
+                    "description": "Optional futures rollover basis in basis points (`-500..=500`, default `0`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "horizon_bars": {
+                    "description": "Holding horizon in bars after signal entry (default `5` daily / `12` intraday).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "include_statutory_costs": {
+                    "description": "Deduct Indian statutory costs (STT, stamp, SEBI, GST). Defaults to `true`.",
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE` instrument ID.",
+                    "type": "string"
+                  },
+                  "lot_size": {
+                    "description": "Optional lot size override (defaults to instrument master lot size or `50`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "max_chart_bars": {
+                    "description": "Optional cap on returned chart bars (default `300`, clamped `20..=1500`); KPIs still use full date range.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "partial_r": {
+                    "description": "Partial target R for `PartialAndTrail` mode (default `2`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "roll_basis_mode": {
+                    "description": "Spread/roll/statutory cost mode.",
+                    "default": "net_after_spread_and_costs",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/RollBasisMode"
+                      }
+                    ]
+                  },
+                  "runner_r": {
+                    "description": "Runner target R for `PartialAndTrail` mode (default `5`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "session_id": {
+                    "description": "Optional interactive session ID to track iterative refinement runs.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "session_preset": {
+                    "description": "Optional session slicing preset override.",
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/LoopSessionPreset"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sl_buffer_atr": {
+                    "description": "Outer stop-loss ATR buffer multiplier (`0.00..=3.00`, default `0.25`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Optional bid-ask slippage in basis points (`0..=500`, default `2`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Inclusive study start date (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "stop_policy_mode": {
+                    "description": "Stop/exit management policy mode.",
+                    "default": "outer_atr_buffer",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/LoopStopPolicyMode"
+                      }
+                    ]
+                  },
+                  "strategy_id": {
+                    "description": "Registered strategy identifier (`\"elephant_edge_v3\"`, `\"elephant_edge\"`, `\"orb_15\"`, `\"orb15\"`).",
+                    "type": "string"
+                  },
+                  "target_r": {
+                    "description": "Primary reward target R multiple (`>= 1`, default `3`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "tick_size": {
+                    "description": "Optional tick size override (defaults to instrument master tick size or `0.05`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "time_stop_bars": {
+                    "description": "Max holding bars for `TimeStop` mode.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "timeframe": {
+                    "description": "Bar timeframe (`\"1d\"`, `\"5m\"`, `\"15m\"`, `\"1m\"`, `\"1h\"`). Defaults to `\"1d\"`.",
+                    "default": "1d",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/LoopTimeframe"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Strategy loop evaluation report and 6-layer OverlayScene",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_StrategyLoopResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/StrategyLoopResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/strategy-loop/recommend-hedge": {
+      "get": null,
+      "post": {
+        "tags": [
+          "strategy-loop"
+        ],
+        "summary": "Synthesize expiry-aware F&O/commodity hedge structures from live option chain and outer-buffer tails",
+        "operationId": "postStrategyLoopRecommendHedge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ExpiryHedgeRequest",
+                "description": "Request for `POST /api/v2/studies/strategy-loop/recommend-hedge`.",
+                "type": "object",
+                "required": [
+                  "asset_class",
+                  "instrument_id"
+                ],
+                "properties": {
+                  "asset_class": {
+                    "description": "Asset class context.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StudyAssetClass"
+                      }
+                    ]
+                  },
+                  "atr_period": {
+                    "description": "Optional ATR lookback period (default `14`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "capital": {
+                    "description": "Optional allocated capital in INR (default `500000`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "direction": {
+                    "description": "Optional explicit directional bias (`None` uses latest strategy signal or neutral `ZoneIronCondor`).",
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/SignalDirectionDto"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "end_date": {
+                    "description": "Optional historical lookback end date (`YYYY-MM-DD`, defaults to today UTC).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expiry_horizon": {
+                    "description": "Primary target expiry horizon.",
+                    "default": "weekly",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/LoopExpiryHorizon"
+                      }
+                    ]
+                  },
+                  "horizon_bars": {
+                    "description": "Optional evaluation holding horizon in bars for penetration percentiles (default `5`).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint",
+                    "minimum": 0.0
+                  },
+                  "include_statutory_costs": {
+                    "description": "Include Indian statutory costs (STT, GST, SEBI). Defaults to `true`.",
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "instrument_id": {
+                    "description": "Canonical `EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE` instrument ID.",
+                    "type": "string"
+                  },
+                  "iv_gt_rv": {
+                    "description": "Set true when implied volatility exceeds realized volatility (`IV > RV`).",
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "lot_size": {
+                    "description": "Optional lot size override.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "sl_buffer_atr": {
+                    "description": "Optional outer stop-loss buffer multiplier in ATR (default `0.25`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "spread_slippage_bps": {
+                    "description": "Optional spread slippage in bps (default `2`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "start_date": {
+                    "description": "Optional historical lookback start date (`YYYY-MM-DD`, defaults to 180 days before `end_date`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "strategy_id": {
+                    "description": "Optional strategy ID to anchor S1/S2/R1/R2 zones & penetration stats (defaults to `\"elephant_edge_v3\"`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "tick_size": {
+                    "description": "Optional tick size override.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                  },
+                  "timeframe": {
+                    "description": "Bar timeframe (defaults to `\"1d\"`).",
+                    "default": "1d",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/LoopTimeframe"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expiry hedge synthesis across Day, Weekly, Monthly & CommodityCycle horizons",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ExpiryHedgeResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ExpiryHedgeResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/studies/strategy-loop/sweep": {
+      "get": null,
+      "post": {
+        "tags": [
+          "strategy-loop"
+        ],
+        "summary": "Run bounded IS/OOS parameter sweep with Walk-Forward Efficiency and Deflated Sharpe Ratio",
+        "operationId": "postStrategyLoopSweep",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "StrategySweepRequest",
+                "description": "Request for `POST /api/v2/studies/strategy-loop/sweep`.",
+                "type": "object",
+                "required": [
+                  "base",
+                  "bounds"
+                ],
+                "properties": {
+                  "base": {
+                    "description": "Base evaluation request acting as baseline and parameter template.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StrategyLoopRequest"
+                      }
+                    ]
+                  },
+                  "bounds": {
+                    "description": "Bounded parameter grid bounds.",
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/StrategyParameterBoundsDto"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bounded parameter sweep report with baseline vs winner OverlayScene",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_StrategySweepResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/StrategySweepResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/sweeps": {
       "get": {
         "tags": [
@@ -4555,6 +5168,47 @@
             "description": "Tick increment.",
             "type": "string",
             "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "ChartPointDto": {
+        "description": "Single x/y point in an indicator series.",
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "properties": {
+          "x": {
+            "description": "X coordinate (0-based bar index).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "y": {
+            "description": "Y value.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "ChartSeriesDto": {
+        "description": "Named technical indicator series aligned with chart bars.",
+        "type": "object",
+        "required": [
+          "name",
+          "points"
+        ],
+        "properties": {
+          "name": {
+            "description": "Series name (e.g. `\"EMA(20)\"`, `\"RSI(14)\"`, `\"ATR(14)\"`).",
+            "type": "string"
+          },
+          "points": {
+            "description": "Ordered points across visible bars.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ChartPointDto"
+            }
           }
         }
       },
@@ -6643,6 +7297,232 @@
           }
         }
       },
+      "ExpiryHedgeRequest": {
+        "title": "ExpiryHedgeRequest",
+        "description": "Request for `POST /api/v2/studies/strategy-loop/recommend-hedge`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "instrument_id"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class context.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "atr_period": {
+            "description": "Optional ATR lookback period (default `14`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "capital": {
+            "description": "Optional allocated capital in INR (default `500000`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "direction": {
+            "description": "Optional explicit directional bias (`None` uses latest strategy signal or neutral `ZoneIronCondor`).",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/SignalDirectionDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "Optional historical lookback end date (`YYYY-MM-DD`, defaults to today UTC).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expiry_horizon": {
+            "description": "Primary target expiry horizon.",
+            "default": "weekly",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopExpiryHorizon"
+              }
+            ]
+          },
+          "horizon_bars": {
+            "description": "Optional evaluation holding horizon in bars for penetration percentiles (default `5`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "include_statutory_costs": {
+            "description": "Include Indian statutory costs (STT, GST, SEBI). Defaults to `true`.",
+            "default": true,
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE` instrument ID.",
+            "type": "string"
+          },
+          "iv_gt_rv": {
+            "description": "Set true when implied volatility exceeds realized volatility (`IV > RV`).",
+            "default": false,
+            "type": "boolean"
+          },
+          "lot_size": {
+            "description": "Optional lot size override.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sl_buffer_atr": {
+            "description": "Optional outer stop-loss buffer multiplier in ATR (default `0.25`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "spread_slippage_bps": {
+            "description": "Optional spread slippage in bps (default `2`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Optional historical lookback start date (`YYYY-MM-DD`, defaults to 180 days before `end_date`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "description": "Optional strategy ID to anchor S1/S2/R1/R2 zones & penetration stats (defaults to `\"elephant_edge_v3\"`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tick_size": {
+            "description": "Optional tick size override.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "timeframe": {
+            "description": "Bar timeframe (defaults to `\"1d\"`).",
+            "default": "1d",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopTimeframe"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExpiryHedgeResponse": {
+        "title": "ExpiryHedgeResponse",
+        "description": "Response for `POST /api/v2/studies/strategy-loop/recommend-hedge`.",
+        "type": "object",
+        "required": [
+          "all_horizons",
+          "atr",
+          "exchange",
+          "hedges",
+          "instrument_id",
+          "live_chain_available",
+          "live_contract_count",
+          "recommended",
+          "spot_price",
+          "symbol"
+        ],
+        "properties": {
+          "all_horizons": {
+            "description": "Matrix across all 4 derivative horizons (`day`, `weekly`, `monthly`, `commodity_cycle`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/HedgeRecommendationDto"
+            }
+          },
+          "atr": {
+            "description": "Active ATR value.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "direction": {
+            "description": "Resolved directional bias (explicit or latest strategy signal; `None` = neutral/range).",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/SignalDirectionDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exchange": {
+            "description": "Exchange code.",
+            "type": "string"
+          },
+          "hedges": {
+            "description": "Chart Layer 6 strike/breakeven overlays corresponding to `recommended`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/HedgeLevelOverlayDto"
+            }
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID.",
+            "type": "string"
+          },
+          "live_chain_available": {
+            "description": "True if live `ChainReader` quotes matched strikes for this underlying.",
+            "type": "boolean"
+          },
+          "live_contract_count": {
+            "description": "Count of live option contracts discovered in `ChainReader`.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "recommended": {
+            "description": "Primary recommendation matching `request.expiry_horizon`.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/HedgeRecommendationDto"
+              }
+            ]
+          },
+          "spot_price": {
+            "description": "Active spot/close reference price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "symbol": {
+            "description": "Underlying ticker symbol.",
+            "type": "string"
+          }
+        }
+      },
       "ForecastHorizonStep": {
         "description": "Forward quantile step for Tab 11 (`Forecasting`).",
         "type": "object",
@@ -7099,6 +7979,430 @@
           }
         }
       },
+      "HedgeLegDto": {
+        "description": "Single leg inside a synthesized option/futures hedge recommendation.",
+        "type": "object",
+        "required": [
+          "leg_price",
+          "lot_qty",
+          "option_type",
+          "quote_source",
+          "side",
+          "strike"
+        ],
+        "properties": {
+          "expiry": {
+            "description": "Expiry date (`YYYY-MM-DD`) when sourced from live chain.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leg_price": {
+            "description": "Quoted or theoretical ATR-implied leg price per unit.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "lot_qty": {
+            "description": "Lot-rounded contract quantity.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "option_type": {
+            "description": "`\"FUT\"`, `\"CE\"`, or `\"PE\"`.",
+            "type": "string"
+          },
+          "quote_source": {
+            "description": "Quote sourcing transparency (`\"live_bid_ask\"`, `\"live_ltp\"`, `\"theoretical_atr\"`, `\"spot_anchor\"`).",
+            "type": "string"
+          },
+          "side": {
+            "description": "`\"BUY\"` or `\"SELL\"`.",
+            "type": "string"
+          },
+          "strike": {
+            "description": "Strike price (or entry spot for futures leg).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "HedgeLegSideDto": {
+        "description": "Leg action for an option/futures hedge overlay.",
+        "oneOf": [
+          {
+            "description": "Long leg.",
+            "type": "string",
+            "enum": [
+              "buy"
+            ]
+          },
+          {
+            "description": "Short leg.",
+            "type": "string",
+            "enum": [
+              "sell"
+            ]
+          }
+        ]
+      },
+      "HedgeLevelOverlayDto": {
+        "description": "Strike & payoff ray rendered on the chart for synthesized F&O hedges.",
+        "type": "object",
+        "required": [
+          "option_kind",
+          "role",
+          "side",
+          "strike",
+          "x0",
+          "x1"
+        ],
+        "properties": {
+          "breakeven": {
+            "description": "Optional breakeven price.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_loss": {
+            "description": "Optional worst-case rupee loss cap.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "option_kind": {
+            "description": "Option/Future/Spot kind.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/HedgeOptionKindDto"
+              }
+            ]
+          },
+          "role": {
+            "description": "Human-readable role.",
+            "type": "string"
+          },
+          "side": {
+            "description": "Buy or Sell leg.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/HedgeLegSideDto"
+              }
+            ]
+          },
+          "strike": {
+            "description": "Positive strike or entry reference price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "summary": {
+            "description": "Optional short summary tag rendered near the strike ray.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "x0": {
+            "description": "Left bar index (`<= x1`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "x1": {
+            "description": "Right bar index (`>= x0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "HedgeOptionKindDto": {
+        "description": "Instrument type for a hedge leg strike overlay.",
+        "oneOf": [
+          {
+            "description": "Cash / Spot instrument.",
+            "type": "string",
+            "enum": [
+              "spot"
+            ]
+          },
+          {
+            "description": "Futures contract.",
+            "type": "string",
+            "enum": [
+              "future"
+            ]
+          },
+          {
+            "description": "Call option (`CE`).",
+            "type": "string",
+            "enum": [
+              "call"
+            ]
+          },
+          {
+            "description": "Put option (`PE`).",
+            "type": "string",
+            "enum": [
+              "put"
+            ]
+          }
+        ]
+      },
+      "HedgeRecommendationDto": {
+        "description": "Complete synthesized hedge recommendation for one target horizon.",
+        "type": "object",
+        "required": [
+          "breakevens",
+          "chain_status",
+          "estimated_friction_inr",
+          "horizon",
+          "legs",
+          "live_contract_count",
+          "max_loss_inr",
+          "max_loss_pct_equity",
+          "net_credit_or_debit",
+          "p95_stress_loss_inr",
+          "rationale",
+          "structure"
+        ],
+        "properties": {
+          "breakevens": {
+            "description": "Breakeven price levels if bounded.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
+          },
+          "chain_status": {
+            "description": "`\"live_quotes\"` if live option quotes matched, else `\"theoretical_model\"`.",
+            "type": "string"
+          },
+          "estimated_friction_inr": {
+            "description": "Estimated round-trip spread + statutory cost (₹).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "horizon": {
+            "description": "Target expiry horizon.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopExpiryHorizon"
+              }
+            ]
+          },
+          "legs": {
+            "description": "Individual legs of the hedge structure.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/HedgeLegDto"
+            }
+          },
+          "live_contract_count": {
+            "description": "Number of live option chain contracts inspected for this symbol.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "max_loss_inr": {
+            "description": "Worst-case bounded loss (₹ across lot qty) including friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_loss_pct_equity": {
+            "description": "Max loss as percentage of allocated capital.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_credit_or_debit": {
+            "description": "Estimated net credit (`> 0`) or debit (`< 0`) across 1 lot.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p95_stress_loss_inr": {
+            "description": "`P95` adverse gap stress loss estimate (₹).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "rationale": {
+            "description": "Clear rationale explaining why this structure matches horizon & zone geometry.",
+            "type": "string"
+          },
+          "structure": {
+            "description": "Selected hedge structure family.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/HedgeStructureKindDto"
+              }
+            ]
+          }
+        }
+      },
+      "HedgeStructureKindDto": {
+        "description": "Recommended F&O option / futures hedge structure family.",
+        "oneOf": [
+          {
+            "description": "Naked underlying / spot direction with outer-buffer stop shield.",
+            "type": "string",
+            "enum": [
+              "unhedged"
+            ]
+          },
+          {
+            "description": "Bullish defined-risk vertical call spread.",
+            "type": "string",
+            "enum": [
+              "bull_call_spread"
+            ]
+          },
+          {
+            "description": "Bearish defined-risk vertical put spread.",
+            "type": "string",
+            "enum": [
+              "bear_put_spread"
+            ]
+          },
+          {
+            "description": "Bullish credit spread anchored below `S1`/`S2` outer SL.",
+            "type": "string",
+            "enum": [
+              "bull_put_credit_spread"
+            ]
+          },
+          {
+            "description": "Bearish credit spread anchored above `R1`/`R2` outer SL.",
+            "type": "string",
+            "enum": [
+              "bear_call_credit_spread"
+            ]
+          },
+          {
+            "description": "Range-bound 4-leg Iron Condor anchored outside `S1`/`R1` buffers.",
+            "type": "string",
+            "enum": [
+              "zone_iron_condor"
+            ]
+          },
+          {
+            "description": "Long/short future/spot paired with outer wing protection & OTM cap.",
+            "type": "string",
+            "enum": [
+              "protective_collar"
+            ]
+          },
+          {
+            "description": "Near/next expiry calendar roll.",
+            "type": "string",
+            "enum": [
+              "calendar_roll"
+            ]
+          }
+        ]
+      },
+      "HintAnnotationDto": {
+        "description": "Clickable / hoverable rationale pin anchored to a candle and price.",
+        "type": "object",
+        "required": [
+          "bar_index",
+          "detail",
+          "price",
+          "severity",
+          "title"
+        ],
+        "properties": {
+          "bar_index": {
+            "description": "0-based candle index anchoring x coordinate.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "detail": {
+            "description": "Detailed human-readable rationale.",
+            "type": "string"
+          },
+          "metrics": {
+            "description": "Structured key-value metrics surfaced in inspector popovers.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/HintMetricDto"
+            }
+          },
+          "price": {
+            "description": "Non-negative anchor price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "severity": {
+            "description": "Visual severity badge.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/HintSeverityDto"
+              }
+            ]
+          },
+          "title": {
+            "description": "Short pin title.",
+            "type": "string"
+          }
+        }
+      },
+      "HintMetricDto": {
+        "description": "Key-value metric badge attached to a [`HintAnnotationDto`].",
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "description": "Display label.",
+            "type": "string"
+          },
+          "value": {
+            "description": "Formatted value.",
+            "type": "string"
+          }
+        }
+      },
+      "HintSeverityDto": {
+        "description": "Visual severity for a [`HintAnnotationDto`].",
+        "oneOf": [
+          {
+            "description": "Neutral informational note.",
+            "type": "string",
+            "enum": [
+              "info"
+            ]
+          },
+          {
+            "description": "Beneficial save / alpha edge (e.g. sweep survived by outer SL).",
+            "type": "string",
+            "enum": [
+              "positive"
+            ]
+          },
+          {
+            "description": "Caution / tighter-stop vulnerability warning.",
+            "type": "string",
+            "enum": [
+              "warning"
+            ]
+          },
+          {
+            "description": "Critical risk / split jump / trap alert.",
+            "type": "string",
+            "enum": [
+              "critical"
+            ]
+          }
+        ]
+      },
       "Instrument": {
         "title": "Instrument",
         "description": "The reference-data read model (`GET /instruments`).",
@@ -7401,6 +8705,480 @@
           }
         }
       },
+      "LevelLineDto": {
+        "description": "Horizontal reference level line spanning `x0..=x1`.",
+        "type": "object",
+        "required": [
+          "price",
+          "style",
+          "x0",
+          "x1"
+        ],
+        "properties": {
+          "label": {
+            "description": "Optional annotation label.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price": {
+            "description": "Level price (non-negative).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "style": {
+            "description": "Line style.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LevelLineStyleDto"
+              }
+            ]
+          },
+          "x0": {
+            "description": "Left bar index.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "x1": {
+            "description": "Right bar index (`x1 >= x0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "LevelLineStyleDto": {
+        "description": "Drawing style for a [`LevelLineDto`].",
+        "type": "object",
+        "required": [
+          "color_index",
+          "dashed",
+          "line_width"
+        ],
+        "properties": {
+          "color_index": {
+            "description": "Index into the renderer's palette / score color ramp.",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
+          "dashed": {
+            "description": "Whether the line is drawn with dashes.",
+            "type": "boolean"
+          },
+          "line_width": {
+            "description": "Stroke width in pixels.",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        }
+      },
+      "LoopBarDto": {
+        "description": "Chart candlestick bar aligned 1:1 with `OverlaySceneDto` indices `0..bars.len()`.",
+        "type": "object",
+        "required": [
+          "close",
+          "high",
+          "index",
+          "low",
+          "open",
+          "timestamp",
+          "volume"
+        ],
+        "properties": {
+          "close": {
+            "description": "Close price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "high": {
+            "description": "High price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "index": {
+            "description": "0-based index within the returned `bars` array.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "low": {
+            "description": "Low price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "open": {
+            "description": "Open price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "timestamp": {
+            "description": "IST timestamp/date label (`YYYY-MM-DD` for `1d`, `YYYY-MM-DD HH:MM` for intraday).",
+            "type": "string"
+          },
+          "volume": {
+            "description": "Volume.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "LoopEntryTriggerMode": {
+        "description": "Entry signal detection filter mode.",
+        "oneOf": [
+          {
+            "description": "Automatically pick the strategy's native entry filter (`RejectionWick` for EE+, `OrbBreakout` for ORB-15).",
+            "type": "string",
+            "enum": [
+              "auto"
+            ]
+          },
+          {
+            "description": "Raw zone-touch entry close (`ZoneTouchEntryFilter`).",
+            "type": "string",
+            "enum": [
+              "zone_touch_close"
+            ]
+          },
+          {
+            "description": "Selective wick-to-body reclaim inside or sweeping past the zone (`RejectionWickFilter`).",
+            "type": "string",
+            "enum": [
+              "rejection_wick"
+            ]
+          },
+          {
+            "description": "Opening range breakout (`OrbBreakoutEntryFilter`).",
+            "type": "string",
+            "enum": [
+              "orb_breakout"
+            ]
+          }
+        ]
+      },
+      "LoopExpiryHorizon": {
+        "description": "Target derivative expiry / holding horizon for hedge synthesis.",
+        "oneOf": [
+          {
+            "description": "Intraday `0–1 DTE`.",
+            "type": "string",
+            "enum": [
+              "day"
+            ]
+          },
+          {
+            "description": "Weekly `2–5 DTE`.",
+            "type": "string",
+            "enum": [
+              "weekly"
+            ]
+          },
+          {
+            "description": "Monthly `5–30 DTE`.",
+            "type": "string",
+            "enum": [
+              "monthly"
+            ]
+          },
+          {
+            "description": "MCX commodity roll cycle.",
+            "type": "string",
+            "enum": [
+              "commodity_cycle"
+            ]
+          }
+        ]
+      },
+      "LoopPipelineSpecDto": {
+        "description": "Concrete primitive bindings active inside a strategy loop run.",
+        "type": "object",
+        "required": [
+          "entry_filter_id",
+          "hedge_policy_id",
+          "stop_policy_id",
+          "strategy_id",
+          "zone_extractor_id"
+        ],
+        "properties": {
+          "entry_filter_id": {
+            "description": "Active entry signal primitive ID.",
+            "type": "string"
+          },
+          "hedge_policy_id": {
+            "description": "Active hedge synthesizer primitive ID.",
+            "type": "string"
+          },
+          "stop_policy_id": {
+            "description": "Active stop/exit policy ID.",
+            "type": "string"
+          },
+          "strategy_id": {
+            "description": "Strategy identifier requested.",
+            "type": "string"
+          },
+          "zone_extractor_id": {
+            "description": "Active zone extractor primitive ID.",
+            "type": "string"
+          }
+        }
+      },
+      "LoopSessionPreset": {
+        "description": "Multi-asset session grouping preset for `SessionClock`.",
+        "oneOf": [
+          {
+            "description": "NSE equity / cash / regular F&O intraday sessions (`09:15–15:30 IST`).",
+            "type": "string",
+            "enum": [
+              "nse_equity_fno"
+            ]
+          },
+          {
+            "description": "NSE Sep 3, 2025 expiry cutover-aware intraday sessions.",
+            "type": "string",
+            "enum": [
+              "nse_sep2025_expiry"
+            ]
+          },
+          {
+            "description": "MCX commodity extended intraday sessions (`09:00–23:30 IST`).",
+            "type": "string",
+            "enum": [
+              "mcx_commodity"
+            ]
+          },
+          {
+            "description": "Continuous FX sessions (`00:00–23:59`).",
+            "type": "string",
+            "enum": [
+              "fx_session"
+            ]
+          },
+          {
+            "description": "Daily bars grouped into calendar-month (`YYYY-MM`) regimes.",
+            "type": "string",
+            "enum": [
+              "daily_monthly"
+            ]
+          },
+          {
+            "description": "Weekly bars grouped into calendar-quarter (`YYYY-Q#`) regimes.",
+            "type": "string",
+            "enum": [
+              "weekly_quarter"
+            ]
+          },
+          {
+            "description": "Monthly bars grouped into calendar-year (`YYYY`) regimes.",
+            "type": "string",
+            "enum": [
+              "monthly_year"
+            ]
+          }
+        ]
+      },
+      "LoopSessionSnapshotSummaryDto": {
+        "description": "Lightweight summary of a prior stateful loop run stored in `LoopSessionStore`.",
+        "type": "object",
+        "required": [
+          "expiry_horizon",
+          "horizon_bars",
+          "net_avg_realized_r",
+          "profit_factor",
+          "run_seq",
+          "session_id",
+          "sharpe_ratio",
+          "sl_buffer_atr",
+          "stop_out_rate_pct",
+          "stop_policy_mode",
+          "strategy_id",
+          "symbol",
+          "target_r",
+          "timeframe",
+          "win_rate_pct"
+        ],
+        "properties": {
+          "expiry_horizon": {
+            "description": "Active expiry horizon.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopExpiryHorizon"
+              }
+            ]
+          },
+          "horizon_bars": {
+            "description": "Active holding horizon in bars.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "net_avg_realized_r": {
+            "description": "Net avg realized R achieved.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "profit_factor": {
+            "description": "Net profit factor.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "run_seq": {
+            "description": "Monotonically increasing run sequence number within this session.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "session_id": {
+            "description": "Session identifier.",
+            "type": "string"
+          },
+          "sharpe_ratio": {
+            "description": "Sharpe ratio.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sl_buffer_atr": {
+            "description": "Active SL ATR buffer.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "stop_out_rate_pct": {
+            "description": "Stop-out rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "stop_policy_mode": {
+            "description": "Active stop policy mode.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopStopPolicyMode"
+              }
+            ]
+          },
+          "strategy_id": {
+            "description": "Evaluated strategy identifier.",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Canonical symbol.",
+            "type": "string"
+          },
+          "target_r": {
+            "description": "Active target R multiple.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "timeframe": {
+            "description": "Bar timeframe.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopTimeframe"
+              }
+            ]
+          },
+          "win_rate_pct": {
+            "description": "Win rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "LoopStopPolicyMode": {
+        "description": "Stop-loss and trade exit management mode.",
+        "oneOf": [
+          {
+            "description": "Tight stop placed inside zone midpoint.",
+            "type": "string",
+            "enum": [
+              "tight_center_line"
+            ]
+          },
+          {
+            "description": "Stop placed right at band outer edge (`+0.00 ATR`).",
+            "type": "string",
+            "enum": [
+              "band_outer_edge"
+            ]
+          },
+          {
+            "description": "Stop placed outside band outer edge by `sl_buffer_atr * ATR` (default `0.25 ATR`).",
+            "type": "string",
+            "enum": [
+              "outer_atr_buffer"
+            ]
+          },
+          {
+            "description": "Empirical penetration percentile shield (`sl_buffer_atr` clamped `0.10..=1.50 ATR`).",
+            "type": "string",
+            "enum": [
+              "percentile_shield"
+            ]
+          },
+          {
+            "description": "Wide fixed-horizon catastrophe shield so horizon close governs exit.",
+            "type": "string",
+            "enum": [
+              "fixed_horizon"
+            ]
+          },
+          {
+            "description": "Take partial profit at `partial_r`, shift SL to breakeven, trail runner to `runner_r`.",
+            "type": "string",
+            "enum": [
+              "partial_and_trail"
+            ]
+          },
+          {
+            "description": "Exit after `time_stop_bars` elapsed if neither SL nor target hit.",
+            "type": "string",
+            "enum": [
+              "time_stop"
+            ]
+          }
+        ]
+      },
+      "LoopTimeframe": {
+        "description": "Supported bar timeframe for strategy loop evaluation.",
+        "oneOf": [
+          {
+            "description": "1-minute intraday bars.",
+            "type": "string",
+            "enum": [
+              "1m"
+            ]
+          },
+          {
+            "description": "5-minute intraday bars.",
+            "type": "string",
+            "enum": [
+              "5m"
+            ]
+          },
+          {
+            "description": "15-minute intraday bars.",
+            "type": "string",
+            "enum": [
+              "15m"
+            ]
+          },
+          {
+            "description": "1-hour intraday bars.",
+            "type": "string",
+            "enum": [
+              "1h"
+            ]
+          },
+          {
+            "description": "Daily OHLCV bars (default).",
+            "type": "string",
+            "enum": [
+              "1d"
+            ]
+          }
+        ]
+      },
       "MagnitudePdfBucket": {
         "description": "Magnitude PDF comparison bin (`Green %` vs `Red %`).",
         "type": "object",
@@ -7439,6 +9217,86 @@
             "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
           }
         }
+      },
+      "MarkerKindDto": {
+        "description": "Signal kind drawn as a marker glyph.",
+        "oneOf": [
+          {
+            "description": "Trend breakout.",
+            "type": "string",
+            "enum": [
+              "breakout"
+            ]
+          },
+          {
+            "description": "Trend reversal.",
+            "type": "string",
+            "enum": [
+              "reversal"
+            ]
+          },
+          {
+            "description": "Level retest.",
+            "type": "string",
+            "enum": [
+              "retest"
+            ]
+          },
+          {
+            "description": "Stop-line touch.",
+            "type": "string",
+            "enum": [
+              "stop_line"
+            ]
+          },
+          {
+            "description": "Institutional liquidity sweep probe.",
+            "type": "string",
+            "enum": [
+              "sweep"
+            ]
+          },
+          {
+            "description": "Tight stop-loss hunted while outer shield stop survived.",
+            "type": "string",
+            "enum": [
+              "sweep_saved"
+            ]
+          },
+          {
+            "description": "Profit target hit (e.g. `2R` / `3R` / `5R`).",
+            "type": "string",
+            "enum": [
+              "target_hit"
+            ]
+          },
+          {
+            "description": "High-momentum institutional elephant candle.",
+            "type": "string",
+            "enum": [
+              "elephant_bar"
+            ]
+          }
+        ]
+      },
+      "MarkerSideDto": {
+        "description": "Side of a signal marker.",
+        "oneOf": [
+          {
+            "description": "Buy signal.",
+            "type": "string",
+            "enum": [
+              "buy"
+            ]
+          },
+          {
+            "description": "Sell signal.",
+            "type": "string",
+            "enum": [
+              "sell"
+            ]
+          }
+        ]
       },
       "MarkovAnalysis": {
         "description": "Complete 6-State Markov Chain analysis bundle.",
@@ -8415,6 +10273,161 @@
             "description": "Single-period net strategy payoff (%).",
             "type": "string",
             "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "OverlaySceneDto": {
+        "title": "OverlaySceneDto",
+        "description": "Unified 6-layer interactive overlay scene shared across REST, Web, TUI, and CLI.",
+        "type": "object",
+        "required": [
+          "strategy_id",
+          "symbol",
+          "timeframe"
+        ],
+        "properties": {
+          "bands": {
+            "description": "Layer 2a: Contextual zone boxes.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ZoneBandDto"
+            }
+          },
+          "connectors": {
+            "description": "Layer 1b: Entry-to-exit connector rays.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/TradeConnectorRayDto"
+            }
+          },
+          "hedges": {
+            "description": "Layer 6: F&O / Commodity hedge strike overlays.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/HedgeLevelOverlayDto"
+            }
+          },
+          "hints": {
+            "description": "Layer 5: Clickable/hoverable rationale hint pins.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/HintAnnotationDto"
+            }
+          },
+          "indicators": {
+            "description": "Layer 4: Indicator series (`EMA(20)`, `RSI(14)`, `ATR(14)`).",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ChartSeriesDto"
+            }
+          },
+          "layers": {
+            "description": "Visibility toggle mask across the six layer groups.",
+            "default": {
+              "bands": true,
+              "hedges": true,
+              "hints": true,
+              "indicators": true,
+              "signals": true,
+              "stops": true
+            },
+            "allOf": [
+              {
+                "$ref": "#/definitions/SceneLayerMaskDto"
+              }
+            ]
+          },
+          "levels": {
+            "description": "Layer 2b: Dotted equilibrium/midpoint reference lines.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/LevelLineDto"
+            }
+          },
+          "signals": {
+            "description": "Layer 1a: Buy/Sell/Sweep/Target markers.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/SignalMarkerDto"
+            }
+          },
+          "stops": {
+            "description": "Layer 3: Initial, Outer-Buffer, Tight-Reference, and Target stop rays.",
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/StopLineDto"
+            }
+          },
+          "strategy_id": {
+            "description": "Strategy identifier (e.g. `\"elephant_edge_v3\"`, `\"orb_15\"`).",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Canonical instrument symbol.",
+            "type": "string"
+          },
+          "timeframe": {
+            "description": "Timeframe label (`\"1d\"`, `\"5m\"`, etc.).",
+            "type": "string"
+          }
+        }
+      },
+      "PenetrationDistributionDto": {
+        "description": "Empirical excursion percentiles beyond zone outer edges (expressed in ATR units).",
+        "type": "object",
+        "required": [
+          "max_atr",
+          "p50_atr",
+          "p75_atr",
+          "p90_atr",
+          "p95_atr",
+          "pct_recovering_after_outer_touch",
+          "sample_count"
+        ],
+        "properties": {
+          "max_atr": {
+            "description": "Maximum observed penetration beyond outer edge (ATR).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p50_atr": {
+            "description": "50th percentile penetration beyond outer edge (ATR).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p75_atr": {
+            "description": "75th percentile penetration beyond outer edge (ATR).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p90_atr": {
+            "description": "90th percentile penetration beyond outer edge (ATR).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "p95_atr": {
+            "description": "95th percentile penetration beyond outer edge (ATR).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pct_recovering_after_outer_touch": {
+            "description": "Percentage of setups breaching outer edge that still closed profitable by horizon.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sample_count": {
+            "description": "Number of setups measured.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
           }
         }
       },
@@ -10422,6 +12435,44 @@
           }
         }
       },
+      "SceneLayerMaskDto": {
+        "description": "Toggle mask for the six [`SceneLayerGroupDto`] layers.",
+        "type": "object",
+        "required": [
+          "bands",
+          "hedges",
+          "hints",
+          "indicators",
+          "signals",
+          "stops"
+        ],
+        "properties": {
+          "bands": {
+            "description": "Layer 2: Contextual zone bands & equilibrium/pivot levels.",
+            "type": "boolean"
+          },
+          "hedges": {
+            "description": "Layer 6: Hedge strike levels & breakeven overlays.",
+            "type": "boolean"
+          },
+          "hints": {
+            "description": "Layer 5: Interactive rationale hint annotations.",
+            "type": "boolean"
+          },
+          "indicators": {
+            "description": "Layer 4: Overlay/sub-pane indicator series.",
+            "type": "boolean"
+          },
+          "signals": {
+            "description": "Layer 1: Buy/Sell/Sweep signals & trade connectors.",
+            "type": "boolean"
+          },
+          "stops": {
+            "description": "Layer 3: Stops & R-multiple targets.",
+            "type": "boolean"
+          }
+        }
+      },
       "ScheduleOption": {
         "description": "Period schedule metadata advertised for an asset class.",
         "type": "object",
@@ -10488,6 +12539,64 @@
           }
         }
       },
+      "SignalDirectionDto": {
+        "description": "Directional bias of a signal or hedge lookup.",
+        "oneOf": [
+          {
+            "description": "Bullish / long bias.",
+            "type": "string",
+            "enum": [
+              "long"
+            ]
+          },
+          {
+            "description": "Bearish / short bias.",
+            "type": "string",
+            "enum": [
+              "short"
+            ]
+          }
+        ]
+      },
+      "SignalMarkerDto": {
+        "description": "Signal marker anchored at a bar index and exact price.",
+        "type": "object",
+        "required": [
+          "index",
+          "kind",
+          "price",
+          "side"
+        ],
+        "properties": {
+          "index": {
+            "description": "0-based candle index anchoring x coordinate.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "kind": {
+            "description": "Signal kind.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkerKindDto"
+              }
+            ]
+          },
+          "price": {
+            "description": "Marker price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "side": {
+            "description": "Buy or sell.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkerSideDto"
+              }
+            ]
+          }
+        }
+      },
       "Source": {
         "title": "Source",
         "description": "A source feeding a [`Module`], for example a broker adapter or a symbol list.",
@@ -10504,6 +12613,960 @@
           "reference": {
             "description": "Kind-specific reference (an adapter name, a list name, a directory).",
             "type": "string"
+          }
+        }
+      },
+      "StopComparisonRowDto": {
+        "description": "One stop-loss policy row inside a 4-model comparison benchmark.",
+        "type": "object",
+        "required": [
+          "buffer_atr",
+          "description",
+          "kpis",
+          "label",
+          "policy_id"
+        ],
+        "properties": {
+          "buffer_atr": {
+            "description": "ATR buffer relative to band outer edge.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "description": {
+            "description": "Explanation of stop placement rule.",
+            "type": "string"
+          },
+          "kpis": {
+            "description": "Complete KPIs under this stop policy.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyLoopKpisDto"
+              }
+            ]
+          },
+          "label": {
+            "description": "Human-readable label.",
+            "type": "string"
+          },
+          "policy_id": {
+            "description": "Canonical identifier (`\"tight_center\"`, `\"outer_edge_0\"`, `\"outer_025_atr\"`, `\"outer_050_atr\"`).",
+            "type": "string"
+          }
+        }
+      },
+      "StopComparisonSummaryDto": {
+        "description": "Side-by-side 4-policy stop-hunt comparison summary.",
+        "type": "object",
+        "required": [
+          "bearish_setups",
+          "bullish_setups",
+          "models",
+          "recommended_policy_id",
+          "total_setups",
+          "verdict_summary"
+        ],
+        "properties": {
+          "bearish_setups": {
+            "description": "Count of bearish setups.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "bullish_setups": {
+            "description": "Count of bullish setups.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "models": {
+            "description": "Four compared stop models (`tight_center`, `outer_edge_0`, `outer_025_atr`, `outer_050_atr`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/StopComparisonRowDto"
+            }
+          },
+          "recommended_policy_id": {
+            "description": "Policy ID achieving highest net expectancy.",
+            "type": "string"
+          },
+          "total_setups": {
+            "description": "Total qualifying setups detected.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "verdict_summary": {
+            "description": "Concise verdict summary highlighting trap reduction.",
+            "type": "string"
+          }
+        }
+      },
+      "StopKindDto": {
+        "description": "Kind of stop or target line.",
+        "oneOf": [
+          {
+            "description": "Initial outer-buffer stop-loss.",
+            "type": "string",
+            "enum": [
+              "initial"
+            ]
+          },
+          {
+            "description": "Trailing stop-loss.",
+            "type": "string",
+            "enum": [
+              "trailing"
+            ]
+          },
+          {
+            "description": "Tight/breakeven reference stop.",
+            "type": "string",
+            "enum": [
+              "breakeven"
+            ]
+          },
+          {
+            "description": "Profit target ray.",
+            "type": "string",
+            "enum": [
+              "target"
+            ]
+          }
+        ]
+      },
+      "StopLineDto": {
+        "description": "Stop-loss or target line spanning `x0..=x1`.",
+        "type": "object",
+        "required": [
+          "kind",
+          "price",
+          "x0",
+          "x1"
+        ],
+        "properties": {
+          "kind": {
+            "description": "Stop kind.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StopKindDto"
+              }
+            ]
+          },
+          "previous": {
+            "description": "Optional prior price (for tight-vs-outer or trailing step visualization).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "price": {
+            "description": "Stop or target price (`> 0`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "x0": {
+            "description": "Left bar index.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "x1": {
+            "description": "Right bar index (`x1 >= x0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
+      },
+      "StrategyLoopKpisDto": {
+        "description": "Aggregated quantitative performance KPIs for a strategy evaluation.",
+        "type": "object",
+        "required": [
+          "avg_realized_r",
+          "false_sweep_stop_count",
+          "false_sweep_stop_rate_pct",
+          "max_drawdown_r",
+          "net_avg_realized_r",
+          "net_profit_factor",
+          "profit_factor",
+          "sharpe_ratio",
+          "stop_out_rate_pct",
+          "stopped_out_count",
+          "target_2r_hit_rate_pct",
+          "trades",
+          "win_count",
+          "win_rate_pct"
+        ],
+        "properties": {
+          "avg_realized_r": {
+            "description": "Average gross realized R per trade.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "false_sweep_stop_count": {
+            "description": "Count of stop-outs where deeper `+0.50 ATR` buffer survived & won.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "false_sweep_stop_rate_pct": {
+            "description": "False sweep trap rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_drawdown_r": {
+            "description": "Maximum peak-to-trough equity drawdown measured in R units.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_avg_realized_r": {
+            "description": "Average net realized R per trade after spread + statutory costs.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_profit_factor": {
+            "description": "Net profit factor after friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "profit_factor": {
+            "description": "Gross profit factor.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sharpe_ratio": {
+            "description": "Per-trade Sharpe ratio computed in R-space.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "stop_out_rate_pct": {
+            "description": "Percentage of trades stopped out.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "stopped_out_count": {
+            "description": "Count of trades stopped out.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "target_2r_hit_rate_pct": {
+            "description": "Rate (%) hitting at least `2R` MFE before exit.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "trades": {
+            "description": "Total evaluated trades.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "win_count": {
+            "description": "Winning trade count (`gross_r > 0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "win_rate_pct": {
+            "description": "Win rate (%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "StrategyLoopRequest": {
+        "title": "StrategyLoopRequest",
+        "description": "Request for `POST /api/v2/studies/strategy-loop/evaluate`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "end_date",
+          "instrument_id",
+          "start_date",
+          "strategy_id"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class context.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "atr_period": {
+            "description": "ATR lookback period (`2..=100`, default `14`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "capital": {
+            "description": "Optional allocated strategy capital in INR for equity risk % sizing (default `500000`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "end_date": {
+            "description": "Inclusive study end date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "entry_trigger_mode": {
+            "description": "Entry trigger mode override.",
+            "default": "auto",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopEntryTriggerMode"
+              }
+            ]
+          },
+          "expiry_horizon": {
+            "description": "Target expiry horizon for derivative hedge synthesis.",
+            "default": "weekly",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopExpiryHorizon"
+              }
+            ]
+          },
+          "futures_roll_basis_bps": {
+            "description": "Optional futures rollover basis in basis points (`-500..=500`, default `0`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "horizon_bars": {
+            "description": "Holding horizon in bars after signal entry (default `5` daily / `12` intraday).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "include_statutory_costs": {
+            "description": "Deduct Indian statutory costs (STT, stamp, SEBI, GST). Defaults to `true`.",
+            "default": true,
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` or `SYMBOL.EXCHANGE` instrument ID.",
+            "type": "string"
+          },
+          "lot_size": {
+            "description": "Optional lot size override (defaults to instrument master lot size or `50`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_chart_bars": {
+            "description": "Optional cap on returned chart bars (default `300`, clamped `20..=1500`); KPIs still use full date range.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "partial_r": {
+            "description": "Partial target R for `PartialAndTrail` mode (default `2`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "roll_basis_mode": {
+            "description": "Spread/roll/statutory cost mode.",
+            "default": "net_after_spread_and_costs",
+            "allOf": [
+              {
+                "$ref": "#/definitions/RollBasisMode"
+              }
+            ]
+          },
+          "runner_r": {
+            "description": "Runner target R for `PartialAndTrail` mode (default `5`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "session_id": {
+            "description": "Optional interactive session ID to track iterative refinement runs.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_preset": {
+            "description": "Optional session slicing preset override.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/LoopSessionPreset"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sl_buffer_atr": {
+            "description": "Outer stop-loss ATR buffer multiplier (`0.00..=3.00`, default `0.25`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "spread_slippage_bps": {
+            "description": "Optional bid-ask slippage in basis points (`0..=500`, default `2`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Inclusive study start date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "stop_policy_mode": {
+            "description": "Stop/exit management policy mode.",
+            "default": "outer_atr_buffer",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopStopPolicyMode"
+              }
+            ]
+          },
+          "strategy_id": {
+            "description": "Registered strategy identifier (`\"elephant_edge_v3\"`, `\"elephant_edge\"`, `\"orb_15\"`, `\"orb15\"`).",
+            "type": "string"
+          },
+          "target_r": {
+            "description": "Primary reward target R multiple (`>= 1`, default `3`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "tick_size": {
+            "description": "Optional tick size override (defaults to instrument master tick size or `0.05`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "time_stop_bars": {
+            "description": "Max holding bars for `TimeStop` mode.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "timeframe": {
+            "description": "Bar timeframe (`\"1d\"`, `\"5m\"`, `\"15m\"`, `\"1m\"`, `\"1h\"`). Defaults to `\"1d\"`.",
+            "default": "1d",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopTimeframe"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "StrategyLoopResponse": {
+        "title": "StrategyLoopResponse",
+        "description": "Response for `POST /api/v2/studies/strategy-loop/evaluate`.",
+        "type": "object",
+        "required": [
+          "asset_class",
+          "atr",
+          "bars",
+          "end_date",
+          "exchange",
+          "hedge",
+          "instrument_id",
+          "kpis",
+          "penetration",
+          "pipeline",
+          "run_seq",
+          "scene",
+          "session_id",
+          "splits_adjusted",
+          "spot_price",
+          "start_date",
+          "stop_comparison",
+          "symbol",
+          "timeframe",
+          "total_bars",
+          "trades"
+        ],
+        "properties": {
+          "asset_class": {
+            "description": "Asset class.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StudyAssetClass"
+              }
+            ]
+          },
+          "atr": {
+            "description": "Latest ATR value.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "bars": {
+            "description": "Chart bars aligned 1:1 with `scene` indices `0..bars.len()`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/LoopBarDto"
+            }
+          },
+          "delta_vs_previous": {
+            "description": "KPI deltas vs `previous_run` when iterative tweaking occurs within the same session.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/SweepKpiDeltaDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_date": {
+            "description": "Actual last bar date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "exchange": {
+            "description": "Exchange code.",
+            "type": "string"
+          },
+          "hedge": {
+            "description": "Expiry-aware F&O / Commodity hedge recommendation.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/HedgeRecommendationDto"
+              }
+            ]
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID.",
+            "type": "string"
+          },
+          "kpis": {
+            "description": "Primary strategy KPIs under selected stop policy.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyLoopKpisDto"
+              }
+            ]
+          },
+          "penetration": {
+            "description": "Empirical penetration distribution past band outer edges.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/PenetrationDistributionDto"
+              }
+            ]
+          },
+          "pipeline": {
+            "description": "Active composable pipeline primitives.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopPipelineSpecDto"
+              }
+            ]
+          },
+          "previous_run": {
+            "description": "Snapshot of the immediately preceding run in this `session_id`, if any.",
+            "anyOf": [
+              {
+                "$ref": "#/definitions/LoopSessionSnapshotSummaryDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_seq": {
+            "description": "Monotonically increasing run sequence number within `session_id`.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "scene": {
+            "description": "Unified 6-layer graphical scene synchronized with `bars`.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OverlaySceneDto"
+              }
+            ]
+          },
+          "session_id": {
+            "description": "Stateful refinement session ID.",
+            "type": "string"
+          },
+          "splits_adjusted": {
+            "description": "Number of corporate splits detected & backward-adjusted.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "spot_price": {
+            "description": "Latest bar / live spot reference price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "start_date": {
+            "description": "Actual first bar date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "stop_comparison": {
+            "description": "4-policy stop-hunt benchmark comparison.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StopComparisonSummaryDto"
+              }
+            ]
+          },
+          "symbol": {
+            "description": "Underlying ticker symbol.",
+            "type": "string"
+          },
+          "timeframe": {
+            "description": "Evaluated bar timeframe.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopTimeframe"
+              }
+            ]
+          },
+          "total_bars": {
+            "description": "Total clean bars evaluated in study.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "trades": {
+            "description": "Simulated trade ledger with hints.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/StrategyTradeSummaryDto"
+            }
+          }
+        }
+      },
+      "StrategyParameterBoundsDto": {
+        "description": "Bounded parameter grid bounds for `POST /api/v2/studies/strategy-loop/sweep`.",
+        "type": "object",
+        "properties": {
+          "horizon_bars_grid": {
+            "description": "Candidate holding horizon bar counts (e.g. `[3, 5, 10]`).",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            }
+          },
+          "max_candidates": {
+            "description": "Hard upper cap on evaluated combinations (clamped `1..=64`, default `27`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "sl_buffer_atr_grid": {
+            "description": "Candidate ATR stop buffer values (e.g. `[0.00, 0.25, 0.50]`).",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
+          },
+          "target_r_grid": {
+            "description": "Candidate reward target R multiples (e.g. `[2, 3, 5]`).",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "StrategySweepRequest": {
+        "title": "StrategySweepRequest",
+        "description": "Request for `POST /api/v2/studies/strategy-loop/sweep`.",
+        "type": "object",
+        "required": [
+          "base",
+          "bounds"
+        ],
+        "properties": {
+          "base": {
+            "description": "Base evaluation request acting as baseline and parameter template.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyLoopRequest"
+              }
+            ]
+          },
+          "bounds": {
+            "description": "Bounded parameter grid bounds.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyParameterBoundsDto"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "StrategySweepResponse": {
+        "title": "StrategySweepResponse",
+        "description": "Response for `POST /api/v2/studies/strategy-loop/sweep`.",
+        "type": "object",
+        "required": [
+          "bars",
+          "baseline_kpis",
+          "baseline_scene",
+          "candidates",
+          "delta_winner_vs_baseline",
+          "instrument_id",
+          "run_seq",
+          "session_id",
+          "strategy_id",
+          "symbol",
+          "timeframe",
+          "trial_count",
+          "winner",
+          "winner_scene"
+        ],
+        "properties": {
+          "bars": {
+            "description": "Chart bars aligned 1:1 with `baseline_scene` & `winner_scene`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/LoopBarDto"
+            }
+          },
+          "baseline_kpis": {
+            "description": "Baseline KPIs from `base` configuration before tuning.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyLoopKpisDto"
+              }
+            ]
+          },
+          "baseline_scene": {
+            "description": "Baseline 6-layer `OverlaySceneDto` for visual before/after diff.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OverlaySceneDto"
+              }
+            ]
+          },
+          "candidates": {
+            "description": "Ranked candidates (best OOS expectancy first).",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/SweepCandidateResultDto"
+            }
+          },
+          "delta_winner_vs_baseline": {
+            "description": "Exact KPI delta of `winner.full_kpis` vs `baseline_kpis`.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/SweepKpiDeltaDto"
+              }
+            ]
+          },
+          "instrument_id": {
+            "description": "Canonical `EXCHANGE:SYMBOL` instrument ID.",
+            "type": "string"
+          },
+          "run_seq": {
+            "description": "Monotonically increasing run sequence number within `session_id`.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "session_id": {
+            "description": "Stateful refinement session ID.",
+            "type": "string"
+          },
+          "strategy_id": {
+            "description": "Evaluated strategy identifier.",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Underlying ticker symbol.",
+            "type": "string"
+          },
+          "timeframe": {
+            "description": "Evaluated bar timeframe.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/LoopTimeframe"
+              }
+            ]
+          },
+          "trial_count": {
+            "description": "Number of parameter combinations evaluated (`<= 64`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "winner": {
+            "description": "Top-ranked winning candidate configuration.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/SweepCandidateResultDto"
+              }
+            ]
+          },
+          "winner_scene": {
+            "description": "Winner 6-layer `OverlaySceneDto` for visual before/after diff.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OverlaySceneDto"
+              }
+            ]
+          }
+        }
+      },
+      "StrategyTradeSummaryDto": {
+        "description": "Individual simulated trade record returned alongside KPIs and scene rays.",
+        "type": "object",
+        "required": [
+          "band_label",
+          "direction",
+          "entry_bar_index",
+          "entry_price",
+          "entry_time",
+          "exit_bar_index",
+          "exit_price",
+          "exit_time",
+          "false_sweep_trap",
+          "gross_r",
+          "hint",
+          "hit_2r",
+          "hit_target",
+          "net_r",
+          "one_r",
+          "stop_price",
+          "stopped_out",
+          "target_price"
+        ],
+        "properties": {
+          "band_label": {
+            "description": "Associated zone band label.",
+            "type": "string"
+          },
+          "direction": {
+            "description": "Directional bias.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/SignalDirectionDto"
+              }
+            ]
+          },
+          "entry_bar_index": {
+            "description": "Entry bar index relative to returned `bars` when in visible window (or full history index).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "entry_price": {
+            "description": "Entry price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "entry_time": {
+            "description": "Entry date/time label (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`).",
+            "type": "string"
+          },
+          "exit_bar_index": {
+            "description": "Exit bar index.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "exit_price": {
+            "description": "Realized exit price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "exit_time": {
+            "description": "Exit date/time label.",
+            "type": "string"
+          },
+          "false_sweep_trap": {
+            "description": "True if stopped out while a deep shield (`+0.50 ATR`) survived and won.",
+            "type": "boolean"
+          },
+          "gross_r": {
+            "description": "Gross realized R multiple.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "hint": {
+            "description": "Human-readable setup hint.",
+            "type": "string"
+          },
+          "hit_2r": {
+            "description": "True if price reached `2R` before exiting.",
+            "type": "boolean"
+          },
+          "hit_target": {
+            "description": "True if primary target was hit.",
+            "type": "boolean"
+          },
+          "net_r": {
+            "description": "Net realized R multiple after friction.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "one_r": {
+            "description": "Risk unit (`1R`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "stop_price": {
+            "description": "Stop-loss price under selected policy.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "stopped_out": {
+            "description": "True if stopped out before target/horizon.",
+            "type": "boolean"
+          },
+          "target_price": {
+            "description": "Primary profit target price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
           }
         }
       },
@@ -10963,6 +14026,132 @@
           }
         ]
       },
+      "SweepCandidateResultDto": {
+        "description": "One candidate parameter configuration scored on IS (70%), OOS (30%), Full, WFE & DSR.",
+        "type": "object",
+        "required": [
+          "candidate_index",
+          "deflated_sharpe_ratio",
+          "full_kpis",
+          "hedge",
+          "horizon_bars",
+          "is_kpis",
+          "oos_kpis",
+          "sl_buffer_atr",
+          "target_r",
+          "walk_forward_efficiency_pct"
+        ],
+        "properties": {
+          "candidate_index": {
+            "description": "Zero-based candidate ordinal.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "deflated_sharpe_ratio": {
+            "description": "Deflated Sharpe Ratio proxy adjusting for multiple testing.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "full_kpis": {
+            "description": "Full-window KPIs.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyLoopKpisDto"
+              }
+            ]
+          },
+          "hedge": {
+            "description": "Recommended hedge for this candidate configuration.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/HedgeRecommendationDto"
+              }
+            ]
+          },
+          "horizon_bars": {
+            "description": "Tested holding horizon bars.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "is_kpis": {
+            "description": "In-sample (70%) KPIs.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyLoopKpisDto"
+              }
+            ]
+          },
+          "oos_kpis": {
+            "description": "Out-of-sample (30%) KPIs.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/StrategyLoopKpisDto"
+              }
+            ]
+          },
+          "sl_buffer_atr": {
+            "description": "Tested ATR buffer.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "target_r": {
+            "description": "Tested target R.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "walk_forward_efficiency_pct": {
+            "description": "Walk-Forward Efficiency `(OOS avg R / IS avg R) * 100`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "SweepKpiDeltaDto": {
+        "description": "Exact KPI delta between two evaluations (e.g. winner vs baseline, or current vs previous run).",
+        "type": "object",
+        "required": [
+          "false_sweep_stop_rate_pct_delta",
+          "net_avg_realized_r_delta",
+          "profit_factor_delta",
+          "sharpe_ratio_delta",
+          "stop_out_rate_pct_delta",
+          "win_rate_pct_delta"
+        ],
+        "properties": {
+          "false_sweep_stop_rate_pct_delta": {
+            "description": "Change in false-sweep trap rate percentage points (`after - before`; negative = improvement).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "net_avg_realized_r_delta": {
+            "description": "Change in net average realized R per trade (`after - before`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "profit_factor_delta": {
+            "description": "Change in net profit factor (`after - before`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "sharpe_ratio_delta": {
+            "description": "Change in Sharpe ratio (`after - before`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "stop_out_rate_pct_delta": {
+            "description": "Change in stop-out rate percentage points (`after - before`; negative = improvement).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "win_rate_pct_delta": {
+            "description": "Change in win rate percentage points (`after - before`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
       "TimeInForce": {
         "title": "TimeInForce",
         "description": "Time in force.",
@@ -11112,6 +14301,67 @@
           }
         }
       },
+      "TradeConnectorRayDto": {
+        "description": "Entry-to-exit connector ray showing realized outcome of a simulated trade.",
+        "type": "object",
+        "required": [
+          "from_index",
+          "from_price",
+          "realized_r",
+          "side",
+          "stopped_out",
+          "to_index",
+          "to_price"
+        ],
+        "properties": {
+          "from_index": {
+            "description": "Entry bar index (`<= to_index`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "from_price": {
+            "description": "Entry price (`>= 0`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "label": {
+            "description": "Optional short label (e.g. `\"+3R Target\"` or `\"Stopped (-1R)\"`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "realized_r": {
+            "description": "Realized outcome in `R` multiples.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "side": {
+            "description": "Direction of trade (`buy` or `sell`).",
+            "allOf": [
+              {
+                "$ref": "#/definitions/MarkerSideDto"
+              }
+            ]
+          },
+          "stopped_out": {
+            "description": "Whether the trade exited via stop-loss.",
+            "type": "boolean"
+          },
+          "to_index": {
+            "description": "Exit bar index (`>= from_index`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "to_price": {
+            "description": "Exit price (`>= 0`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
       "TradingState": {
         "title": "TradingState",
         "description": "The operator trading state every write route evaluates against (ADR 0018).",
@@ -11164,6 +14414,54 @@
             ]
           }
         ]
+      },
+      "ZoneBandDto": {
+        "description": "Shaded price-band zone spanning `x0..=x1` bar indices.",
+        "type": "object",
+        "required": [
+          "fill_index",
+          "high",
+          "low",
+          "x0",
+          "x1"
+        ],
+        "properties": {
+          "fill_index": {
+            "description": "Palette fill / score index.",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
+          "high": {
+            "description": "Upper band price (`high >= low`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "label": {
+            "description": "Optional annotation label (`\"S1\"`, `\"S2\"`, `\"R1\"`, `\"R2\"`, `\"OR_HIGH\"`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "low": {
+            "description": "Lower band price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "x0": {
+            "description": "Left bar index.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "x1": {
+            "description": "Right bar index (`x1 >= x0`).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -11218,6 +14516,10 @@
     {
       "name": "experimental-analysis",
       "description": "Multi-asset statistical & event study workbench"
+    },
+    {
+      "name": "strategy-loop",
+      "description": "Composable strategy loop evaluation, bounded parameter sweeps, 6-layer OverlayScene, and F&O expiry hedges"
     },
     {
       "name": "screener",

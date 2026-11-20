@@ -4,6 +4,7 @@
 //! [`BarReader`], [`QuoteReader`], [`DepthReader`]); which adapter answers is decided here, at the composition
 //! root. This crate names `tantra-feed` only to build those adapters.
 
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
@@ -16,12 +17,113 @@ use tantra_core::rust_decimal::Decimal;
 use tantra_ledger_performance::store::JournalStore;
 use tantra_market_store::{BlockDealsProjectionReader, ManifestCommit, ManifestResolver};
 use tantra_risk::RiskEngine;
-use tantra_runtime_api::{ErrorDetail, StrategyCatalog, TradingState};
+use tantra_runtime_api::{
+    ErrorDetail, LoopSessionSnapshotSummaryDto, StrategyCatalog, TradingState,
+};
 
 use crate::{
     ApprovalQueue, BacktestExecutor, OrderLedger, PortfolioStore, ProfileStore, RunService,
     RunServiceConfig, RunStore, StrategyRegistry,
 };
+
+/// Maximum number of refinement loop sessions kept in memory per process.
+const MAX_LOOP_SESSIONS: usize = 64;
+/// Maximum number of run snapshots retained per loop session.
+const MAX_SNAPSHOTS_PER_SESSION: usize = 32;
+
+#[derive(Debug, Default)]
+struct LoopSessionEntry {
+    next_seq: u64,
+    snapshots: Vec<LoopSessionSnapshotSummaryDto>,
+}
+
+#[derive(Debug, Default)]
+struct LoopSessionStoreInner {
+    order: VecDeque<String>,
+    sessions: HashMap<String, LoopSessionEntry>,
+}
+
+/// Process-scoped bounded FIFO store tracking stateful interactive strategy loop refinement sessions.
+#[derive(Clone, Default, Debug)]
+pub struct LoopSessionStore {
+    inner: Arc<Mutex<LoopSessionStoreInner>>,
+}
+
+impl LoopSessionStore {
+    /// Creates an empty session store.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records a strategy loop evaluation or sweep run under `session_id` (allocating a new ID
+    /// when `None` or blank) and returns `(session_id, run_seq, previous_snapshot)`.
+    pub fn record_run(
+        &self,
+        session_id: Option<&str>,
+        summary: LoopSessionSnapshotSummaryDto,
+    ) -> (String, u64, Option<LoopSessionSnapshotSummaryDto>) {
+        let sid = session_id
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("loop-{}", uuid::Uuid::new_v4().simple()));
+
+        let mut guard = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+
+        if !guard.sessions.contains_key(&sid) {
+            while guard.order.len() >= MAX_LOOP_SESSIONS {
+                if let Some(evicted) = guard.order.pop_front() {
+                    guard.sessions.remove(&evicted);
+                }
+            }
+            guard.order.push_back(sid.clone());
+            guard.sessions.insert(
+                sid.clone(),
+                LoopSessionEntry {
+                    next_seq: 1,
+                    snapshots: Vec::new(),
+                },
+            );
+        }
+
+        let entry = guard
+            .sessions
+            .get_mut(&sid)
+            .expect("session entry inserted immediately prior");
+        let previous = entry.snapshots.last().cloned();
+        let seq = entry.next_seq;
+        entry.next_seq = entry.next_seq.saturating_add(1);
+
+        let mut stored = summary;
+        stored.session_id = sid.clone();
+        stored.run_seq = seq;
+        if entry.snapshots.len() >= MAX_SNAPSHOTS_PER_SESSION {
+            entry.snapshots.remove(0);
+        }
+        entry.snapshots.push(stored);
+
+        (sid, seq, previous)
+    }
+
+    /// Returns the most recent snapshot stored under `session_id`, if present.
+    pub fn latest(&self, session_id: &str) -> Option<LoopSessionSnapshotSummaryDto> {
+        let guard = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        guard
+            .sessions
+            .get(session_id)
+            .and_then(|e| e.snapshots.last())
+            .cloned()
+    }
+
+    /// Number of active sessions currently held in memory.
+    pub fn session_count(&self) -> usize {
+        self.inner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .sessions
+            .len()
+    }
+}
 
 /// App state for REST API.
 #[derive(Clone)]
@@ -40,6 +142,8 @@ pub struct AppState {
     /// because it holds no external resource and nothing else implements it. Clones of the
     /// state share it.
     pub strategies: Arc<Mutex<StrategyCatalog>>,
+    /// Bounded FIFO store for interactive strategy loop refinement sessions.
+    pub strategy_loops: LoopSessionStore,
     /// The run service behind `/backtests` and `/journals`; `None` until a journals root is
     /// configured ([`AppState::with_journals_dir`]).
     pub runs: Option<Arc<RunService>>,
@@ -136,6 +240,7 @@ impl AppState {
             quotes,
             depth,
             strategies: Arc::default(),
+            strategy_loops: LoopSessionStore::new(),
             runs: None,
             profiles: None,
             portfolios: None,
@@ -450,7 +555,7 @@ impl AppState {
 
     /// Creates state serving a Lakehouse v3 catalog under `root` (`refs/`, `commits/`,
     /// `trees/`, `objects/`, `views/`, plus `reference/aliases`), resolved at `reference` (or
-    /// `refs/heads/main` when `None`). Blocks on I/O; call once at start-up.
+    /// `refs/heads/main` when `None`). Blocks on I/O; call it once at start-up.
     pub fn from_lakehouse_v3(
         root: &Path,
         reference: Option<&str>,

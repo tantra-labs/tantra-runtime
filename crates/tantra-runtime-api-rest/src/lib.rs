@@ -66,6 +66,7 @@ mod runs;
 mod screener;
 mod service;
 mod state;
+mod strategy_loop;
 mod streams;
 pub mod ticks_file;
 mod trade_journal;
@@ -109,7 +110,8 @@ pub use run_store::{OsEntropy, RecoveryReport, RunClock, RunEntropy, RunStore, S
 pub use service::{
     DEFAULT_MAX_QUEUED, DEFAULT_SHUTDOWN_GRACE, RunService, RunServiceConfig, ShutdownReport,
 };
-pub use state::AppState;
+pub use state::{AppState, LoopSessionStore};
+pub use strategy_loop::RuntimeStrategyRunner;
 pub use streams::get_backtest_events;
 pub use tantra_runtime_api::JournalWriter;
 pub use ticks_file::{

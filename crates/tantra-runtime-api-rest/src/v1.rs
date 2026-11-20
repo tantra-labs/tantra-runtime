@@ -29,7 +29,7 @@ use crate::ws::ws_handler;
 use crate::ws_live::ws_live_handler;
 use crate::{
     ApiJson, AppState, capability_manifest, experimental_analysis, ingest, openapi, orders,
-    portfolio, profile, runs, screener, streams::get_backtest_events, trading_state,
+    portfolio, profile, runs, screener, strategy_loop, streams::get_backtest_events, trading_state,
 };
 
 /// Get API capabilities for v1.
@@ -271,6 +271,18 @@ pub fn router() -> Router<Arc<AppState>> {
         .route(
             "/experimental-analysis/outlier-news",
             post(experimental_analysis::post_outlier_news),
+        )
+        .route(
+            "/studies/strategy-loop/evaluate",
+            post(strategy_loop::post_evaluate),
+        )
+        .route(
+            "/studies/strategy-loop/sweep",
+            post(strategy_loop::post_sweep),
+        )
+        .route(
+            "/studies/strategy-loop/recommend-hedge",
+            post(strategy_loop::post_recommend_hedge),
         )
         .route("/journals/:id", get(runs::get_journal_by_id))
         // Trade-performance journal (distinct from run/backtest journals and

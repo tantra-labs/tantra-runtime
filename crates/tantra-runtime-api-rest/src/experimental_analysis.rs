@@ -62,7 +62,7 @@ use crate::market_feed::ports::{
 use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, UnixNanos};
 use crate::{ApiJson, AppState};
 
-struct RuntimeNseCalendar(NseTradingCalendar);
+pub(crate) struct RuntimeNseCalendar(pub(crate) NseTradingCalendar);
 
 impl MarketCalendar for RuntimeNseCalendar {
     fn session(&self) -> Session {
@@ -78,12 +78,12 @@ impl MarketCalendar for RuntimeNseCalendar {
     }
 }
 
-fn invalid_field(field: &str, reason: &str, message: impl Into<String>) -> ErrorDetail {
+pub(crate) fn invalid_field(field: &str, reason: &str, message: impl Into<String>) -> ErrorDetail {
     ErrorDetail::new(ErrorCode::ValidationInvalidRequest, message)
         .with_context(json!({ "field": field, "reason": reason }))
 }
 
-fn parse_study_instrument_id(raw: &str) -> Result<InstrumentId, ErrorDetail> {
+pub(crate) fn parse_study_instrument_id(raw: &str) -> Result<InstrumentId, ErrorDetail> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(invalid_field(
@@ -115,7 +115,10 @@ fn parse_study_instrument_id(raw: &str) -> Result<InstrumentId, ErrorDetail> {
     })
 }
 
-fn parse_date_range(start_raw: &str, end_raw: &str) -> Result<(NaiveDate, NaiveDate), ErrorDetail> {
+pub(crate) fn parse_date_range(
+    start_raw: &str,
+    end_raw: &str,
+) -> Result<(NaiveDate, NaiveDate), ErrorDetail> {
     let start_date = match NaiveDate::parse_from_str(start_raw.trim(), "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
@@ -146,7 +149,7 @@ fn parse_date_range(start_raw: &str, end_raw: &str) -> Result<(NaiveDate, NaiveD
     Ok((start_date, end_date))
 }
 
-async fn resolve_study_instrument(
+pub(crate) async fn resolve_study_instrument(
     state: &AppState,
     parsed_id: &InstrumentId,
 ) -> Result<crate::market_feed::wire::Instrument, Response> {
@@ -166,7 +169,7 @@ async fn resolve_study_instrument(
     }
 }
 
-async fn load_daily_study_bars(
+pub(crate) async fn load_daily_study_bars(
     state: &AppState,
     canonical_id: &InstrumentId,
     start_date: NaiveDate,
@@ -270,11 +273,30 @@ async fn load_daily_study_bars(
     Ok(dedup_bars.into_values().collect())
 }
 
-async fn load_5m_intraday_bars(
+pub(crate) async fn load_5m_intraday_bars(
     state: &AppState,
     canonical_id: &InstrumentId,
     start_date: NaiveDate,
     end_date: NaiveDate,
+) -> Vec<IntradayBar> {
+    load_intraday_study_bars(
+        state,
+        canonical_id,
+        start_date,
+        end_date,
+        5,
+        BarAggregation::Minute,
+    )
+    .await
+}
+
+pub(crate) async fn load_intraday_study_bars(
+    state: &AppState,
+    canonical_id: &InstrumentId,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    step: u32,
+    aggregation: BarAggregation,
 ) -> Vec<IntradayBar> {
     let from_utc: DateTime<Utc> = (start_date - Duration::days(1))
         .and_hms_opt(0, 0, 0)
@@ -284,7 +306,7 @@ async fn load_5m_intraday_bars(
         .and_hms_opt(0, 0, 0)
         .unwrap()
         .and_utc();
-    let spec = BarSpecification::new(5, BarAggregation::Minute, PriceType::Last);
+    let spec = BarSpecification::new(step, aggregation, PriceType::Last);
     let Ok(bar_req) = BarRequest::new(
         canonical_id.clone(),
         spec,
@@ -332,7 +354,7 @@ async fn load_5m_intraday_bars(
     dedup.into_values().collect()
 }
 
-fn to_domain_asset_class(v: StudyAssetClass) -> DomainAssetClass {
+pub(crate) fn to_domain_asset_class(v: StudyAssetClass) -> DomainAssetClass {
     match v {
         StudyAssetClass::Index => DomainAssetClass::Index,
         StudyAssetClass::FnoStock => DomainAssetClass::FnoStock,
@@ -371,7 +393,7 @@ fn to_domain_calc(v: ReturnCalcKind) -> DomainCalc {
     }
 }
 
-fn to_domain_roll_mode(v: RollBasisMode) -> DomainRollMode {
+pub(crate) fn to_domain_roll_mode(v: RollBasisMode) -> DomainRollMode {
     match v {
         RollBasisMode::GrossSpot => DomainRollMode::GrossSpot,
         RollBasisMode::IncludeRollBasis => DomainRollMode::IncludeRollBasis,
@@ -1920,7 +1942,10 @@ fn instrument_text_matches(candidate: &str, canonical_id: &InstrumentId) -> bool
         || cand_upper.contains(&format!(":{sym_upper}-"))
 }
 
-async fn read_live_spot(state: &AppState, canonical_id: &InstrumentId) -> Option<Decimal> {
+pub(crate) async fn read_live_spot(
+    state: &AppState,
+    canonical_id: &InstrumentId,
+) -> Option<Decimal> {
     if let Some(live) = state.live_quotes()
         && let Ok(Some(snap)) = live.read_trade_snapshot(canonical_id).await
     {
