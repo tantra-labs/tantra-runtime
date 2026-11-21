@@ -113,6 +113,7 @@ pub use service::{
     DEFAULT_MAX_QUEUED, DEFAULT_SHUTDOWN_GRACE, RunService, RunServiceConfig, ShutdownReport,
 };
 pub use state::{AppState, LoopSessionStore};
+pub use strategy_loop::RuntimeStrategyLoopPort;
 pub use strategy_loop::RuntimeStrategyRunner;
 pub use streams::get_backtest_events;
 pub use tantra_runtime_api::JournalWriter;
@@ -315,6 +316,9 @@ pub fn api_router_with(state: AppState) -> Router {
 /// Create the API router serving `state` under `config`.
 pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
     let state = Arc::new(state);
+    if let Some(chat) = state.chat.as_ref() {
+        chat.bind_state(&state);
+    }
 
     let v1_router = v1::router();
     let v2_router = v2::router();

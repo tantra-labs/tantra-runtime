@@ -34,7 +34,7 @@
 //! `tantra-data/docs/gaps/0006-news-ingestion.md`).
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
@@ -232,9 +232,17 @@ fn jobs_registry() -> Option<Arc<std::sync::Mutex<tantra_runtime_jobs::FileJobRe
 pub struct ChatRuntime {
     agent: Arc<ChatAgent>,
     providers: LlmProviderRegistry,
+    /// Late-bound weak handle to the served [`AppState`] used by the in-process strategy-loop
+    /// port (weak to avoid an `AppState -> ChatRuntime -> port -> AppState` cycle).
+    loop_state: Arc<OnceLock<Weak<AppState>>>,
 }
 
 impl ChatRuntime {
+    /// Binds the served state for in-process strategy-loop tools (first bind wins).
+    pub(crate) fn bind_state(&self, state: &Arc<AppState>) {
+        let _ = self.loop_state.set(Arc::downgrade(state));
+    }
+
     /// Resolves the provider for a per-turn `model` override (see [`LlmProviderRegistry::resolve`]):
     /// the server default when no override is sent, the matching registered provider when one
     /// differs from the default, and an explicit [`LlmError::Capability`] notice when the
@@ -259,6 +267,7 @@ impl ChatRuntime {
         Ok(Self {
             agent: Arc::new(agent),
             providers,
+            loop_state: Arc::new(OnceLock::new()),
         })
     }
     /// Builds a [`ChatRuntime`] from environment variables if either a local GGUF model or an
@@ -443,6 +452,17 @@ impl ChatRuntime {
             Some(strategy_runner),
         );
 
+        // Strategy-loop eval/sweep/hedge + chart-annotation tools (root plan 0015 T21.6 /
+        // agent plan 0018): call the `/studies/strategy-loop/*` handlers in-process; the state
+        // is bound late by `api_router_with_config` via `ChatRuntime::bind_state`.
+        let loop_cell: Arc<OnceLock<Weak<AppState>>> = Arc::new(OnceLock::new());
+        tantra_agent_chat_tools::catalog::register_strategy_loop_tools(
+            &mut registry,
+            Arc::new(crate::strategy_loop::RuntimeStrategyLoopPort::new(
+                Arc::clone(&loop_cell),
+            )),
+        );
+
         // Sessions persist to the configured database via `SqlxSessionStore` (the embedded
         // migrations creating `agent_chat_session`/`agent_chat_message` run at boot); with no
         // database attached they fall back to in-memory (docs/gaps/0006).
@@ -457,6 +477,7 @@ impl ChatRuntime {
         Ok(Some(Self {
             agent: Arc::new(agent),
             providers,
+            loop_state: loop_cell,
         }))
     }
 }

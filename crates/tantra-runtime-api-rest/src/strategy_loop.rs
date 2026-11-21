@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, Weak};
 
 use async_trait::async_trait;
 use axum::extract::State;
@@ -17,6 +17,10 @@ use axum::response::Response;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde_json::{Value, json};
 use tantra_agent_chat_tools::ports::strategy::StrategyRunner;
+use tantra_agent_core::strategy_loop::{
+    StrategyHedgeRequest, StrategyLoopEvalRequest, StrategyLoopPort, StrategyLoopPortError,
+    StrategyLoopSweepRequest,
+};
 use tantra_core::rust_decimal::Decimal;
 use tantra_core::rust_decimal::prelude::ToPrimitive;
 use tantra_core::{Exchange, InstrumentId};
@@ -2496,5 +2500,91 @@ impl StrategyRunner for RuntimeStrategyRunner {
             },
             "hedge": map_hedge_dto(&hedge, live_chain.len()),
         }))
+    }
+}
+
+/// In-process [`StrategyLoopPort`] that invokes the `/studies/strategy-loop/*` handlers
+/// directly (no HTTP hop). Holds a *weak*, late-bound `AppState` handle: `AppState` owns the
+/// `ChatRuntime`, which owns the tool registry, which owns this port, so a strong `Arc` would
+/// form a reference cycle. The cell is filled by `ChatRuntime::bind_state` when the router is
+/// built (root plan 0015 T21.6 / agent plan 0018).
+pub struct RuntimeStrategyLoopPort {
+    state: Arc<OnceLock<Weak<AppState>>>,
+}
+
+/// Upper bound on a handler response body read by the port.
+const PORT_MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+impl RuntimeStrategyLoopPort {
+    /// Creates a port over a late-bound state cell.
+    pub fn new(cell: Arc<OnceLock<Weak<AppState>>>) -> Self {
+        Self { state: cell }
+    }
+
+    fn state(&self) -> Result<Arc<AppState>, StrategyLoopPortError> {
+        self.state.get().and_then(Weak::upgrade).ok_or_else(|| {
+            StrategyLoopPortError::unavailable("strategy loop engine not bound to a running server")
+        })
+    }
+
+    fn convert<A: serde::Serialize, R: serde::de::DeserializeOwned>(
+        req: &A,
+    ) -> Result<R, StrategyLoopPortError> {
+        let v = serde_json::to_value(req)
+            .map_err(|e| StrategyLoopPortError::invalid_request(e.to_string()))?;
+        serde_json::from_value(v).map_err(|e| StrategyLoopPortError::invalid_request(e.to_string()))
+    }
+
+    async fn unwrap_response(resp: Response) -> Result<Value, StrategyLoopPortError> {
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), PORT_MAX_BODY_BYTES)
+            .await
+            .map_err(|e| StrategyLoopPortError::upstream(format!("response body: {e}")))?;
+        let mut body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        if status.is_success() {
+            return match body.get_mut("data") {
+                Some(data) => Ok(data.take()),
+                None => Err(StrategyLoopPortError::upstream(
+                    "strategy loop response missing `data`",
+                )),
+            };
+        }
+        let message = body
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| status.to_string());
+        Err(match status.as_u16() {
+            400 | 422 => StrategyLoopPortError::invalid_request(message),
+            404 => StrategyLoopPortError::not_found(message),
+            429 => StrategyLoopPortError::busy(message),
+            503 => StrategyLoopPortError::unavailable(message),
+            408 | 504 => StrategyLoopPortError::timeout(message),
+            _ => StrategyLoopPortError::upstream(message),
+        })
+    }
+}
+
+#[async_trait]
+impl StrategyLoopPort for RuntimeStrategyLoopPort {
+    async fn evaluate(&self, req: StrategyLoopEvalRequest) -> Result<Value, StrategyLoopPortError> {
+        let state = self.state()?;
+        let rt: StrategyLoopRequest = Self::convert(&req)?;
+        Self::unwrap_response(post_evaluate(State(state), crate::ApiJson(rt)).await).await
+    }
+
+    async fn sweep(&self, req: StrategyLoopSweepRequest) -> Result<Value, StrategyLoopPortError> {
+        let state = self.state()?;
+        let rt: StrategySweepRequest = Self::convert(&req)?;
+        Self::unwrap_response(post_sweep(State(state), crate::ApiJson(rt)).await).await
+    }
+
+    async fn recommend_hedge(
+        &self,
+        req: StrategyHedgeRequest,
+    ) -> Result<Value, StrategyLoopPortError> {
+        let state = self.state()?;
+        let rt: ExpiryHedgeRequest = Self::convert(&req)?;
+        Self::unwrap_response(post_recommend_hedge(State(state), crate::ApiJson(rt)).await).await
     }
 }
