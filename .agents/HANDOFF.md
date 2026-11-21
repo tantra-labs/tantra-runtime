@@ -3,6 +3,12 @@
 **Date**: 2026-11-17 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
+## Latest Batch — `GET /v1/acp` (agent plan 0019 Phase 2), 2026-11-21 (`756d267`)
+- `acp_ws_handler` serves the ACP agent with the full chat tool set plus `present_view`.
+- It uses the Authenticated scope (`Caller` is extracted) and is capped at 64 connections with 1 MiB frames.
+- `/ws/chat` now also gets `present_view`.
+- Follow-ups: caller-scoped session store; drain buffered output on disconnect.
+
 ## Latest Batch — T17.2: gap 0009 closed (`/ws/chat` per-turn `model` override + multimodal image attachments)
 
 Date: 2026-11-17. Gap 0009 closed across `tantra-runtime-api-rest::chat` (this repo) +
