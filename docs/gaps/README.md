@@ -9,6 +9,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 | # | Title | Target Scope | Status |
 |---|---|---|---|
+| [0012](0012-unscoped-routes-fail-open.md) | Unscoped routes are public even with auth enabled (`/ws/live` can place paper orders; `/trade-journal/*` writes; `/market-data/*`) | `tantra-runtime-api-rest` (`auth.rs`, `v1.rs`, `ws_live.rs`, `trade_journal.rs`) | Open (2026-11-21), root design 0006 R0 |
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |
