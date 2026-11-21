@@ -1,4 +1,5 @@
-//! `GET /v1/acp` — ACP agent WebSocket (agent plan 0019 Phase 2).
+//! `GET /api/v1/acp` — ACP agent WebSocket (agent plan 0019 Phase 2), exercised through the
+//! real production router (`api_router_with`) so the mounted path is what clients use.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,16 +8,14 @@ use std::time::Duration;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tantra_agent_llm::ScriptedFakeLlm;
-use tantra_runtime_api_rest::{AppState, ChatRuntime, LlmProviderRegistry, acp_ws_handler};
+use tantra_runtime_api_rest::{AppState, ChatRuntime, LlmProviderRegistry, api_router_with};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, connect_async};
 
 type WsStream = tokio_tungstenite::WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 async fn serve(state: AppState) -> std::net::SocketAddr {
-    let router = axum::Router::new()
-        .route("/v1/acp", axum::routing::get(acp_ws_handler))
-        .with_state(Arc::new(state));
+    let router = api_router_with(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -68,7 +67,7 @@ async fn test_acp_initialize_new_session_prompt() {
     let registry = LlmProviderRegistry::new(llm, HashMap::new());
     let chat = ChatRuntime::with_provider_registry(registry).expect("chat");
     let addr = serve(AppState::default().with_chat_agent(chat)).await;
-    let (mut ws, _) = connect_async(format!("ws://{addr}/v1/acp"))
+    let (mut ws, _) = connect_async(format!("ws://{addr}/api/v1/acp"))
         .await
         .expect("connect");
 
@@ -107,7 +106,7 @@ async fn test_acp_initialize_new_session_prompt() {
 #[tokio::test]
 async fn test_acp_without_chat_returns_503() {
     let addr = serve(AppState::default()).await;
-    let err = connect_async(format!("ws://{addr}/v1/acp"))
+    let err = connect_async(format!("ws://{addr}/api/v1/acp"))
         .await
         .expect_err("handshake must fail");
     match err {

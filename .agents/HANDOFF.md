@@ -3,7 +3,7 @@
 **Date**: 2026-11-17 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `tantra-labs` superproject.
 
-## Latest Batch — `GET /v1/acp` (agent plan 0019 Phase 2), 2026-11-21 (`756d267`)
+## Latest Batch — `GET /api/v1/acp` (agent plan 0019 Phase 2), 2026-11-21 (`756d267`)
 - `acp_ws_handler` serves the ACP agent with the full chat tool set plus `present_view`.
 - It uses the Authenticated scope (`Caller` is extracted) and is capped at 64 connections with 1 MiB frames.
 - `/ws/chat` now also gets `present_view`.
