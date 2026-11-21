@@ -227,7 +227,7 @@ async fn test_ws_chat_unavailable_model_returns_capability_notice() {
 
     let (text, ended) = read_turn(&mut ws).await;
     assert!(text.contains("no-such-model"));
-    assert!(text.contains("not available locally"));
+    assert!(text.contains("is not configured"));
     assert_eq!(
         ended
             .get("outcome")

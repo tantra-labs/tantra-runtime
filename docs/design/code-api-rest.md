@@ -169,10 +169,9 @@ Route groups (v1, authoritative in `v1.rs`):
 `chat.rs` builds a `ChatRuntime` from environment, reusing the `tantra-agent`
 chat stack (`ChatAgent`, `SessionStore`, `ToolRegistry`):
 
-- **LLM backend**: `TANTRA_GGUF_PATH` (local Candle-GGUF) takes priority;
-  otherwise the OpenAI/Ollama-compatible endpoint `TANTRA_LLM_BASE_URL` /
-  `TANTRA_LLM_MODEL` / `TANTRA_LLM_API_KEY`. Neither set ⇒ the socket answers
-  with a clear `chat not configured` message.
+- **LLM backend**: providers and models come from `tantra.jsonc`; see
+  `tantra-agent/docs/design/provider-config.md`. No config file found ⇒ the
+  socket answers with a clear `chat not configured` message.
 - **Tools**: `tantra_agent_chat_tools::catalog::register_read_only_tools` plus
   the alert tools (`chat_alerts.rs`); alerts persist on `Profile.alerts`.
 - **Sessions**: `InMemorySessionStore` — a restart loses sessions (documented,

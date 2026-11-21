@@ -52,35 +52,15 @@ use tantra_agent_chat_tools::ports::alert::{AlertReader, AlertWriter};
 use tantra_agent_chat_tools::ports::market::MarketReader;
 use tantra_agent_chat_tools::ports::portfolio::PortfolioReader;
 use tantra_agent_core::{RuntimeMode, SessionScope, SessionStore};
-use tantra_agent_llm::candle_gguf::{CandleGgufConfig, CandleGgufProvider, ENV_GGUF_PATH};
-use tantra_agent_llm::config::openai_provider_from_env;
-use tantra_agent_llm::openai_compat::OpenAiCompatibleProvider;
-use tantra_agent_llm::{LlmError, LlmProvider, MessagePart, Usage};
+use tantra_agent_llm::{
+    CatalogError, ConfigCatalog, ConfigError, LlmError, LlmProvider, MessagePart, ModelCatalog,
+    Usage,
+};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api::{LedgerPortfolioReader, SharedLedger};
 
 use crate::AppState;
 use crate::chat_market::{FeedMarketReader, FeedSnapshotSource};
-
-/// Whether either LLM backend is configured via environment variables (`TANTRA_GGUF_PATH` for
-/// the local Candle-GGUF provider, `TANTRA_LLM_BASE_URL` for the OpenAI/Ollama-compatible one).
-fn llm_configured() -> bool {
-    std::env::var(ENV_GGUF_PATH).is_ok() || std::env::var("TANTRA_LLM_BASE_URL").is_ok()
-}
-
-/// Resolves the server-default `LlmProvider` from environment variables: a local GGUF model
-/// (`TANTRA_GGUF_PATH`) takes priority; otherwise falls back to an OpenAI/Ollama-compatible
-/// endpoint (`TANTRA_LLM_BASE_URL`/`TANTRA_LLM_MODEL`/`TANTRA_LLM_API_KEY`).
-fn resolve_llm_provider() -> Result<Arc<dyn LlmProvider>, LlmError> {
-    if let Ok(path) = std::env::var(ENV_GGUF_PATH) {
-        let config = CandleGgufConfig::new(path);
-        let provider = CandleGgufProvider::new(config);
-        Ok(Arc::new(provider) as Arc<dyn LlmProvider>)
-    } else {
-        let provider = openai_provider_from_env()?;
-        Ok(Arc::new(provider) as Arc<dyn LlmProvider>)
-    }
-}
 
 /// The set of LLM providers a chat session can route a turn to: the server default plus any
 /// per-turn `model` overrides registered at startup (gap 0009 — T17.2).
@@ -95,59 +75,54 @@ pub struct LlmProviderRegistry {
     default: Arc<dyn LlmProvider>,
     /// Extra providers keyed by exact model name, resolvable per turn.
     overrides: HashMap<String, Arc<dyn LlmProvider>>,
+    /// Sorted configured model ids (for error messages and listings).
+    ids: Vec<String>,
 }
 
 impl LlmProviderRegistry {
-    /// Builds the registry from environment variables: the default provider
-    /// ([`resolve_llm_provider`]), plus:
-    /// - each extra local GGUF model declared as `TANTRA_GGUF_MODEL_<NAME>` (NAME = the model
-    ///   name uppercased with non-alphanumerics mapped to `_`), served by an in-process
-    ///   Candle-GGUF provider;
-    /// - every model named in `TANTRA_LLM_MODELS` (comma-separated), served by the
-    ///   OpenAI-compatible endpoint configured in `TANTRA_LLM_BASE_URL`.
-    pub fn from_env() -> Result<Self, LlmError> {
-        let default = resolve_llm_provider()?;
+    /// Builds the registry from a [`ModelCatalog`] (loaded from `tantra.jsonc`): the default is
+    /// the catalog default; every catalog id (`provider/model`) is registered, plus the upstream
+    /// `model_name()` as an alias when it does not collide with another key.
+    pub fn from_catalog(catalog: &dyn ModelCatalog) -> Result<Self, CatalogError> {
+        let default = catalog.provider(&catalog.default_model())?;
         let mut overrides: HashMap<String, Arc<dyn LlmProvider>> = HashMap::new();
-        for (key, value) in std::env::vars() {
-            if let Some(name) = key.strip_prefix("TANTRA_GGUF_MODEL_") {
-                if name.is_empty() {
-                    continue;
-                }
-                let model = name.replace('_', "-");
-                let provider =
-                    CandleGgufProvider::new(CandleGgufConfig::new(value).with_model_name(&model));
-                overrides.insert(model, Arc::new(provider) as Arc<dyn LlmProvider>);
-            }
+        let mut ids: Vec<String> = Vec::new();
+        let mut aliases: Vec<(String, Arc<dyn LlmProvider>)> = Vec::new();
+        for info in catalog.models() {
+            let provider = catalog.provider(&info.id)?;
+            aliases.push((provider.model_name().to_string(), provider.clone()));
+            ids.push(info.id.clone());
+            overrides.insert(info.id, provider);
         }
-        if let Ok(base_url) = std::env::var("TANTRA_LLM_BASE_URL") {
-            if let Ok(models) = std::env::var("TANTRA_LLM_MODELS") {
-                let api_key = std::env::var("TANTRA_LLM_API_KEY").ok();
-                for model in models.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                    if overrides.contains_key(model) {
-                        continue;
-                    }
-                    let provider = OpenAiCompatibleProvider::new(
-                        base_url.clone(),
-                        api_key.clone(),
-                        model.to_string(),
-                    );
-                    overrides.insert(
-                        model.to_string(),
-                        Arc::new(provider) as Arc<dyn LlmProvider>,
-                    );
-                }
-            }
+        for (alias, provider) in aliases {
+            overrides.entry(alias).or_insert(provider);
         }
-        Ok(Self { default, overrides })
+        ids.sort();
+        Ok(Self {
+            default,
+            overrides,
+            ids,
+        })
+    }
+
+    /// The configured model ids, sorted.
+    pub fn models(&self) -> Vec<String> {
+        self.ids.clone()
     }
 
     /// Builds a registry from explicit providers (tests and embedders inject fakes here;
-    /// the production path is [`LlmProviderRegistry::from_env`]).
+    /// the production path is [`LlmProviderRegistry::from_catalog`]).
     pub fn new(
         default: Arc<dyn LlmProvider>,
         overrides: HashMap<String, Arc<dyn LlmProvider>>,
     ) -> Self {
-        Self { default, overrides }
+        let mut ids: Vec<String> = overrides.keys().cloned().collect();
+        ids.sort();
+        Self {
+            default,
+            overrides,
+            ids,
+        }
     }
 
     /// The server-default provider.
@@ -165,8 +140,6 @@ impl LlmProviderRegistry {
     /// - `None`/blank or equal to the default model name → the default provider (the
     ///   server-default path stays byte-identical).
     /// - a registered override → that provider;
-    /// - otherwise, when `TANTRA_LLM_BASE_URL` is configured, the requested model is routed
-    ///   through the OpenAI/Ollama-compatible endpoint (the free-tier router backend);
     /// - otherwise → [`LlmError::Capability`] naming the requested model (never a silent
     ///   fallback to another model).
     pub fn resolve(&self, model: Option<&str>) -> Result<Arc<dyn LlmProvider>, LlmError> {
@@ -186,16 +159,10 @@ impl LlmProviderRegistry {
                 {
                     return Ok(provider.clone());
                 }
-                if let Ok(base_url) = std::env::var("TANTRA_LLM_BASE_URL") {
-                    let api_key = std::env::var("TANTRA_LLM_API_KEY").ok();
-                    let provider = OpenAiCompatibleProvider::new(base_url, api_key, m.to_string());
-                    return Ok(Arc::new(provider) as Arc<dyn LlmProvider>);
-                }
                 Err(LlmError::Capability(format!(
-                    "model '{m}' is not available locally — no GGUF file is configured for it \
-                     and no remote LLM base URL (TANTRA_LLM_BASE_URL) is set; the server \
-                     default is '{}'",
-                    self.default.model_name()
+                    "model '{m}' is not configured — available: {}; add it to tantra.jsonc \
+                     (see tantra-agent/docs/design/provider-config.md)",
+                    self.ids.join(", ")
                 )))
             }
         }
@@ -259,7 +226,7 @@ impl ChatRuntime {
     /// Builds a [`ChatRuntime`] from an explicit provider registry with a chat agent carrying
     /// no read-only tool ports and an in-memory session store. This is the injection point for
     /// tests and lightweight embedders; the production env-var path is
-    /// [`ChatRuntime::from_env`].
+    /// [`ChatRuntime::from_config`].
     pub fn with_provider_registry(providers: LlmProviderRegistry) -> anyhow::Result<Self> {
         let registry = ToolRegistry::new();
         let session_store: Arc<dyn SessionStore> = Arc::new(InMemorySessionStore::new());
@@ -298,7 +265,7 @@ impl ChatRuntime {
     /// `with_*` builders on [`crate::chat_market::FeedMarketReader`] and
     /// [`crate::chat_calendar::FeedCalendarReader`]).
     #[allow(clippy::too_many_arguments)]
-    pub fn from_env(
+    pub fn from_config(
         instruments: Arc<dyn InstrumentMaster>,
         bars: Arc<dyn BarReader>,
         quotes: Arc<dyn QuoteReader>,
@@ -309,12 +276,26 @@ impl ChatRuntime {
         database: Option<Arc<tantra_runtime_persistence::Database>>,
         data_root: &std::path::Path,
     ) -> anyhow::Result<Option<Self>> {
-        if !llm_configured() {
-            return Ok(None);
-        }
-        // The registry carries the server default plus every per-turn model override declared
-        // via environment variables (`TANTRA_GGUF_MODEL_<NAME>` / `TANTRA_LLM_MODELS`).
-        let providers = LlmProviderRegistry::from_env()?;
+        let loaded = match tantra_agent_llm::load_config(None) {
+            Ok(l) => l,
+            Err(ConfigError::NotFound { searched }) => {
+                tracing::info!(
+                    "chat disabled: no tantra.jsonc provider config found (searched {searched:?})"
+                );
+                return Ok(None);
+            }
+            Err(e) => return Err(anyhow::anyhow!("invalid LLM provider config: {e}")),
+        };
+        let catalog = ConfigCatalog::build(&loaded, &|k| std::env::var(k).ok())
+            .map_err(|e| anyhow::anyhow!("invalid LLM provider config: {e}"))?;
+        let providers = LlmProviderRegistry::from_catalog(&catalog)
+            .map_err(|e| anyhow::anyhow!("invalid LLM provider config: {e}"))?;
+        tracing::info!(
+            default = %catalog.default_model(),
+            models = catalog.models().len(),
+            "chat LLM providers loaded from {:?}",
+            loaded.sources
+        );
         let provider = providers.default();
 
         let mut registry = ToolRegistry::new();
@@ -548,7 +529,7 @@ async fn handle_chat_socket(socket: WebSocket, state: Arc<AppState>, scope_name:
     let Some(chat) = state.chat.clone() else {
         let err = serde_json::json!({
             "type": "error",
-            "message": "chat not configured — set TANTRA_GGUF_PATH or TANTRA_LLM_BASE_URL",
+            "message": "chat not configured — add an LLM provider to tantra.jsonc (see tantra-agent/docs/design/provider-config.md)",
         });
         let _ = sender.send(Message::Text(err.to_string())).await;
         return;

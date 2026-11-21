@@ -205,7 +205,7 @@ pub struct AppState {
     /// The local-LLM chat agent runtime behind `GET /ws/chat`; `None` until configured
     /// ([`AppState::with_chat_agent`]), which only happens when a local GGUF model or an
     /// OpenAI-compatible endpoint is configured via environment variables
-    /// ([`crate::chat::ChatRuntime::from_env`]). The route answers a clear error rather than
+    /// ([`crate::chat::ChatRuntime::from_config`]). The route answers a clear error rather than
     /// panicking when this is `None`.
     pub chat: Option<Arc<crate::chat::ChatRuntime>>,
     /// The database backing `SqlxSessionStore` for chat session persistence; `None` until
@@ -315,7 +315,7 @@ impl AppState {
     }
 
     /// Attaches the local-LLM chat agent runtime behind `GET /ws/chat`. Call it at start-up
-    /// ([`crate::bootstrap::prepare_server`]) with [`crate::chat::ChatRuntime::from_env`]'s
+    /// ([`crate::bootstrap::prepare_server`]) with [`crate::chat::ChatRuntime::from_config`]'s
     /// result; leave it unset (the default `None`) to serve `/ws/chat` with a clear
     /// "not configured" error instead of a working chat agent.
     pub fn with_chat_agent(mut self, chat: crate::chat::ChatRuntime) -> Self {
@@ -324,7 +324,7 @@ impl AppState {
     }
 
     /// Attaches the database the chat agent persists sessions to
-    /// (docs/gaps/0006): when set, `ChatRuntime::from_env` uses
+    /// (docs/gaps/0006): when set, `ChatRuntime::from_config` uses
     /// `SqlxSessionStore` instead of the in-memory store.
     pub fn with_database(mut self, database: tantra_runtime_persistence::Database) -> Self {
         self.database = Some(Arc::new(database));
