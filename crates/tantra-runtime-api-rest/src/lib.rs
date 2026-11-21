@@ -94,7 +94,8 @@ pub use bootstrap::{
 };
 pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog, load_lakehouse_v3};
 pub use chat::{
-    ChatAttachmentInput, ChatClientMessage, ChatRuntime, LlmProviderRegistry, chat_ws_handler,
+    ChatAttachmentInput, ChatClientMessage, ChatRuntime, LlmProviderRegistry, acp_ws_handler,
+    chat_ws_handler,
 };
 pub use dispatch::{DispatchError, build_target, dispatch, dispatch_stream};
 pub use executor::BacktestExecutor;

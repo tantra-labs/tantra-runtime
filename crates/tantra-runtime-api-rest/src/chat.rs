@@ -38,7 +38,8 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use axum::response::Response;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tracing::{debug, warn};
@@ -60,6 +61,7 @@ use tantra_risk::RiskEngine;
 use tantra_runtime_api::{LedgerPortfolioReader, SharedLedger};
 
 use crate::AppState;
+use crate::caller::Caller;
 use crate::chat_market::{FeedMarketReader, FeedSnapshotSource};
 
 /// The set of LLM providers a chat session can route a turn to: the server default plus any
@@ -202,6 +204,44 @@ pub struct ChatRuntime {
     /// Late-bound weak handle to the served [`AppState`] used by the in-process strategy-loop
     /// port (weak to avoid an `AppState -> ChatRuntime -> port -> AppState` cycle).
     loop_state: Arc<OnceLock<Weak<AppState>>>,
+    /// ACP (`GET /v1/acp`) agent host shared by all ACP connections (agent plan 0019 Phase 2).
+    acp: Arc<AcpBridge>,
+}
+
+/// Maximum concurrent ACP WebSocket connections.
+const ACP_MAX_CONNECTIONS: usize = 64;
+
+/// System prompt base for the ACP agent host.
+pub const ACP_SYSTEM_PROMPT_BASE: &str = "You are Tantra, an intelligent quantitative finance and algorithmic trading assistant for Indian equities (NSE/BSE). Use the tools to fetch real data; never invent prices or statistics.";
+
+/// The ACP agent host plus a connection-cap semaphore.
+pub(crate) struct AcpBridge {
+    host: Arc<tantra_agent_acp::AgentHost>,
+    slots: Arc<tokio::sync::Semaphore>,
+}
+
+impl AcpBridge {
+    fn new(
+        tools: Arc<tantra_agent_chat::ToolSet>,
+        store: Arc<dyn SessionStore>,
+        catalog: Arc<dyn tantra_agent_acp::ModelCatalog>,
+    ) -> Self {
+        let host = tantra_agent_acp::AgentHost {
+            system_prompt: format!(
+                "{ACP_SYSTEM_PROMPT_BASE}\n\n{}",
+                tantra_agent_chat_tools::PRESENT_VIEW_GUIDANCE
+            ),
+            tools,
+            store,
+            catalog,
+            turn_config: tantra_agent_chat::TurnConfig::default(),
+            max_sessions: 8,
+        };
+        Self {
+            host: Arc::new(host),
+            slots: Arc::new(tokio::sync::Semaphore::new(ACP_MAX_CONNECTIONS)),
+        }
+    }
 }
 
 impl ChatRuntime {
@@ -228,13 +268,27 @@ impl ChatRuntime {
     /// tests and lightweight embedders; the production env-var path is
     /// [`ChatRuntime::from_config`].
     pub fn with_provider_registry(providers: LlmProviderRegistry) -> anyhow::Result<Self> {
-        let registry = ToolRegistry::new();
+        let mut registry = ToolRegistry::new();
+        tantra_agent_chat_tools::catalog::register_presentation_tools(&mut registry);
+        let acp_tools = Arc::new(registry.snapshot());
         let session_store: Arc<dyn SessionStore> = Arc::new(InMemorySessionStore::new());
+        let acp_catalog: Arc<dyn tantra_agent_acp::ModelCatalog> =
+            Arc::new(tantra_agent_acp::StaticCatalog::new().with_model(
+                "default",
+                "Default",
+                providers.default(),
+            ));
+        let acp = Arc::new(AcpBridge::new(
+            acp_tools,
+            Arc::clone(&session_store),
+            acp_catalog,
+        ));
         let agent = ChatAgent::builder(providers.default(), registry, session_store).build()?;
         Ok(Self {
             agent: Arc::new(agent),
             providers,
             loop_state: Arc::new(OnceLock::new()),
+            acp,
         })
     }
     /// Builds a [`ChatRuntime`] from environment variables if either a local GGUF model or an
@@ -444,6 +498,10 @@ impl ChatRuntime {
             )),
         );
 
+        // Inline `present_view` tool (agent plan 0019 Phase 2); also served on `/ws/chat`.
+        tantra_agent_chat_tools::catalog::register_presentation_tools(&mut registry);
+        let acp_tools = Arc::new(registry.snapshot());
+
         // Sessions persist to the configured database via `SqlxSessionStore` (the embedded
         // migrations creating `agent_chat_session`/`agent_chat_message` run at boot); with no
         // database attached they fall back to in-memory (docs/gaps/0006).
@@ -454,11 +512,17 @@ impl ChatRuntime {
             None => Arc::new(InMemorySessionStore::new()),
         };
 
+        let acp = Arc::new(AcpBridge::new(
+            acp_tools,
+            Arc::clone(&session_store),
+            Arc::new(catalog),
+        ));
         let agent = ChatAgent::builder(provider, registry, session_store).build()?;
         Ok(Some(Self {
             agent: Arc::new(agent),
             providers,
             loop_state: loop_cell,
+            acp,
         }))
     }
 }
@@ -708,4 +772,106 @@ async fn send_capability_notice(
             Err(e) => warn!("failed to serialize chat session event: {e}"),
         }
     }
+}
+
+/// `GET /v1/acp` — serves the Tantra chat agent over the Agent Client Protocol (newline-delimited
+/// JSON-RPC, one message per WebSocket text frame) with the runtime's full chat tool set.
+///
+/// Extracting [`Caller`] makes the route fail closed when auth is enforced.
+pub async fn acp_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    caller: Caller,
+) -> Response {
+    let Some(chat) = state.chat.clone() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(serde_json::json!({
+                "error": "chat not configured — add an LLM provider to tantra.jsonc"
+            })),
+        )
+            .into_response();
+    };
+    let bridge = Arc::clone(&chat.acp);
+    let Ok(permit) = Arc::clone(&bridge.slots).try_acquire_owned() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(serde_json::json!({ "error": "too many ACP connections" })),
+        )
+            .into_response();
+    };
+    tracing::info!(caller = %caller.0, "acp connection");
+    ws.max_message_size(1 << 20)
+        .max_frame_size(1 << 20)
+        .on_upgrade(move |socket| async move {
+            run_acp_socket(socket, bridge).await;
+            drop(permit);
+        })
+}
+
+/// Bridges one WebSocket to an in-process ACP `serve` loop over an in-memory duplex pipe.
+async fn run_acp_socket(socket: WebSocket, bridge: Arc<AcpBridge>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let (srv, cli) = tokio::io::duplex(256 * 1024);
+    let (srv_read, srv_write) = tokio::io::split(srv);
+    let (cli_read, mut cli_write) = tokio::io::split(cli);
+    let (mut sender, mut receiver) = socket.split();
+
+    let host = Arc::clone(&bridge.host);
+    let mut agent = tokio::spawn(async move {
+        if let Err(e) = tantra_agent_acp::serve(host, srv_read, srv_write).await {
+            debug!("acp serve ended: {e}");
+        }
+    });
+
+    let mut inbound = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            match msg {
+                Message::Text(t) => {
+                    let mut line = t.replace(['\r', '\n'], " ");
+                    line.push('\n');
+                    if cli_write.write_all(line.as_bytes()).await.is_err() {
+                        break;
+                    }
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+        let _ = cli_write.shutdown().await;
+    });
+
+    let mut outbound = tokio::spawn(async move {
+        let mut reader = BufReader::new(cli_read);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    if sender
+                        .send(Message::Text(trimmed.to_owned()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = &mut inbound => {}
+        _ = &mut outbound => {}
+        _ = &mut agent => {}
+    }
+    inbound.abort();
+    outbound.abort();
+    agent.abort();
 }

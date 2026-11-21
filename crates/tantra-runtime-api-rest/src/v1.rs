@@ -14,7 +14,7 @@ use tantra_runtime_api::{
     VerifyStrategyResponse,
 };
 
-use crate::chat::chat_ws_handler;
+use crate::chat::{acp_ws_handler, chat_ws_handler};
 use crate::market::{self, ApiQuery};
 use crate::reports::{
     get_concentration_risk, get_equity_curve, get_fees_report, get_ledger, get_order_fills,
@@ -312,5 +312,6 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/ws/market", get(ws_handler))
         .route("/ws/live", get(ws_live_handler))
         .route("/ws/chat", get(chat_ws_handler))
+        .route("/acp", get(acp_ws_handler))
         .layer(axum::middleware::from_fn(v1_headers))
 }

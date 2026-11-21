@@ -59,6 +59,7 @@ tantra-exec-angelone = { path = "../tantra-exec/crates/tantra-exec-angelone" }
 tantra-agent-core = { path = "../tantra-agent/crates/tantra-agent-core" }
 tantra-agent = { path = "../tantra-agent/crates/tantra-agent" }
 tantra-agent-chat = { path = "../tantra-agent/crates/tantra-agent-chat" }
+tantra-agent-acp = { path = "../tantra-agent/crates/tantra-agent-acp" }
 tantra-agent-chat-tools = { path = "../tantra-agent/crates/tantra-agent-chat-tools" }
 tantra-agent-prompt = { path = "../tantra-agent/crates/tantra-agent-prompt" }
 tantra-agent-replay = { path = "../tantra-agent/crates/tantra-agent-replay" }

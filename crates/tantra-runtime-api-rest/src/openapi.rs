@@ -2193,6 +2193,23 @@ impl OpenApiDocument {
                 delete: None,
             },
         );
+        paths.insert(
+            "/acp".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "ws",
+                    "ACP agent WebSocket (newline-delimited JSON-RPC, one message per text frame)",
+                    "getAcp",
+                    vec![],
+                    None,
+                    "WebSocket upgrade",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
 
         schemas.insert(
             "InstrumentId".to_string(),

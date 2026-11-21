@@ -96,6 +96,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("get", "/ws"),
     ("get", "/ws/market"),
     ("get", "/ws/chat"),
+    ("get", "/acp"),
 ];
 
 /// Every v1 route has an operation entry in the generated v2 document.

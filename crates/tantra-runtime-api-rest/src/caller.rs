@@ -19,7 +19,7 @@ use crate::profile_store::DEFAULT_USER_ID;
 ///
 /// Auth on: the validated token's `token_id`. Auth off: [`DEFAULT_USER_ID`]. Auth on but no
 /// token: 401.
-pub(crate) struct Caller(pub(crate) String);
+pub struct Caller(pub(crate) String);
 
 #[axum::async_trait]
 impl<S: Send + Sync> FromRequestParts<S> for Caller {

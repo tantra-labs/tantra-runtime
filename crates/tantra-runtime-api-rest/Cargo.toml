@@ -21,6 +21,7 @@ tantra-market-finance.workspace = true
 tantra-runtime-strategy.workspace = true
 tantra-agent-analytics.workspace = true
 tantra-agent-chat.workspace = true
+tantra-agent-acp.workspace = true
 tantra-agent-core.workspace = true
 tantra-agent-llm.workspace = true
 tantra-agent-chat-tools.workspace = true

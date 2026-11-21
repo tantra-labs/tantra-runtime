@@ -12,6 +12,40 @@
     }
   ],
   "paths": {
+    "/acp": {
+      "get": {
+        "tags": [
+          "ws"
+        ],
+        "summary": "ACP agent WebSocket (newline-delimited JSON-RPC, one message per text frame)",
+        "operationId": "getAcp",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/approval/approve": {
       "get": null,
       "post": {
@@ -11861,12 +11895,12 @@
           "layers": {
             "description": "Visibility toggle mask across the six layer groups.",
             "default": {
-              "bands": true,
-              "hedges": true,
-              "hints": true,
-              "indicators": true,
               "signals": true,
-              "stops": true
+              "bands": true,
+              "stops": true,
+              "indicators": true,
+              "hints": true,
+              "hedges": true
             },
             "allOf": [
               {
