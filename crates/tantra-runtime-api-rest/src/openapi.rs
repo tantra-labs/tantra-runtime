@@ -115,6 +115,9 @@ pub struct Operation {
         skip_serializing_if = "Option::is_none"
     )]
     pub max_body_bytes: Option<usize>,
+    /// Set in the v2 document for routes superseded by a canonical successor (design 0006 R2a).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub deprecated: bool,
 }
 
 /// An OpenAPI parameter.
@@ -193,6 +196,7 @@ fn operation(
             },
         )]),
         max_body_bytes: None,
+        deprecated: false,
         security: vec![SecurityRequirement {
             scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
         }],
@@ -348,6 +352,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -381,6 +386,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -414,6 +420,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["trade".to_string()])]),
                     }],
@@ -459,6 +466,7 @@ impl OpenApiDocument {
                         ),
                     ]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["trade".to_string()])]),
                     }],
@@ -500,6 +508,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["trade".to_string()])]),
                     }],
@@ -529,6 +538,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -562,6 +572,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![],
                 }),
                 post: None,
@@ -1802,6 +1813,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1845,6 +1857,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1886,6 +1899,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1926,6 +1940,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1968,6 +1983,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2011,6 +2027,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2051,6 +2068,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2094,6 +2112,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2135,6 +2154,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2175,6 +2195,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2215,6 +2236,7 @@ impl OpenApiDocument {
                         },
                     )]),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2602,6 +2624,13 @@ impl OpenApiDocument {
                 RouteScope::Authenticated => vec![bearer_requirement(vec![])],
             };
             op.max_body_bytes = entry.body_limit;
+            if include_v2_only
+                && let crate::route_table::V2Disposition::Redirect(next)
+                | crate::route_table::V2Disposition::Deprecated(next) = entry.v2
+            {
+                op.deprecated = true;
+                op.summary = format!("{} (successor: {next})", op.summary);
+            }
             let item = paths.entry(path).or_insert_with(empty_path_item);
             match entry.method {
                 "GET" => item.get = Some(op),
@@ -2610,6 +2639,39 @@ impl OpenApiDocument {
                 "PATCH" => item.patch = Some(op),
                 "DELETE" => item.delete = Some(op),
                 _ => {}
+            }
+        }
+        // A superseded route and its canonical successor can synthesize the same operationId;
+        // the deprecated one yields.
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for item in paths.values_mut() {
+            for op in [
+                &mut item.get,
+                &mut item.post,
+                &mut item.put,
+                &mut item.patch,
+                &mut item.delete,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                *counts.entry(op.operation_id.clone()).or_default() += 1;
+            }
+        }
+        for item in paths.values_mut() {
+            for op in [
+                &mut item.get,
+                &mut item.post,
+                &mut item.put,
+                &mut item.patch,
+                &mut item.delete,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if op.deprecated && counts.get(&op.operation_id).copied().unwrap_or(0) > 1 {
+                    op.operation_id.push_str("Legacy");
+                }
             }
         }
         doc.paths = paths;
@@ -2710,6 +2772,7 @@ impl OpenApiDocument {
             request_body: None,
             responses: responses(any_schema.clone()),
             max_body_bytes: None,
+            deprecated: false,
             security: bearer(),
         });
         self.paths
@@ -2731,6 +2794,7 @@ impl OpenApiDocument {
             request_body: None,
             responses: responses(any_schema.clone()),
             max_body_bytes: None,
+            deprecated: false,
             security: bearer(),
         });
         self.paths
@@ -2761,6 +2825,7 @@ impl OpenApiDocument {
                 }),
                 responses: responses(any_schema.clone()),
                 max_body_bytes: None,
+                deprecated: false,
                 security: bearer(),
             });
             self.paths.insert(path.to_string(), item);
@@ -2858,6 +2923,7 @@ impl OpenApiDocument {
                     request_body: None,
                     responses: responses("List of caller-owned chat threads", list_schema),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: bearer(),
                 }),
                 post: Some(Operation {
@@ -2871,6 +2937,7 @@ impl OpenApiDocument {
                     }),
                     responses: responses("Created chat thread metadata", thread_schema.clone()),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: bearer(),
                 }),
                 put: None,
@@ -2890,6 +2957,7 @@ impl OpenApiDocument {
                     request_body: None,
                     responses: responses("Thread metadata and message history", detail_schema),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: bearer(),
                 }),
                 post: None,
@@ -2905,6 +2973,7 @@ impl OpenApiDocument {
                     }),
                     responses: responses("Updated chat thread metadata", thread_schema),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: bearer(),
                 }),
                 delete: Some(Operation {
@@ -2915,6 +2984,7 @@ impl OpenApiDocument {
                     request_body: None,
                     responses: responses("Deleted chat thread acknowledgement", delete_schema),
                     max_body_bytes: None,
+                    deprecated: false,
                     security: bearer(),
                 }),
             },

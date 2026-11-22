@@ -78,6 +78,7 @@ mod trading_state;
 mod user_doc;
 pub mod v1;
 pub mod v2;
+mod v2_canonical;
 pub mod ws;
 mod ws_live;
 
@@ -114,7 +115,7 @@ pub use portfolio_store::{
 pub use profile_store::{DEFAULT_USER_ID, Module, Profile, ProfileError, ProfileStore, Source};
 pub use registry::StrategyRegistry;
 pub use retention::{RetentionPolicy, evictions};
-pub use route_table::RouteEntry;
+pub use route_table::{RouteEntry, V2Disposition};
 pub use run_store::{OsEntropy, RecoveryReport, RunClock, RunEntropy, RunStore, SystemClock};
 pub use service::{
     DEFAULT_MAX_QUEUED, DEFAULT_SHUTDOWN_GRACE, RunService, RunServiceConfig, ShutdownReport,
@@ -397,6 +398,7 @@ pub(crate) fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEn
         library_routes::v2_only_manifest()
             .into_iter()
             .chain(chat_threads::v2_only_manifest())
+            .chain(v2_canonical::v2_only_manifest())
             .collect(),
         root_table().finish().1,
     )

@@ -216,7 +216,7 @@ async fn post_json(app: &Router, uri: &str, payload: Value) -> (StatusCode, Valu
 #[tokio::test]
 async fn catalog_groups_multi_asset_universe_and_schedules() {
     let app = test_app();
-    let (status, body) = get_json(&app, "/api/v2/experimental-analysis/catalog").await;
+    let (status, body) = get_json(&app, "/api/v2/studies/experimental-analysis/catalog").await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["api_version"], "v2");
     assert!(body["error"].is_null());
@@ -282,7 +282,7 @@ async fn returns_validation_rejects_invalid_dates_windows_and_coverage() {
 
     let (status, body) = post_json(
         &app,
-        "/api/v2/experimental-analysis/returns",
+        "/api/v2/studies/experimental-analysis/returns",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "asset_class": "fno_stock",
@@ -299,7 +299,7 @@ async fn returns_validation_rejects_invalid_dates_windows_and_coverage() {
 
     let (status, body) = post_json(
         &app,
-        "/api/v2/experimental-analysis/returns",
+        "/api/v2/studies/experimental-analysis/returns",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "asset_class": "fno_stock",
@@ -316,7 +316,7 @@ async fn returns_validation_rejects_invalid_dates_windows_and_coverage() {
 
     let (status, body) = post_json(
         &app,
-        "/api/v2/experimental-analysis/returns",
+        "/api/v2/studies/experimental-analysis/returns",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "asset_class": "fno_stock",
@@ -337,7 +337,7 @@ async fn returns_unknown_instrument_answers_404() {
     let app = test_app();
     let (status, body) = post_json(
         &app,
-        "/api/v2/experimental-analysis/returns",
+        "/api/v2/studies/experimental-analysis/returns",
         json!({
             "instrument_id": "UNKNOWN.NSE",
             "asset_class": "equity",
@@ -373,7 +373,7 @@ async fn returns_evaluates_full_study_and_fno_spread_reconciliation() {
 
     let (status_v2, body_v2) = post_json(
         &app,
-        "/api/v2/experimental-analysis/returns",
+        "/api/v2/studies/experimental-analysis/returns",
         payload.clone(),
     )
     .await;
@@ -415,7 +415,7 @@ async fn returns_evaluates_full_study_and_fno_spread_reconciliation() {
 
     let (status_spread, body_spread) = post_json(
         &app,
-        "/api/v2/experimental-analysis/returns",
+        "/api/v2/studies/experimental-analysis/returns",
         spread_payload,
     )
     .await;
@@ -454,7 +454,7 @@ async fn intraday_evaluates_5m_orb_and_reports_honest_unavailable_without_5m() {
     // 1. RELIANCE has both 1d and 5m bars -> full intraday + ORB simulation available
     let (status, body) = post_json(
         &app,
-        "/api/v2/experimental-analysis/intraday",
+        "/api/v2/studies/experimental-analysis/intraday",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "asset_class": "fno_stock",
@@ -482,7 +482,7 @@ async fn intraday_evaluates_5m_orb_and_reports_honest_unavailable_without_5m() {
     // 2. TANLA has only 1d bars -> gaps/5-day/cycle_progress work, intraday & orb report available=false
     let (status2, body2) = post_json(
         &app,
-        "/api/v2/experimental-analysis/intraday",
+        "/api/v2/studies/experimental-analysis/intraday",
         json!({
             "instrument_id": "NSE:TANLA",
             "asset_class": "equity",
@@ -508,7 +508,7 @@ async fn correlation_computes_symmetric_matrices_and_rolling_spread() {
     let app = test_app();
     let (status, body) = post_json(
         &app,
-        "/api/v2/experimental-analysis/correlation",
+        "/api/v2/studies/experimental-analysis/correlation",
         json!({
             "primary_id": "NSE:RELIANCE",
             "benchmark_id": "MCX:GOLD",
@@ -712,7 +712,7 @@ async fn options_overlay_evaluates_spreads_and_preserves_unquoted_zero_fabricati
     ] {
         let (status, body) = post_json(
             &app,
-            "/api/v2/experimental-analysis/options-overlay",
+            "/api/v2/studies/experimental-analysis/options-overlay",
             json!({
                 "instrument_id": "NSE:RELIANCE",
                 "asset_class": "fno_stock",
@@ -749,7 +749,7 @@ async fn forecast_computes_markov_vol_quantile_fan_and_top_analogs() {
     let app = test_app();
     let (status, body) = post_json(
         &app,
-        "/api/v2/experimental-analysis/forecast",
+        "/api/v2/studies/experimental-analysis/forecast",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "asset_class": "fno_stock",
@@ -782,7 +782,7 @@ async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() 
     let offline_app = test_app();
     let (s_off, b_off) = post_json(
         &offline_app,
-        "/api/v2/experimental-analysis/events",
+        "/api/v2/studies/experimental-analysis/events",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "mode": "buyback",
@@ -797,7 +797,7 @@ async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() 
 
     let (n_off_s, n_off_b) = post_json(
         &offline_app,
-        "/api/v2/experimental-analysis/outlier-news",
+        "/api/v2/studies/experimental-analysis/outlier-news",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "asset_class": "fno_stock",
@@ -819,7 +819,7 @@ async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() 
 
     let (s_buy, b_buy) = post_json(
         &lakehouse_app,
-        "/api/v2/experimental-analysis/events",
+        "/api/v2/studies/experimental-analysis/events",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "mode": "buyback",
@@ -837,7 +837,7 @@ async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() 
 
     let (s_mac, b_mac) = post_json(
         &lakehouse_app,
-        "/api/v2/experimental-analysis/events",
+        "/api/v2/studies/experimental-analysis/events",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "mode": "macro",
@@ -853,7 +853,7 @@ async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() 
 
     let (n_on_s, n_on_b) = post_json(
         &lakehouse_app,
-        "/api/v2/experimental-analysis/outlier-news",
+        "/api/v2/studies/experimental-analysis/outlier-news",
         json!({
             "instrument_id": "NSE:RELIANCE",
             "asset_class": "fno_stock",

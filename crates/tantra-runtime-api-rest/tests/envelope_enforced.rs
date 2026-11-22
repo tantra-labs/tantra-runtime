@@ -7,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tantra_runtime_api::ErrorCode;
 use tantra_runtime_api_rest::{
-    ApiConfig, AppState, api_router, api_router_with_config, route_registry,
+    ApiConfig, AppState, V2Disposition, api_router, api_router_with_config, route_registry,
 };
 use tower::util::ServiceExt;
 
@@ -74,6 +74,10 @@ fn fill(path: &str) -> String {
 async fn every_registry_get_is_enveloped_with_matching_status() {
     let mut failures = Vec::new();
     for e in route_registry() {
+        // R2a: superseded paths answer a bodiless 308 under /api/v2.
+        if matches!(e.v2, V2Disposition::Redirect(_)) {
+            continue;
+        }
         if e.method != "GET"
             || e.path.starts_with("/ws")
             || e.path == "/acp"

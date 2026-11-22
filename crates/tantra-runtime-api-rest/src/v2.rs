@@ -15,9 +15,10 @@ pub fn routes(state: Arc<AppState>) -> Router {
 
 /// Build the v2 router expecting State<Arc<AppState>>.
 pub fn router() -> Router<Arc<AppState>> {
-    v1::router()
+    v1::v2_router()
         .merge(crate::library_routes::v2_only_routes())
         .merge(crate::chat_threads::v2_only_routes())
+        .merge(crate::v2_canonical::v2_only_routes())
         .layer(axum::middleware::from_fn(v2_response_envelope))
 }
 
@@ -47,7 +48,8 @@ pub async fn v2_response_envelope(
     );
 
     let status = parts.status;
-    if status == axum::http::StatusCode::SWITCHING_PROTOCOLS
+    if status.is_redirection()
+        || status == axum::http::StatusCode::SWITCHING_PROTOCOLS
         || status == axum::http::StatusCode::NO_CONTENT
         || status == axum::http::StatusCode::NOT_MODIFIED
     {

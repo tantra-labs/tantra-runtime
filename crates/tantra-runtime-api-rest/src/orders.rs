@@ -1020,7 +1020,12 @@ pub(crate) async fn post_orders(
 
     // E5-S4: If approval queue is enabled, enqueue the order and return 202
     if let Some(queue) = &state.approval_queue {
-        let position = match queue.enqueue(ledger_id.clone(), req.clone()) {
+        // Store the resolved ledger key on the queued request so approval re-processes it under
+        // the same key (a keyless order's generated UUID), never a shared constant
+        // (`.agents/rules/security-and-secrets.md` §2.3).
+        let mut queued = req.clone();
+        queued.client_order_id = Some(ledger_id.clone());
+        let position = match queue.enqueue(ledger_id.clone(), queued) {
             Ok(pos) => pos,
             Err(detail) => return failure(StatusCode::TOO_MANY_REQUESTS, detail),
         };
@@ -1169,21 +1174,42 @@ pub(crate) async fn get_approval_queue(State(state): State<Arc<AppState>>) -> Re
 
 /// POST /approval/approve: approve the oldest pending order (E5-S4).
 pub(crate) async fn post_approve_order(State(state): State<Arc<AppState>>) -> Response {
+    approve_with(state, |queue| queue.approve_oldest()).await
+}
+
+/// `POST /approvals/{id}/approve`: approve the queued order `id` (404 when it is not pending).
+pub(crate) async fn post_approve_order_by_id(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    approve_with(state, |queue| queue.approve(&id)).await
+}
+
+/// Shared tail of the approve routes: pick the request from the queue, then run it through the
+/// risk stage bypassing the queue.
+async fn approve_with(
+    state: Arc<AppState>,
+    pick: impl FnOnce(&crate::approval::ApprovalQueue) -> Option<OrdersRequest>,
+) -> Response {
     if let Some(queue) = &state.approval_queue {
-        if let Some(req) = queue.approve_oldest() {
+        if let Some(req) = pick(queue) {
             // Re-process the approved order through the risk stage BYPASSING the queue. The
             // queued row keeps the caller's idempotency key (ADR 0019 decision 3), so approval
             // records under the same key the client first sent.
+            // `post_orders` always stores the ledger key on the queued request; a missing key
+            // still gets a unique id rather than a shared constant.
             let order_id = req
                 .client_order_id
-                .as_deref()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "approved".to_string());
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             post_orders_direct(state.clone(), crate::ApiJson(req), order_id).await
         } else {
             failure(
                 StatusCode::NOT_FOUND,
-                ErrorDetail::new(ErrorCode::NotFound, "no pending orders in approval queue"),
+                ErrorDetail::new(
+                    ErrorCode::NotFound,
+                    "no matching pending order in approval queue",
+                ),
             )
         }
     } else {
@@ -1195,6 +1221,25 @@ pub(crate) async fn post_approve_order(State(state): State<Arc<AppState>>) -> Re
             ),
         )
     }
+}
+
+/// `GET /orders/{id}`: the ledger row, or 404.
+pub(crate) async fn get_order_by_id(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.orders.get(id.as_str()) {
+        Some(order) => success(order_json(&order)),
+        None => crate::market::error(ErrorDetail::new(ErrorCode::NotFound, "order not found")),
+    }
+}
+
+/// `POST /approvals/{id}/reject`: reject the queued order `id` (404 when it is not pending).
+pub(crate) async fn post_reject_order_by_id(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    reject_with(state, |queue| queue.reject(&id))
 }
 
 // Internal version of post_orders that bypasses the approval queue (for approved orders)
@@ -1260,9 +1305,15 @@ async fn gate_and_record(
 
 /// POST /approval/reject: reject the oldest pending order (E5-S4).
 pub(crate) async fn post_reject_order(State(state): State<Arc<AppState>>) -> Response {
+    reject_with(state, |queue| queue.reject_oldest())
+}
+
+fn reject_with(
+    state: Arc<AppState>,
+    pick: impl FnOnce(&crate::approval::ApprovalQueue) -> Option<OrdersRequest>,
+) -> Response {
     if let Some(queue) = &state.approval_queue {
-        if let Some(_req) = queue.reject_oldest() {
-            // Order rejected; return the rejection to the client
+        if pick(queue).is_some() {
             success(json!({
                 "status": "rejected",
                 "message": "Order rejected by operator"
@@ -1270,7 +1321,10 @@ pub(crate) async fn post_reject_order(State(state): State<Arc<AppState>>) -> Res
         } else {
             failure(
                 StatusCode::NOT_FOUND,
-                ErrorDetail::new(ErrorCode::NotFound, "no pending orders in approval queue"),
+                ErrorDetail::new(
+                    ErrorCode::NotFound,
+                    "no matching pending order in approval queue",
+                ),
             )
         }
     } else {

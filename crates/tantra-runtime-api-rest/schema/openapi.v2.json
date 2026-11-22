@@ -50,7 +50,7 @@
         "tags": [
           "approval"
         ],
-        "summary": "Approve a pending order",
+        "summary": "Approve a pending order (successor: /approvals/:id/approve)",
         "operationId": "postApproveOrder",
         "parameters": [],
         "requestBody": {
@@ -82,7 +82,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 1048576
+        "x-tantra-max-body-bytes": 1048576,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -93,13 +94,93 @@
         "tags": [
           "approval"
         ],
-        "summary": "Pending order approval queue",
+        "summary": "Pending order approval queue (successor: /approvals)",
         "operationId": "getApprovalQueue",
         "parameters": [],
         "requestBody": null,
         "responses": {
           "200": {
             "description": "Approval queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "admin"
+            ]
+          }
+        ],
+        "deprecated": true
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/approval/reject": {
+      "get": null,
+      "post": {
+        "tags": [
+          "approval"
+        ],
+        "summary": "Reject a pending order (successor: /approvals/:id/reject)",
+        "operationId": "postRejectOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "admin"
+            ]
+          }
+        ],
+        "x-tantra-max-body-bytes": 1048576,
+        "deprecated": true
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/approvals": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "GET /approvals",
+        "operationId": "getApprovals",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -122,15 +203,25 @@
       "patch": null,
       "delete": null
     },
-    "/approval/reject": {
+    "/approvals/{id}/approve": {
       "get": null,
       "post": {
         "tags": [
-          "approval"
+          "approvals"
         ],
-        "summary": "Reject a pending order",
-        "operationId": "postRejectOrder",
-        "parameters": [],
+        "summary": "POST /approvals/{id}/approve",
+        "operationId": "postApprovalsByIdApprove",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -143,7 +234,61 @@
         },
         "responses": {
           "200": {
-            "description": "Order rejected",
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "admin"
+            ]
+          }
+        ],
+        "x-tantra-max-body-bytes": 1048576
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/approvals/{id}/reject": {
+      "get": null,
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "POST /approvals/{id}/reject",
+        "operationId": "postApprovalsByIdReject",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -462,6 +607,74 @@
         "responses": {
           "200": {
             "description": "Historical bars",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/block-deals": {
+      "get": {
+        "tags": [
+          "block-deals"
+        ],
+        "summary": "GET /block-deals",
+        "operationId": "getBlockDeals",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/calendar": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "GET /calendar",
+        "operationId": "getCalendar",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -1043,7 +1256,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Multi-asset study catalog and schedule metadata",
+        "summary": "Multi-asset study catalog and schedule metadata (successor: /studies/experimental-analysis/catalog)",
         "operationId": "getExperimentalAnalysisCatalog",
         "parameters": [
           {
@@ -1111,7 +1324,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -1124,7 +1338,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Evaluate cross-asset Pearson/Spearman correlation matrix & rolling pair spread",
+        "summary": "Evaluate cross-asset Pearson/Spearman correlation matrix & rolling pair spread (successor: /studies/experimental-analysis/correlation)",
         "operationId": "postExperimentalAnalysisCorrelation",
         "parameters": [],
         "requestBody": {
@@ -1236,7 +1450,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 4194304
+        "x-tantra-max-body-bytes": 4194304,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -1248,7 +1463,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Evaluate [-20d, +20d] CAR event reaction study for buybacks, earnings, macro & F&O rebalance",
+        "summary": "Evaluate [-20d, +20d] CAR event reaction study for buybacks, earnings, macro & F&O rebalance (successor: /studies/experimental-analysis/events)",
         "operationId": "postExperimentalAnalysisEvents",
         "parameters": [],
         "requestBody": {
@@ -1361,7 +1576,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 4194304
+        "x-tantra-max-body-bytes": 4194304,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -1373,7 +1589,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Evaluate Markov + volatility regime analog quantile forecast",
+        "summary": "Evaluate Markov + volatility regime analog quantile forecast (successor: /studies/experimental-analysis/forecast)",
         "operationId": "postExperimentalAnalysisForecast",
         "parameters": [],
         "requestBody": {
@@ -1529,7 +1745,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 4194304
+        "x-tantra-max-body-bytes": 4194304,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -1541,7 +1758,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Evaluate intraday movement, gaps, 5-day moves, cycle progress & 15m ORB flip",
+        "summary": "Evaluate intraday movement, gaps, 5-day moves, cycle progress & 15m ORB flip (successor: /studies/experimental-analysis/intraday)",
         "operationId": "postExperimentalAnalysisIntraday",
         "parameters": [],
         "requestBody": {
@@ -1704,7 +1921,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 4194304
+        "x-tantra-max-body-bytes": 4194304,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -1716,7 +1934,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Evaluate multi-leg F&O options overlay & live bid-ask strike lab",
+        "summary": "Evaluate multi-leg F&O options overlay & live bid-ask strike lab (successor: /studies/experimental-analysis/options-overlay)",
         "operationId": "postExperimentalAnalysisOptionsOverlay",
         "parameters": [],
         "requestBody": {
@@ -1862,7 +2080,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 4194304
+        "x-tantra-max-body-bytes": 4194304,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -1874,7 +2093,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Retrieve dated archival news, macro releases & filings for outlier windows",
+        "summary": "Retrieve dated archival news, macro releases & filings for outlier windows (successor: /studies/experimental-analysis/outlier-news)",
         "operationId": "postExperimentalAnalysisOutlierNews",
         "parameters": [],
         "requestBody": {
@@ -1989,7 +2208,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 4194304
+        "x-tantra-max-body-bytes": 4194304,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -2001,7 +2221,7 @@
         "tags": [
           "experimental-analysis"
         ],
-        "summary": "Evaluate period returns, streaks, Markov, distribution, and outlier study",
+        "summary": "Evaluate period returns, streaks, Markov, distribution, and outlier study (successor: /studies/experimental-analysis/returns)",
         "operationId": "postExperimentalAnalysisReturns",
         "parameters": [],
         "requestBody": {
@@ -2200,7 +2420,8 @@
             ]
           }
         ],
-        "x-tantra-max-body-bytes": 4194304
+        "x-tantra-max-body-bytes": 4194304,
+        "deprecated": true
       },
       "put": null,
       "patch": null,
@@ -2211,7 +2432,7 @@
         "tags": [
           "reports"
         ],
-        "summary": "Fees report (legacy alias of /reports/fees)",
+        "summary": "Fees report (legacy alias of /reports/fees) (successor: /reports/fees)",
         "operationId": "getFeesReport",
         "parameters": [],
         "requestBody": null,
@@ -2233,7 +2454,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2350,12 +2572,56 @@
       "patch": null,
       "delete": null
     },
+    "/instruments/{id}/profile": {
+      "get": {
+        "tags": [
+          "instruments"
+        ],
+        "summary": "GET /instruments/{id}/profile",
+        "operationId": "getInstrumentsByIdProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/journals/{id}": {
       "get": {
         "tags": [
           "runs"
         ],
-        "summary": "Run journal by id",
+        "summary": "Run journal by id (successor: /backtests/:id/journal)",
         "operationId": "getJournalById",
         "parameters": [
           {
@@ -2387,7 +2653,8 @@
               "research"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2399,7 +2666,7 @@
         "tags": [
           "reports"
         ],
-        "summary": "General ledger (legacy alias of /reports/ledger)",
+        "summary": "General ledger (legacy alias of /reports/ledger) (successor: /reports/ledger)",
         "operationId": "getLedger",
         "parameters": [],
         "requestBody": null,
@@ -2421,7 +2688,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2433,8 +2701,8 @@
         "tags": [
           "market-reference"
         ],
-        "summary": "Block / bulk deal disclosures",
-        "operationId": "getBlockDeals",
+        "summary": "Block / bulk deal disclosures (successor: /block-deals)",
+        "operationId": "getBlockDealsLegacy",
         "parameters": [
           {
             "name": "instrument",
@@ -2474,7 +2742,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2486,7 +2755,7 @@
         "tags": [
           "market-reference"
         ],
-        "summary": "Economic / earnings / dividends / splits / IPO calendar",
+        "summary": "Economic / earnings / dividends / splits / IPO calendar (successor: /calendar)",
         "operationId": "getMarketCalendar",
         "parameters": [
           {
@@ -2536,7 +2805,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2548,7 +2818,7 @@
         "tags": [
           "market-reference"
         ],
-        "summary": "Company symbol profile / fundamentals",
+        "summary": "Company symbol profile / fundamentals (successor: /instruments/:id/profile)",
         "operationId": "getSymbolProfile",
         "parameters": [
           {
@@ -2580,7 +2850,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2669,7 +2940,44 @@
       "delete": null
     },
     "/orders/{id}": {
-      "get": null,
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "GET /orders/{id}",
+        "operationId": "getOrdersById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "trade"
+            ]
+          }
+        ]
+      },
       "post": null,
       "put": null,
       "patch": null,
@@ -2677,7 +2985,7 @@
         "tags": [
           "trading"
         ],
-        "summary": "Cancel an order",
+        "summary": "Cancel an order (successor: /orders/:id/cancel)",
         "operationId": "deleteOrder",
         "parameters": [
           {
@@ -2709,8 +3017,63 @@
               "trade"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       }
+    },
+    "/orders/{id}/cancel": {
+      "get": null,
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "POST /orders/{id}/cancel",
+        "operationId": "postOrdersByIdCancel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AnyValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "trade"
+            ]
+          }
+        ],
+        "x-tantra-max-body-bytes": 1048576
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
     },
     "/orders/{id}/fills": {
       "get": {
@@ -2829,7 +3192,7 @@
         "tags": [
           "portfolio"
         ],
-        "summary": "Portfolio equity curve",
+        "summary": "Portfolio equity curve (successor: /reports/equity-curve)",
         "operationId": "getEquityCurve",
         "parameters": [],
         "requestBody": null,
@@ -2851,7 +3214,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2863,7 +3227,7 @@
         "tags": [
           "portfolio"
         ],
-        "summary": "Portfolio concentration risk",
+        "summary": "Portfolio concentration risk (successor: /reports/concentration)",
         "operationId": "getConcentrationRisk",
         "parameters": [],
         "requestBody": null,
@@ -2885,7 +3249,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -2999,7 +3364,7 @@
         "tags": [
           "portfolio"
         ],
-        "summary": "Weighted average cost per instrument",
+        "summary": "Weighted average cost per instrument (successor: /reports/wac)",
         "operationId": "getWeightedAverageCost",
         "parameters": [],
         "requestBody": null,
@@ -3021,7 +3386,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -3033,7 +3399,7 @@
         "tags": [
           "trading"
         ],
-        "summary": "Current open positions",
+        "summary": "Current open positions (successor: /portfolio/positions)",
         "operationId": "getPositions",
         "parameters": [],
         "requestBody": null,
@@ -3055,7 +3421,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -3067,7 +3434,7 @@
         "tags": [
           "reports"
         ],
-        "summary": "Position audit trail",
+        "summary": "Position audit trail (successor: /reports/audit)",
         "operationId": "getPositionAudit",
         "parameters": [],
         "requestBody": null,
@@ -3089,7 +3456,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -3620,7 +3988,7 @@
         "tags": [
           "reports"
         ],
-        "summary": "Fills report for one order",
+        "summary": "Fills report for one order (successor: /orders/:order_id/fills)",
         "operationId": "getReportFills",
         "parameters": [
           {
@@ -3652,7 +4020,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -3828,7 +4197,7 @@
         "tags": [
           "screener"
         ],
-        "summary": "Run an AST-filtered screener scan",
+        "summary": "Run an AST-filtered screener scan (successor: /screener/scans)",
         "operationId": "getScreenerScan",
         "parameters": [
           {
@@ -3863,6 +4232,41 @@
         "responses": {
           "200": {
             "description": "Screener result rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ],
+        "deprecated": true
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/screener/scans": {
+      "get": {
+        "tags": [
+          "screener"
+        ],
+        "summary": "GET /screener/scans",
+        "operationId": "getScreenerScans",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -6307,7 +6711,7 @@
         "tags": [
           "reports"
         ],
-        "summary": "Tax report (legacy alias of /reports/tax)",
+        "summary": "Tax report (legacy alias of /reports/tax) (successor: /reports/tax)",
         "operationId": "getTaxReport",
         "parameters": [],
         "requestBody": null,
@@ -6329,7 +6733,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -6804,7 +7209,7 @@
         "tags": [
           "portfolio"
         ],
-        "summary": "Trade history",
+        "summary": "Trade history (successor: /portfolio/trades)",
         "operationId": "getTrades",
         "parameters": [],
         "requestBody": null,
@@ -6826,7 +7231,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -6969,7 +7375,7 @@
         "tags": [
           "ws"
         ],
-        "summary": "GET /ws/live",
+        "summary": "GET /ws/live (successor: /ws)",
         "operationId": "getWsLive",
         "parameters": [],
         "requestBody": null,
@@ -6991,7 +7397,8 @@
               "trade"
             ]
           }
-        ]
+        ],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -7003,7 +7410,7 @@
         "tags": [
           "ws"
         ],
-        "summary": "WebSocket market data stream",
+        "summary": "WebSocket market data stream (successor: /ws)",
         "operationId": "getWsMarket",
         "parameters": [],
         "requestBody": null,
@@ -7019,7 +7426,8 @@
             }
           }
         },
-        "security": []
+        "security": [],
+        "deprecated": true
       },
       "post": null,
       "put": null,

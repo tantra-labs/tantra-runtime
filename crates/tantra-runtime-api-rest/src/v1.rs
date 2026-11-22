@@ -133,11 +133,39 @@ pub async fn get_orders(
 }
 
 /// Post orders.
+///
+/// Ledger key, in order: the `Idempotency-Key` header, the body's `client_order_id`, else a
+/// fresh UUID (`.agents/rules/security-and-secrets.md` §2.3: never a constant key, which would
+/// make every keyless order a duplicate of the first). Differing header and body keys are a 422.
 pub async fn post_orders(
     State(state): State<Arc<AppState>>,
-    req: ApiJson<OrdersRequest>,
+    headers: axum::http::HeaderMap,
+    ApiJson(mut body): ApiJson<OrdersRequest>,
 ) -> Response {
-    orders::post_orders(State(state), req, "rest".to_string()).await
+    let bad_key = |why: &str| {
+        market::failure(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            tantra_runtime_api::ErrorDetail::new(
+                tantra_runtime_api::ErrorCode::ValidationInvalidRequest,
+                why.to_string(),
+            )
+            .with_context(serde_json::json!({"field": "Idempotency-Key"})),
+        )
+    };
+    if let Some(raw) = headers.get("idempotency-key") {
+        let key = match raw.to_str().map(str::trim) {
+            Ok(k) if (1..=128).contains(&k.chars().count()) => k.to_string(),
+            _ => return bad_key("Idempotency-Key must be 1-128 visible characters"),
+        };
+        match body.client_order_id.as_deref() {
+            Some(existing) if existing != key => {
+                return bad_key("Idempotency-Key header differs from client_order_id in the body");
+            }
+            _ => body.client_order_id = Some(key),
+        }
+    }
+    let order_id = uuid::Uuid::new_v4().to_string();
+    orders::post_orders(State(state), ApiJson(body), order_id).await
 }
 
 /// Delete order.
@@ -174,6 +202,12 @@ pub fn router() -> Router<Arc<AppState>> {
     router.layer(axum::middleware::from_fn(v1_headers))
 }
 
+/// The `/api/v2` view of the v1 table: routes with a canonical successor answer `308` (or
+/// carry deprecation headers); everything else is served as in v1.
+pub fn v2_router() -> Router<Arc<AppState>> {
+    table().finish_both().1
+}
+
 /// Every route [`router`] serves, with its scope and body cap (`:param` spelling).
 pub fn manifest() -> Vec<RouteEntry> {
     table().finish().1
@@ -203,12 +237,15 @@ fn table() -> RouteTable {
         .get("/depth/:id", market::get_depth, READ)
         // Market reference data (Phase 3): symbol profile + calendar, backed
         // by tantra-data's symbol-profile / calendar ingestion.
+        .v2_redirect("/instruments/:id/profile")
         .get(
             "/market-data/symbol-profile/:id",
             market::get_symbol_profile,
             READ,
         )
+        .v2_redirect("/calendar")
         .get("/market-data/calendar", market::get_market_calendar, READ)
+        .v2_redirect("/block-deals")
         .get("/market-data/block-deals", market::get_block_deals, READ)
         .post_capped("/bars", ingest::post_bars, TRADE, BARS_BODY_BYTES)
         .get("/trading-state", trading_state::get_trading_state, ADMIN)
@@ -226,14 +263,23 @@ fn table() -> RouteTable {
         .get("/portfolio/positions", portfolio::get_positions, READ)
         .get("/portfolio/holdings", portfolio::get_holdings, READ)
         .get("/portfolio/trades", portfolio::get_trades, READ)
+        .v2_redirect("/reports/equity-curve")
         .get("/portfolio/chart", get_equity_curve, READ)
+        .v2_redirect("/reports/concentration")
         .get("/portfolio/concentration", get_concentration_risk, READ)
+        .v2_redirect("/reports/wac")
         .get("/portfolio/wac", get_weighted_average_cost, READ)
+        .v2_redirect("/reports/ledger")
         .get("/ledger", get_ledger, READ)
+        .v2_redirect("/reports/tax")
         .get("/tax/report", get_tax_report, READ)
+        .v2_redirect("/reports/fees")
         .get("/fees", get_fees_report, READ)
+        .v2_redirect("/portfolio/positions")
         .get("/positions", portfolio::get_positions, READ)
+        .v2_redirect("/reports/audit")
         .get("/positions/audit", get_position_audit, READ)
+        .v2_redirect("/portfolio/trades")
         .get("/trades", portfolio::get_trades, READ)
         .get("/reports/ledger", get_ledger, READ)
         .get("/reports/tax", get_tax_report, READ)
@@ -243,6 +289,7 @@ fn table() -> RouteTable {
         .get("/reports/wac", get_weighted_average_cost, READ)
         .get("/reports/fees", get_fees_report, READ)
         .get("/reports/equity-curve", get_equity_curve, READ)
+        .v2_redirect("/orders/:order_id/fills")
         .get("/reports/fills/:order_id", get_order_fills, READ)
         .post_capped("/strategies", post_strategies, RESEARCH, STUDY_BODY_BYTES)
         .get("/strategies", get_strategies, RESEARCH)
@@ -272,54 +319,67 @@ fn table() -> RouteTable {
         .get("/sweeps/:id/journal", runs::get_sweep_journal, RESEARCH)
         .post("/orders", post_orders, TRADE)
         .get("/orders", get_orders, TRADE)
+        .v2_deprecated("/orders/:id/cancel")
         .delete("/orders/:id", delete_order, TRADE)
         .get("/orders/:id/fills", get_order_fills, READ)
         .post("/positions/close", post_close_positions, TRADE)
+        .v2_redirect("/approvals")
         .get("/approval/queue", orders::get_approval_queue, ADMIN)
+        .v2_deprecated("/approvals/:id/approve")
         .post("/approval/approve", orders::post_approve_order, ADMIN)
+        .v2_deprecated("/approvals/:id/reject")
         .post("/approval/reject", orders::post_reject_order, ADMIN)
+        .v2_redirect("/screener/scans")
         .get("/screener/scan", screener::get_screener_scan, READ)
+        .v2_redirect("/studies/experimental-analysis/catalog")
         .get(
             "/experimental-analysis/catalog",
             experimental_analysis::get_catalog,
             READ,
         )
+        .v2_redirect("/studies/experimental-analysis/returns")
         .post_capped(
             "/experimental-analysis/returns",
             experimental_analysis::post_returns,
             READ,
             STUDY_BODY_BYTES,
         )
+        .v2_redirect("/studies/experimental-analysis/intraday")
         .post_capped(
             "/experimental-analysis/intraday",
             experimental_analysis::post_intraday,
             READ,
             STUDY_BODY_BYTES,
         )
+        .v2_redirect("/studies/experimental-analysis/correlation")
         .post_capped(
             "/experimental-analysis/correlation",
             experimental_analysis::post_correlation,
             READ,
             STUDY_BODY_BYTES,
         )
+        .v2_redirect("/studies/experimental-analysis/options-overlay")
         .post_capped(
             "/experimental-analysis/options-overlay",
             experimental_analysis::post_options_overlay,
             READ,
             STUDY_BODY_BYTES,
         )
+        .v2_redirect("/studies/experimental-analysis/forecast")
         .post_capped(
             "/experimental-analysis/forecast",
             experimental_analysis::post_forecast,
             READ,
             STUDY_BODY_BYTES,
         )
+        .v2_redirect("/studies/experimental-analysis/events")
         .post_capped(
             "/experimental-analysis/events",
             experimental_analysis::post_events,
             READ,
             STUDY_BODY_BYTES,
         )
+        .v2_redirect("/studies/experimental-analysis/outlier-news")
         .post_capped(
             "/experimental-analysis/outlier-news",
             experimental_analysis::post_outlier_news,
@@ -344,6 +404,7 @@ fn table() -> RouteTable {
             READ,
             STUDY_BODY_BYTES,
         )
+        .v2_deprecated("/backtests/:id/journal")
         .get("/journals/:id", runs::get_journal_by_id, RESEARCH)
         // Trade-performance journal (distinct from run/backtest journals and
         // the operator journal): backed by tantra-ledger-performance.
@@ -361,8 +422,10 @@ fn table() -> RouteTable {
         .post("/trade-journal/notes", post_trade_journal_note, TRADE)
         .get("/trade-journal/compare", get_trade_journal_compare, READ)
         .get("/ws", ws_handler, PUBLIC)
+        .v2_deprecated("/ws")
         .get("/ws/market", ws_handler, PUBLIC)
         // Paper-exchange live socket: accepts place/cancel order commands.
+        .v2_deprecated("/ws")
         .get("/ws/live", ws_live_handler, TRADE)
         // Chat WebSocket: hits a real LLM, unlike the public /ws and /ws/market feeds, so it
         // requires any valid token rather than being public.
