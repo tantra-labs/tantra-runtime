@@ -35,9 +35,7 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
         ]
       },
@@ -80,10 +78,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "admin"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "put": null,
       "patch": null,
@@ -113,7 +112,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "admin"
             ]
           }
         ]
@@ -157,10 +156,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "admin"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "put": null,
       "patch": null,
@@ -190,7 +190,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -227,10 +227,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -270,7 +271,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -314,7 +315,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -358,7 +359,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -402,10 +403,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "trade"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 16777216
       },
       "put": null,
       "patch": null,
@@ -503,18 +505,494 @@
             }
           }
         },
-        "security": [
-          {
-            "Bearer": [
-              "read"
-            ]
-          }
-        ]
+        "security": []
       },
       "post": null,
       "put": null,
       "patch": null,
       "delete": null
+    },
+    "/chat/threads": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List persisted chat threads for the authenticated caller",
+        "operationId": "getChatThreads",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "List of caller-owned chat threads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ChatThreadsListDto",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ChatThreadsListDto"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Create a new caller- and workspace-scoped chat thread",
+        "operationId": "postChatThread",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "CreateChatThreadRequest",
+                "description": "Request body for `POST /api/v2/chat/threads`.",
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "description": "Initial model identifier (falls back to server default when omitted or blank).",
+                    "default": null,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "description": "Initial human-readable thread title.",
+                    "default": null,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "workspace": {
+                    "description": "Target workspace identifier (defaults to `\"default\"` when omitted or blank).",
+                    "default": null,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created chat thread metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ChatThreadDto",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ChatThreadDto"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "x-tantra-max-body-bytes": 1048576
+      },
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/chat/threads/{id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Fetch a single chat thread and its persisted messages",
+        "operationId": "getChatThread",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Thread metadata and message history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ChatThreadDetailDto",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ChatThreadDetailDto"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Update title, archived flag, or model on a chat thread",
+        "operationId": "patchChatThread",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "PatchChatThreadRequest",
+                "description": "Request body for `PATCH /api/v2/chat/threads/:id`.",
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "description": "Archive or unarchive the thread.",
+                    "default": null,
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "model": {
+                    "description": "Updated model name associated with the thread (must not be whitespace-only).",
+                    "default": null,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "description": "Updated thread title (must not be whitespace-only).",
+                    "default": null,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated chat thread metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_ChatThreadDto",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ChatThreadDto"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "x-tantra-max-body-bytes": 1048576
+      },
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Permanently delete a chat thread and its messages",
+        "operationId": "deleteChatThread",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Deleted chat thread acknowledgement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_DeleteChatThreadResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/DeleteChatThreadResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
     },
     "/depth/{id}": {
       "get": {
@@ -757,7 +1235,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -881,7 +1360,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -1048,7 +1528,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -1222,7 +1703,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -1379,7 +1861,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -1505,7 +1988,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -1715,7 +2199,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -1776,13 +2261,7 @@
             }
           }
         },
-        "security": [
-          {
-            "Bearer": [
-              "read"
-            ]
-          }
-        ]
+        "security": []
       },
       "post": null,
       "put": null,
@@ -1905,7 +2384,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -2182,7 +2661,8 @@
               "trade"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "put": null,
       "patch": null,
@@ -2650,10 +3130,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "trade"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "put": null,
       "patch": null,
@@ -2682,9 +3163,7 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
         ]
       },
@@ -2720,11 +3199,10 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "patch": null,
       "delete": null
@@ -2752,9 +3230,7 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
         ]
       },
@@ -2807,11 +3283,10 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "patch": null,
       "delete": {
@@ -2846,9 +3321,7 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
         ]
       }
@@ -2876,9 +3349,7 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
         ]
       },
@@ -2931,11 +3402,10 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "patch": null,
       "delete": {
@@ -2970,9 +3440,7 @@
         },
         "security": [
           {
-            "Bearer": [
-              "read"
-            ]
+            "Bearer": []
           }
         ]
       }
@@ -3441,7 +3909,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -3478,10 +3946,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -3521,10 +3990,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -3727,7 +4197,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -3851,7 +4322,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -4018,7 +4490,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -4192,7 +4665,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -4349,7 +4823,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -4475,7 +4950,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -4685,7 +5161,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -4791,7 +5268,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -5042,7 +5520,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -5333,7 +5812,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -5551,7 +6031,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -5655,7 +6136,8 @@
               "read"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -5685,7 +6167,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -5722,10 +6204,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 4194304
       },
       "put": null,
       "patch": null,
@@ -5765,7 +6248,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -5809,7 +6292,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "research"
             ]
           }
         ]
@@ -5914,10 +6397,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "trade"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "put": null,
       "patch": null,
@@ -6118,10 +6602,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "trade"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "put": null,
       "patch": null,
@@ -6257,6 +6742,13 @@
       },
       "post": null,
       "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/trade-journal/trades/{id}": {
+      "get": null,
+      "post": null,
+      "put": null,
       "patch": {
         "tags": [
           "trade-journal"
@@ -6299,10 +6791,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "trade"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "delete": null
     },
@@ -6364,7 +6857,7 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "admin"
             ]
           }
         ]
@@ -6402,10 +6895,11 @@
         "security": [
           {
             "Bearer": [
-              "read"
+              "admin"
             ]
           }
-        ]
+        ],
+        "x-tantra-max-body-bytes": 1048576
       },
       "patch": null,
       "delete": null
@@ -6431,13 +6925,7 @@
             }
           }
         },
-        "security": [
-          {
-            "Bearer": [
-              "read"
-            ]
-          }
-        ]
+        "security": []
       },
       "post": null,
       "put": null,
@@ -6467,8 +6955,40 @@
         },
         "security": [
           {
+            "Bearer": []
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
+    "/ws/live": {
+      "get": {
+        "tags": [
+          "ws"
+        ],
+        "summary": "GET /ws/live",
+        "operationId": "getWsLive",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
             "Bearer": [
-              "read"
+              "trade"
             ]
           }
         ]
@@ -6499,13 +7019,7 @@
             }
           }
         },
-        "security": [
-          {
-            "Bearer": [
-              "read"
-            ]
-          }
-        ]
+        "security": []
       },
       "post": null,
       "put": null,
@@ -6764,6 +7278,178 @@
           }
         }
       },
+      "ChatThreadDetailDto": {
+        "title": "ChatThreadDetailDto",
+        "description": "Response payload for `GET /api/v2/chat/threads/:id`.",
+        "type": "object",
+        "required": [
+          "messages",
+          "thread"
+        ],
+        "properties": {
+          "messages": {
+            "description": "Chronologically ordered persisted messages for this thread.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ChatThreadMessageDto"
+            }
+          },
+          "thread": {
+            "description": "Thread summary metadata.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/ChatThreadDto"
+              }
+            ]
+          }
+        }
+      },
+      "ChatThreadDto": {
+        "title": "ChatThreadDto",
+        "description": "Wire summary of a single persisted chat thread.",
+        "type": "object",
+        "required": [
+          "archived",
+          "created_at",
+          "id",
+          "model",
+          "provider",
+          "title",
+          "updated_at",
+          "workspace"
+        ],
+        "properties": {
+          "archived": {
+            "description": "Whether the thread is archived.",
+            "type": "boolean"
+          },
+          "created_at": {
+            "description": "Creation timestamp (RFC 3339).",
+            "type": "string"
+          },
+          "id": {
+            "description": "Session / thread UUID string.",
+            "type": "string"
+          },
+          "model": {
+            "description": "Active LLM model name.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "LLM provider identifier.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Thread title (defaults to `\"New Quant session\"` when unset or blank).",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Last updated timestamp (RFC 3339).",
+            "type": "string"
+          },
+          "workspace": {
+            "description": "Workspace identifier with any caller prefix stripped.",
+            "type": "string"
+          }
+        }
+      },
+      "ChatThreadMessageDto": {
+        "title": "ChatThreadMessageDto",
+        "description": "Single persisted turn/message item returned by `GET /api/v2/chat/threads/:id`.",
+        "type": "object",
+        "required": [
+          "content",
+          "created_at",
+          "role",
+          "seq"
+        ],
+        "properties": {
+          "content": {
+            "description": "Structured JSON message payload (`{\"text\": ...}`, `tool_calls`, `results`, etc.)."
+          },
+          "created_at": {
+            "description": "Message creation timestamp (RFC 3339).",
+            "type": "string"
+          },
+          "input_tokens": {
+            "description": "Prompt token count recorded on this message, when available.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0.0
+          },
+          "output_tokens": {
+            "description": "Completion token count recorded on this message, when available.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0.0
+          },
+          "role": {
+            "description": "Message role (`user`, `assistant`, `tool`, or `system`).",
+            "type": "string"
+          },
+          "seq": {
+            "description": "Strictly increasing message sequence number within the thread.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        }
+      },
+      "ChatThreadsListDto": {
+        "title": "ChatThreadsListDto",
+        "description": "Response payload for `GET /api/v2/chat/threads`.",
+        "type": "object",
+        "required": [
+          "threads"
+        ],
+        "properties": {
+          "threads": {
+            "description": "Caller-scoped threads ordered newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ChatThreadDto"
+            }
+          }
+        }
+      },
+      "CreateChatThreadRequest": {
+        "title": "CreateChatThreadRequest",
+        "description": "Request body for `POST /api/v2/chat/threads`.",
+        "type": "object",
+        "properties": {
+          "model": {
+            "description": "Initial model identifier (falls back to server default when omitted or blank).",
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "Initial human-readable thread title.",
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace": {
+            "description": "Target workspace identifier (defaults to `\"default\"` when omitted or blank).",
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "CycleProgressAnalysis": {
         "description": "Tab 6: Intra-cycle progress (0% → 100%) normalized drift cone.",
         "type": "object",
@@ -6998,6 +7684,25 @@
           "live_feed_connected": {
             "description": "Whether a live quote store/broadcast feed is wired.",
             "type": "boolean"
+          }
+        }
+      },
+      "DeleteChatThreadResponse": {
+        "title": "DeleteChatThreadResponse",
+        "description": "Response payload for `DELETE /api/v2/chat/threads/:id`.",
+        "type": "object",
+        "required": [
+          "deleted",
+          "id"
+        ],
+        "properties": {
+          "deleted": {
+            "description": "Always `true` when deletion succeeded.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Deleted thread UUID string.",
+            "type": "string"
           }
         }
       },
@@ -11946,6 +12651,38 @@
           }
         }
       },
+      "PatchChatThreadRequest": {
+        "title": "PatchChatThreadRequest",
+        "description": "Request body for `PATCH /api/v2/chat/threads/:id`.",
+        "type": "object",
+        "properties": {
+          "archived": {
+            "description": "Archive or unarchive the thread.",
+            "default": null,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "model": {
+            "description": "Updated model name associated with the thread (must not be whitespace-only).",
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "Updated thread title (must not be whitespace-only).",
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "PenetrationDistributionDto": {
         "description": "Empirical excursion percentiles beyond zone outer edges (expressed in ATR units).",
         "type": "object",
@@ -16098,6 +16835,10 @@
     {
       "name": "approval",
       "description": "Order approval workflow (queue, approve, reject)"
+    },
+    {
+      "name": "chat",
+      "description": "Caller- and workspace-scoped conversational chat threads"
     }
   ]
 }

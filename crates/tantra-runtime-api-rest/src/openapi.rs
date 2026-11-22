@@ -9,6 +9,8 @@
 //! wire format, so field-level docs add little beyond their names.
 #![allow(missing_docs)]
 
+use crate::auth::RouteScope;
+use crate::route_table::RouteEntry;
 use axum::response::IntoResponse;
 use schemars::schema::*;
 use schemars::schema_for;
@@ -106,6 +108,13 @@ pub struct Operation {
     pub request_body: Option<RequestBody>,
     pub responses: BTreeMap<String, Response>,
     pub security: Vec<SecurityRequirement>,
+    /// Request-body cap in bytes, from the route registry (POST/PUT/PATCH only).
+    #[serde(
+        rename = "x-tantra-max-body-bytes",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub max_body_bytes: Option<usize>,
 }
 
 /// An OpenAPI parameter.
@@ -183,6 +192,7 @@ fn operation(
                 )]),
             },
         )]),
+        max_body_bytes: None,
         security: vec![SecurityRequirement {
             scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
         }],
@@ -215,6 +225,90 @@ fn path_param(name: &str) -> Parameter {
     }
 }
 
+fn empty_path_item() -> PathItem {
+    PathItem {
+        get: None,
+        post: None,
+        put: None,
+        patch: None,
+        delete: None,
+    }
+}
+
+fn item_ops(item: &PathItem) -> [(&'static str, Option<&Operation>); 5] {
+    [
+        ("GET", item.get.as_ref()),
+        ("POST", item.post.as_ref()),
+        ("PUT", item.put.as_ref()),
+        ("PATCH", item.patch.as_ref()),
+        ("DELETE", item.delete.as_ref()),
+    ]
+}
+
+/// Converts the router's `:param` spelling to OpenAPI `{param}`.
+fn brace_path(path: &str) -> String {
+    path.split('/')
+        .map(|seg| match seg.strip_prefix(':') {
+            Some(name) => format!("{{{name}}}"),
+            None => seg.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn bearer_requirement(scopes: Vec<String>) -> SecurityRequirement {
+    SecurityRequirement {
+        scheme: BTreeMap::from([("Bearer".to_string(), scopes)]),
+    }
+}
+
+fn capitalize(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+fn camel_words(segment: &str) -> String {
+    segment
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(capitalize)
+        .collect()
+}
+
+/// Default operation for a registry route that has no hand-written metadata.
+fn synthesize_operation(entry: &RouteEntry, path: &str) -> Operation {
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let tag = segments
+        .first()
+        .filter(|s| !s.starts_with('{'))
+        .copied()
+        .unwrap_or("root");
+    let mut id = entry.method.to_lowercase();
+    let mut params = Vec::new();
+    for seg in &segments {
+        match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+            Some(name) => {
+                id.push_str("By");
+                id.push_str(&camel_words(name));
+                params.push(path_param(name));
+            }
+            None => id.push_str(&camel_words(seg)),
+        }
+    }
+    let has_body = matches!(entry.method, "POST" | "PUT" | "PATCH");
+    operation(
+        tag,
+        &format!("{} {}", entry.method, path),
+        &id,
+        params,
+        has_body.then_some(true),
+        "Successful response",
+    )
+}
+
 /// OpenAPI components (schemas, security schemes, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -224,8 +318,10 @@ pub struct Components {
 }
 
 impl OpenApiDocument {
-    /// Generate the complete OpenAPI 3.1 document for the Tantra REST API.
-    pub fn generate() -> Self {
+    /// The hand-written metadata base: per-operation summaries, schemas and parameters keyed by
+    /// `{param}` path. These are metadata overrides only; the route registry decides which
+    /// operations exist and what security each carries (see [`Self::from_registry`]).
+    fn hand_base() -> Self {
         let mut paths = BTreeMap::new();
         let mut schemas = BTreeMap::new();
 
@@ -251,6 +347,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -283,6 +380,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -315,6 +413,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["trade".to_string()])]),
                     }],
@@ -359,6 +458,7 @@ impl OpenApiDocument {
                             },
                         ),
                     ]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["trade".to_string()])]),
                     }],
@@ -399,6 +499,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["trade".to_string()])]),
                     }],
@@ -427,6 +528,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -459,6 +561,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![],
                 }),
                 post: None,
@@ -534,7 +637,16 @@ impl OpenApiDocument {
                 )),
                 post: None,
                 put: None,
+                patch: None,
                 delete: None,
+            },
+        );
+        paths.insert(
+            "/trade-journal/trades/{id}".to_string(),
+            PathItem {
+                get: None,
+                post: None,
+                put: None,
                 patch: Some(operation(
                     "trade-journal",
                     "Set a trade's annotation",
@@ -543,6 +655,7 @@ impl OpenApiDocument {
                     Some(true),
                     "Updated trade annotation",
                 )),
+                delete: None,
             },
         );
         paths.insert(
@@ -1688,6 +1801,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1730,6 +1844,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1770,6 +1885,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1809,6 +1925,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1850,6 +1967,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1892,6 +2010,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1931,6 +2050,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -1973,6 +2093,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2013,6 +2134,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2052,6 +2174,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2091,6 +2214,7 @@ impl OpenApiDocument {
                             )]),
                         },
                     )]),
+                    max_body_bytes: None,
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
@@ -2407,8 +2531,90 @@ impl OpenApiDocument {
                     name: "approval".to_string(),
                     description: "Order approval workflow (queue, approve, reject)".to_string(),
                 },
+                Tag {
+                    name: "chat".to_string(),
+                    description: "Caller- and workspace-scoped conversational chat threads".to_string(),
+                },
             ],
         }
+    }
+
+    /// Hand-written metadata overrides: `(paths, schemas)` keyed by `{param}` path, including the
+    /// v2 `/studies/*` aliases and library operations.
+    fn hand_written() -> (BTreeMap<String, PathItem>, BTreeMap<String, Schema>) {
+        let mut base = Self::hand_base();
+        base.add_study_hand_ops();
+        base.add_v2_chat_thread_paths();
+        (base.paths, base.components.schemas)
+    }
+
+    /// Generate the default (v1-shaped) OpenAPI 3.1 document for the Tantra REST API.
+    pub fn generate() -> Self {
+        Self::from_registry(false)
+    }
+
+    /// Hand-written operations that have no route in the registry (v1 plus v2-only), as
+    /// `"METHOD path"`. Must be empty; a conformance test enforces it.
+    #[doc(hidden)]
+    pub fn phantom_operations() -> Vec<String> {
+        let (v1, v2_only, _root) = crate::registry_parts();
+        let routes: std::collections::BTreeSet<(String, String)> = v1
+            .iter()
+            .chain(v2_only.iter())
+            .map(|e| (e.method.to_string(), brace_path(e.path)))
+            .collect();
+        let (paths, _) = Self::hand_written();
+        let mut out = Vec::new();
+        for (path, item) in &paths {
+            for (method, op) in item_ops(item) {
+                if op.is_some() && !routes.contains(&(method.to_string(), path.clone())) {
+                    out.push(format!("{method} {path}"));
+                }
+            }
+        }
+        out
+    }
+
+    /// Build the document by walking the route registry: one operation per served route,
+    /// security taken from the route's scope, hand-written metadata used where it exists.
+    pub fn from_registry(include_v2_only: bool) -> Self {
+        let mut doc = Self::hand_base();
+        let (hand_paths, hand_schemas) = Self::hand_written();
+        let (v1, v2_only, _root) = crate::registry_parts();
+        let entries: Vec<RouteEntry> = if include_v2_only {
+            v1.into_iter().chain(v2_only).collect()
+        } else {
+            v1
+        };
+        let mut paths: BTreeMap<String, PathItem> = BTreeMap::new();
+        for entry in &entries {
+            let path = brace_path(entry.path);
+            let hand = hand_paths.get(&path).and_then(|item| {
+                item_ops(item)
+                    .into_iter()
+                    .find(|(m, _)| *m == entry.method)
+                    .and_then(|(_, op)| op.cloned())
+            });
+            let mut op = hand.unwrap_or_else(|| synthesize_operation(entry, &path));
+            op.security = match entry.scope {
+                RouteScope::Public => vec![],
+                RouteScope::Required(s) => vec![bearer_requirement(vec![s.to_string()])],
+                RouteScope::Authenticated => vec![bearer_requirement(vec![])],
+            };
+            op.max_body_bytes = entry.body_limit;
+            let item = paths.entry(path).or_insert_with(empty_path_item);
+            match entry.method {
+                "GET" => item.get = Some(op),
+                "POST" => item.post = Some(op),
+                "PUT" => item.put = Some(op),
+                "PATCH" => item.patch = Some(op),
+                "DELETE" => item.delete = Some(op),
+                _ => {}
+            }
+        }
+        doc.paths = paths;
+        doc.components.schemas = hand_schemas;
+        doc
     }
 
     /// Serialize the v2 spec to pretty JSON (the checked-in artifact format).
@@ -2424,7 +2630,7 @@ impl OpenApiDocument {
 
     /// Generate the OpenAPI 3.1 document for v1 (legacy & supported).
     pub fn generate_v1() -> Self {
-        let mut doc = Self::generate();
+        let mut doc = Self::from_registry(false);
         doc.info.title = "Tantra REST API v1".to_string();
         doc.info.version = "1.0.0".to_string();
         doc.info.description =
@@ -2444,7 +2650,7 @@ impl OpenApiDocument {
 
     /// Registers the v2-only canonical study routes: the library/signal-study surface and the
     /// `/studies/experimental-analysis/*` aliases of the (deprecated) v1-era paths.
-    fn add_v2_study_paths(&mut self) {
+    fn add_study_hand_ops(&mut self) {
         use crate::library_routes::{IndicatorComputeRequest, SignalStudyRequest};
         let bearer = || {
             vec![SecurityRequirement {
@@ -2503,6 +2709,7 @@ impl OpenApiDocument {
             ],
             request_body: None,
             responses: responses(any_schema.clone()),
+            max_body_bytes: None,
             security: bearer(),
         });
         self.paths
@@ -2523,6 +2730,7 @@ impl OpenApiDocument {
             ],
             request_body: None,
             responses: responses(any_schema.clone()),
+            max_body_bytes: None,
             security: bearer(),
         });
         self.paths
@@ -2552,15 +2760,170 @@ impl OpenApiDocument {
                     content: json_content(req),
                 }),
                 responses: responses(any_schema.clone()),
+                max_body_bytes: None,
                 security: bearer(),
             });
             self.paths.insert(path.to_string(), item);
         }
     }
 
+    /// Registers the v2-only caller/workspace-scoped `/chat/threads*` REST routes
+    /// and component schemas (`gap 0014`).
+    fn add_v2_chat_thread_paths(&mut self) {
+        use crate::chat_threads::{
+            ChatThreadDetailDto, ChatThreadDto, ChatThreadMessageDto, ChatThreadsListDto,
+            CreateChatThreadRequest, DeleteChatThreadResponse, PatchChatThreadRequest,
+        };
+        let bearer = || {
+            vec![SecurityRequirement {
+                scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+            }]
+        };
+        let json_content = |schema: Schema| {
+            BTreeMap::from([("application/json".to_string(), MediaType { schema })])
+        };
+        let responses = |description: &str, schema: Schema| {
+            BTreeMap::from([(
+                "200".to_string(),
+                Response {
+                    description: description.to_string(),
+                    content: json_content(schema),
+                },
+            )])
+        };
+
+        let list_schema =
+            register_schema::<ResponseEnvelope<ChatThreadsListDto>>(&mut self.components.schemas);
+        let thread_schema =
+            register_schema::<ResponseEnvelope<ChatThreadDto>>(&mut self.components.schemas);
+        let detail_schema =
+            register_schema::<ResponseEnvelope<ChatThreadDetailDto>>(&mut self.components.schemas);
+        let delete_schema = register_schema::<ResponseEnvelope<DeleteChatThreadResponse>>(
+            &mut self.components.schemas,
+        );
+        let create_req_schema =
+            register_schema::<CreateChatThreadRequest>(&mut self.components.schemas);
+        let patch_req_schema =
+            register_schema::<PatchChatThreadRequest>(&mut self.components.schemas);
+
+        for (name, schema) in [
+            ("ChatThreadDto", schema_for!(ChatThreadDto).schema.into()),
+            (
+                "ChatThreadsListDto",
+                schema_for!(ChatThreadsListDto).schema.into(),
+            ),
+            (
+                "ChatThreadMessageDto",
+                schema_for!(ChatThreadMessageDto).schema.into(),
+            ),
+            (
+                "ChatThreadDetailDto",
+                schema_for!(ChatThreadDetailDto).schema.into(),
+            ),
+            (
+                "CreateChatThreadRequest",
+                schema_for!(CreateChatThreadRequest).schema.into(),
+            ),
+            (
+                "PatchChatThreadRequest",
+                schema_for!(PatchChatThreadRequest).schema.into(),
+            ),
+            (
+                "DeleteChatThreadResponse",
+                schema_for!(DeleteChatThreadResponse).schema.into(),
+            ),
+        ] {
+            self.components.schemas.insert(name.to_string(), schema);
+        }
+
+        if !self.tags.iter().any(|t| t.name == "chat") {
+            self.tags.push(Tag {
+                name: "chat".to_string(),
+                description: "Caller- and workspace-scoped conversational chat threads".to_string(),
+            });
+        }
+
+        self.paths.insert(
+            "/chat/threads".to_string(),
+            PathItem {
+                get: Some(Operation {
+                    tags: vec!["chat".to_string()],
+                    summary: "List persisted chat threads for the authenticated caller".to_string(),
+                    operation_id: "getChatThreads".to_string(),
+                    parameters: vec![
+                        query_param("workspace"),
+                        query_param("archived"),
+                        query_param("limit"),
+                    ],
+                    request_body: None,
+                    responses: responses("List of caller-owned chat threads", list_schema),
+                    max_body_bytes: None,
+                    security: bearer(),
+                }),
+                post: Some(Operation {
+                    tags: vec!["chat".to_string()],
+                    summary: "Create a new caller- and workspace-scoped chat thread".to_string(),
+                    operation_id: "postChatThread".to_string(),
+                    parameters: vec![],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: json_content(create_req_schema),
+                    }),
+                    responses: responses("Created chat thread metadata", thread_schema.clone()),
+                    max_body_bytes: None,
+                    security: bearer(),
+                }),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        self.paths.insert(
+            "/chat/threads/{id}".to_string(),
+            PathItem {
+                get: Some(Operation {
+                    tags: vec!["chat".to_string()],
+                    summary: "Fetch a single chat thread and its persisted messages".to_string(),
+                    operation_id: "getChatThread".to_string(),
+                    parameters: vec![path_param("id"), query_param("workspace")],
+                    request_body: None,
+                    responses: responses("Thread metadata and message history", detail_schema),
+                    max_body_bytes: None,
+                    security: bearer(),
+                }),
+                post: None,
+                put: None,
+                patch: Some(Operation {
+                    tags: vec!["chat".to_string()],
+                    summary: "Update title, archived flag, or model on a chat thread".to_string(),
+                    operation_id: "patchChatThread".to_string(),
+                    parameters: vec![path_param("id"), query_param("workspace")],
+                    request_body: Some(RequestBody {
+                        required: true,
+                        content: json_content(patch_req_schema),
+                    }),
+                    responses: responses("Updated chat thread metadata", thread_schema),
+                    max_body_bytes: None,
+                    security: bearer(),
+                }),
+                delete: Some(Operation {
+                    tags: vec!["chat".to_string()],
+                    summary: "Permanently delete a chat thread and its messages".to_string(),
+                    operation_id: "deleteChatThread".to_string(),
+                    parameters: vec![path_param("id"), query_param("workspace")],
+                    request_body: None,
+                    responses: responses("Deleted chat thread acknowledgement", delete_schema),
+                    max_body_bytes: None,
+                    security: bearer(),
+                }),
+            },
+        );
+    }
+
     /// Generate the OpenAPI 3.1 document for v2 (latest & recommended).
     pub fn generate_v2() -> Self {
-        let mut doc = Self::generate();
+        let mut doc = Self::from_registry(true);
         doc.info.title = "Tantra REST API v2".to_string();
         doc.info.version = "2.0.0".to_string();
         doc.info.description =
@@ -2569,7 +2932,6 @@ impl OpenApiDocument {
             url: "/api/v2".to_string(),
             description: "Tantra REST API v2 (Latest & Recommended)".to_string(),
         }];
-        doc.add_v2_study_paths();
         doc
     }
 }

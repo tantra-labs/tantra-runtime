@@ -148,6 +148,32 @@ impl SessionStore for SqlxSessionStore {
         Ok(s.id)
     }
 
+    async fn get(&self, id: SessionId) -> Result<Option<SessionInfo>, StoreError> {
+        let id_str = id.to_string();
+
+        let info = with_executor!(&self.db, |ex| {
+            async {
+                let opt = sqlx::query(
+                    "SELECT id, profile, mode, title, provider, model, archived, created_at, updated_at
+                     FROM agent_chat_session
+                     WHERE id = $1",
+                )
+                .bind(&id_str)
+                .fetch_optional(ex)
+                .await
+                .map_err(sqlx_to_store_error)?;
+
+                opt.as_ref()
+                    .map(session_info_from_row)
+                    .transpose()
+                    .map_err(sqlx_to_store_error)
+            }
+            .await
+        })?;
+
+        Ok(info)
+    }
+
     async fn append(
         &self,
         id: SessionId,
@@ -347,6 +373,31 @@ impl SessionStore for SqlxSessionStore {
         }
     }
 
+    async fn set_archived(&self, id: SessionId, archived: bool) -> Result<(), StoreError> {
+        let id_str = id.to_string();
+        let archived_val: i32 = if archived { 1 } else { 0 };
+        let now = Utc::now();
+
+        let rows_affected = with_executor!(&self.db, |ex| {
+            sqlx::query(
+                "UPDATE agent_chat_session SET archived = $1, updated_at = $2 WHERE id = $3",
+            )
+            .bind(archived_val)
+            .bind(now)
+            .bind(&id_str)
+            .execute(ex)
+            .await
+            .map(|res| res.rows_affected())
+            .map_err(sqlx_to_store_error)
+        })?;
+
+        if rows_affected == 0 {
+            Err(StoreError::not_found(format!("session {id} not found")))
+        } else {
+            Ok(())
+        }
+    }
+
     async fn update_provider(
         &self,
         id: SessionId,
@@ -402,6 +453,36 @@ impl SessionStore for SqlxSessionStore {
                         .map_err(sqlx_to_store_error)?;
 
                 if update_res.rows_affected() == 0 {
+                    return Err(StoreError::not_found(format!("session {id} not found")));
+                }
+
+                tx.commit().await.map_err(sqlx_to_store_error)?;
+                Ok::<(), StoreError>(())
+            }
+            .await
+        })
+    }
+
+    async fn delete(&self, id: SessionId) -> Result<(), StoreError> {
+        let id_str = id.to_string();
+
+        with_executor!(&self.db, |ex| {
+            async {
+                let mut tx = ex.begin().await.map_err(sqlx_to_store_error)?;
+
+                sqlx::query("DELETE FROM agent_chat_message WHERE session_id = $1")
+                    .bind(&id_str)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(sqlx_to_store_error)?;
+
+                let delete_res = sqlx::query("DELETE FROM agent_chat_session WHERE id = $1")
+                    .bind(&id_str)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(sqlx_to_store_error)?;
+
+                if delete_res.rows_affected() == 0 {
                     return Err(StoreError::not_found(format!("session {id} not found")));
                 }
 

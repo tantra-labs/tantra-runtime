@@ -1,6 +1,7 @@
 use chrono::Utc;
 use tantra_agent_core::ports::{
-    NewSession, PersistedMessage, RuntimeMode, SessionFilter, SessionId, SessionScope, SessionStore,
+    NewSession, PersistedMessage, RuntimeMode, SessionFilter, SessionId, SessionScope,
+    SessionStore, StoreErrorKind,
 };
 use tantra_runtime_persistence::{Database, SqlxSessionStore, migrate};
 
@@ -36,12 +37,26 @@ async fn test_session_lifecycle_and_messages() {
 
     // 2. Duplicate create fails with conflict
     let conflict_err = store.create(new_session).await.unwrap_err();
-    assert_eq!(
-        conflict_err.kind,
-        tantra_agent_core::ports::StoreErrorKind::Conflict
+    assert_eq!(conflict_err.kind, StoreErrorKind::Conflict);
+
+    // 3. Single-session get (found and missing)
+    let fetched = store
+        .get(session_id)
+        .await
+        .expect("get session")
+        .expect("session exists");
+    assert_eq!(fetched.id, session_id);
+    assert_eq!(fetched.title.as_deref(), Some("Initial Exploration"));
+    assert!(!fetched.archived);
+    assert!(
+        store
+            .get(SessionId::new())
+            .await
+            .expect("get missing")
+            .is_none()
     );
 
-    // 3. Most recent session lookup
+    // 4. Most recent session lookup
     let scope = SessionScope::new("default", RuntimeMode::Paper);
     let recent = store
         .most_recent(&scope)
@@ -51,7 +66,7 @@ async fn test_session_lifecycle_and_messages() {
     assert_eq!(recent.id, session_id);
     assert_eq!(recent.title.as_deref(), Some("Initial Exploration"));
 
-    // 4. Append messages
+    // 5. Append messages
     let msg1 = PersistedMessage {
         seq: 1,
         role: "user".to_string(),
@@ -77,7 +92,7 @@ async fn test_session_lifecycle_and_messages() {
         .expect("append messages");
     assert_eq!(appended_seqs, vec![1, 2]);
 
-    // 5. Fetch messages
+    // 6. Fetch messages
     let msgs = store.messages(session_id).await.expect("fetch messages");
     assert_eq!(msgs.len(), 2);
     assert_eq!(msgs[0].0, 1);
@@ -89,7 +104,7 @@ async fn test_session_lifecycle_and_messages() {
     assert_eq!(msgs[1].1.input_tokens, Some(150));
     assert_eq!(msgs[1].1.output_tokens, Some(40));
 
-    // 6. Rename session
+    // 7. Rename session
     store
         .rename(session_id, "Portfolio Review")
         .await
@@ -101,7 +116,7 @@ async fn test_session_lifecycle_and_messages() {
         .expect("some session");
     assert_eq!(updated_info.title.as_deref(), Some("Portfolio Review"));
 
-    // 7. Update provider
+    // 8. Update provider
     store
         .update_provider(session_id, "openai", "gpt-4o")
         .await
@@ -114,7 +129,7 @@ async fn test_session_lifecycle_and_messages() {
     assert_eq!(updated_provider.provider, "openai");
     assert_eq!(updated_provider.model, "gpt-4o");
 
-    // 8. List sessions
+    // 9. List sessions
     let list = store
         .list(SessionFilter {
             profile: Some("default".to_string()),
@@ -127,7 +142,49 @@ async fn test_session_lifecycle_and_messages() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, session_id);
 
-    // 9. Truncate after seq 1
+    // 10. Archive / unarchive session
+    store
+        .set_archived(session_id, true)
+        .await
+        .expect("set_archived(true)");
+    assert!(
+        store
+            .most_recent(&scope)
+            .await
+            .expect("most_recent")
+            .is_none()
+    );
+    let archived_list = store
+        .list(SessionFilter {
+            profile: Some("default".to_string()),
+            mode: Some(RuntimeMode::Paper),
+            archived: Some(true),
+            limit: Some(10),
+        })
+        .await
+        .expect("list archived");
+    assert_eq!(archived_list.len(), 1);
+    assert!(archived_list[0].archived);
+
+    store
+        .set_archived(session_id, false)
+        .await
+        .expect("set_archived(false)");
+    assert!(
+        store
+            .most_recent(&scope)
+            .await
+            .expect("most_recent")
+            .is_some()
+    );
+
+    let missing_arch = store
+        .set_archived(SessionId::new(), true)
+        .await
+        .unwrap_err();
+    assert_eq!(missing_arch.kind, StoreErrorKind::NotFound);
+
+    // 11. Truncate after seq 1
     store.truncate_after(session_id, 1).await.expect("truncate");
     let truncated_msgs = store
         .messages(session_id)
@@ -135,4 +192,23 @@ async fn test_session_lifecycle_and_messages() {
         .expect("fetch after truncate");
     assert_eq!(truncated_msgs.len(), 1);
     assert_eq!(truncated_msgs[0].0, 1);
+
+    // 12. Delete session + cascading message cleanup + NotFound on second delete
+    store.delete(session_id).await.expect("delete");
+    assert!(
+        store
+            .get(session_id)
+            .await
+            .expect("get after delete")
+            .is_none()
+    );
+    assert!(
+        store
+            .messages(session_id)
+            .await
+            .expect("messages after delete")
+            .is_empty()
+    );
+    let second_del = store.delete(session_id).await.unwrap_err();
+    assert_eq!(second_del.kind, StoreErrorKind::NotFound);
 }

@@ -17,6 +17,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
 pub fn router() -> Router<Arc<AppState>> {
     v1::router()
         .merge(crate::library_routes::v2_only_routes())
+        .merge(crate::chat_threads::v2_only_routes())
         .layer(axum::middleware::from_fn(v2_response_envelope))
 }
 

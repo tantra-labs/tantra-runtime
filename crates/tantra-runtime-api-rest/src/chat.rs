@@ -5,11 +5,13 @@
 //! OpenAI/Ollama-compatible fallback) and the read-only tool ports in
 //! `tantra_runtime_api::chat_adapters`.
 //!
-//! `GET /ws/chat?workspace=<id>` scopes the session to that workspace ([`ChatQuery`]) — connecting
-//! again with the same `workspace` resumes its most recent session rather than starting a new
-//! one (`SessionSelector::Continue`). Client -> server messages are `{"text": "..."}`; everything
-//! the agent emits for the turn streams back as the chat engine's own `SessionEvent` JSON, one
-//! WebSocket text frame per event.
+//! `GET /ws/chat?workspace=<id>[&thread_id=<uuid>]` scopes the session to that workspace
+//! ([`ChatQuery`]) — without `thread_id`, connecting again with the same `workspace` resumes its
+//! most recent session (`SessionSelector::Continue`); with `thread_id`, the session store verifies
+//! ownership against `(caller_id, workspace)` before resuming (`SessionSelector::Resume`), failing
+//! closed if absent or owned by a different scope. Client -> server messages are `{"text": "..."}`;
+//! everything the agent emits for the turn streams back as the chat engine's own `SessionEvent`
+//! JSON, one WebSocket text frame per event.
 //!
 //! v1 scope (see `docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md`):
 //! - Sessions persist to the configured database via
@@ -52,7 +54,7 @@ use tantra_agent_chat::{
 use tantra_agent_chat_tools::ports::alert::{AlertReader, AlertWriter};
 use tantra_agent_chat_tools::ports::market::MarketReader;
 use tantra_agent_chat_tools::ports::portfolio::PortfolioReader;
-use tantra_agent_core::{RuntimeMode, SessionScope, SessionStore};
+use tantra_agent_core::{RuntimeMode, SessionId, SessionScope, SessionStore};
 use tantra_agent_llm::{
     CatalogError, ConfigCatalog, ConfigError, LlmError, LlmProvider, MessagePart, ModelCatalog,
     Usage,
@@ -197,10 +199,12 @@ fn jobs_registry() -> Option<Arc<std::sync::Mutex<tantra_runtime_jobs::FileJobRe
 
 /// The chat-agent runtime held by [`AppState`] once configured: the built conversational agent,
 /// ready to open one fresh session per WebSocket connection, plus the per-turn `model`
-/// override registry (gap 0009 — T17.2).
+/// override registry (gap 0009 — T17.2) and backing [`SessionStore`].
 pub struct ChatRuntime {
     agent: Arc<ChatAgent>,
     providers: LlmProviderRegistry,
+    /// Shared session persistence port used by both `/ws/chat` and `/api/v2/chat/threads`.
+    session_store: Arc<dyn SessionStore>,
     /// Late-bound weak handle to the served [`AppState`] used by the in-process strategy-loop
     /// port (weak to avoid an `AppState -> ChatRuntime -> port -> AppState` cycle).
     loop_state: Arc<OnceLock<Weak<AppState>>>,
@@ -263,15 +267,29 @@ impl ChatRuntime {
         self.providers.default_model()
     }
 
+    /// Returns the shared [`SessionStore`] backing chat sessions and threads.
+    pub fn session_store(&self) -> Arc<dyn SessionStore> {
+        Arc::clone(&self.session_store)
+    }
+
     /// Builds a [`ChatRuntime`] from an explicit provider registry with a chat agent carrying
     /// no read-only tool ports and an in-memory session store. This is the injection point for
     /// tests and lightweight embedders; the production env-var path is
     /// [`ChatRuntime::from_config`].
     pub fn with_provider_registry(providers: LlmProviderRegistry) -> anyhow::Result<Self> {
+        let session_store: Arc<dyn SessionStore> = Arc::new(InMemorySessionStore::new());
+        Self::with_provider_registry_and_store(providers, session_store)
+    }
+
+    /// Builds a [`ChatRuntime`] from an explicit provider registry and an explicit [`SessionStore`]
+    /// (for tests verifying SQLx or shared thread CRUD persistence across connections).
+    pub fn with_provider_registry_and_store(
+        providers: LlmProviderRegistry,
+        session_store: Arc<dyn SessionStore>,
+    ) -> anyhow::Result<Self> {
         let mut registry = ToolRegistry::new();
         tantra_agent_chat_tools::catalog::register_presentation_tools(&mut registry);
         let acp_tools = Arc::new(registry.snapshot());
-        let session_store: Arc<dyn SessionStore> = Arc::new(InMemorySessionStore::new());
         let acp_catalog: Arc<dyn tantra_agent_acp::ModelCatalog> =
             Arc::new(tantra_agent_acp::StaticCatalog::new().with_model(
                 "default",
@@ -283,14 +301,17 @@ impl ChatRuntime {
             Arc::clone(&session_store),
             acp_catalog,
         ));
-        let agent = ChatAgent::builder(providers.default(), registry, session_store).build()?;
+        let agent = ChatAgent::builder(providers.default(), registry, Arc::clone(&session_store))
+            .build()?;
         Ok(Self {
             agent: Arc::new(agent),
             providers,
+            session_store,
             loop_state: Arc::new(OnceLock::new()),
             acp,
         })
     }
+
     /// Builds a [`ChatRuntime`] from environment variables if either a local GGUF model or an
     /// OpenAI-compatible endpoint is configured; returns `Ok(None)` when neither is set, so the
     /// caller leaves `AppState::chat` as `None` instead of failing server boot.
@@ -517,10 +538,11 @@ impl ChatRuntime {
             Arc::clone(&session_store),
             Arc::new(catalog),
         ));
-        let agent = ChatAgent::builder(provider, registry, session_store).build()?;
+        let agent = ChatAgent::builder(provider, registry, Arc::clone(&session_store)).build()?;
         Ok(Some(Self {
             agent: Arc::new(agent),
             providers,
+            session_store,
             loop_state: loop_cell,
             acp,
         }))
@@ -565,10 +587,15 @@ pub struct ChatQuery {
     /// Workspace identifier the session is scoped to. Each distinct workspace gets its own
     /// session (and, once `SqlxSessionStore` lands per `docs/gaps/0006`, its own persisted
     /// history) — connections with the same `workspace` resume the most recent session for it
-    /// rather than starting a new one every time (`SessionSelector::Continue`, not `New`).
+    /// rather than starting a new one (`SessionSelector::Continue`, not `New`).
     /// Omitted/blank falls back to a fixed `"default"` scope, matching pre-workspace-scoping
     /// behavior for any caller that doesn't pass one yet.
     workspace: Option<String>,
+    /// Explicit thread/session UUID to resume. When provided and non-blank, the server verifies
+    /// ownership against the resolved `(caller_id, workspace)` scope and fails closed if absent,
+    /// malformed, or owned by another caller/workspace.
+    #[serde(default)]
+    thread_id: Option<String>,
 }
 
 /// The chat session scope for `caller_id` and an optional `workspace`: the workspace (trimmed,
@@ -588,7 +615,7 @@ pub fn chat_scope_name(caller_id: &str, workspace: Option<&str>) -> String {
 }
 
 /// Upgrades an HTTP connection to a WebSocket bound to one chat-agent session, scoped to the
-/// requested workspace (`?workspace=<id>`).
+/// requested `(caller_id, workspace)` and optional `thread_id`.
 pub async fn chat_ws_handler(
     Caller(caller_id): Caller,
     ws: WebSocketUpgrade,
@@ -596,12 +623,23 @@ pub async fn chat_ws_handler(
     Query(query): Query<ChatQuery>,
 ) -> Response {
     let scope_name = chat_scope_name(&caller_id, query.workspace.as_deref());
-    ws.on_upgrade(move |socket| handle_chat_socket(socket, app_state, scope_name))
+    let thread_id = query
+        .thread_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
+    ws.on_upgrade(move |socket| handle_chat_socket(socket, app_state, scope_name, thread_id))
 }
 
 /// Handles one chat WebSocket connection: client text frames are submitted as turns, and every
 /// session event the agent emits streams back as a JSON text frame.
-async fn handle_chat_socket(socket: WebSocket, state: Arc<AppState>, scope_name: String) {
+async fn handle_chat_socket(
+    socket: WebSocket,
+    state: Arc<AppState>,
+    scope_name: String,
+    thread_id: Option<String>,
+) {
     let (mut sender, mut receiver) = socket.split();
 
     let Some(chat) = state.chat.clone() else {
@@ -613,14 +651,40 @@ async fn handle_chat_socket(socket: WebSocket, state: Arc<AppState>, scope_name:
         return;
     };
 
-    let (handle, mut events) = match chat
-        .agent
-        .open(SessionSelector::Continue(SessionScope::new(
-            &scope_name,
-            RuntimeMode::Live,
-        )))
-        .await
-    {
+    let selector = match thread_id {
+        Some(raw_id) => {
+            let Ok(id) = raw_id.parse::<SessionId>() else {
+                let err = serde_json::json!({
+                    "type": "error",
+                    "message": format!("invalid thread_id '{raw_id}': expected UUID"),
+                });
+                let _ = sender.send(Message::Text(err.to_string())).await;
+                return;
+            };
+            match chat.session_store().get(id).await {
+                Ok(Some(info)) if info.profile == scope_name => SessionSelector::Resume(id),
+                Ok(_) => {
+                    let err = serde_json::json!({
+                        "type": "error",
+                        "message": format!("thread '{id}' not found in workspace scope"),
+                    });
+                    let _ = sender.send(Message::Text(err.to_string())).await;
+                    return;
+                }
+                Err(e) => {
+                    let err = serde_json::json!({
+                        "type": "error",
+                        "message": format!("failed to verify thread '{id}': {e}"),
+                    });
+                    let _ = sender.send(Message::Text(err.to_string())).await;
+                    return;
+                }
+            }
+        }
+        None => SessionSelector::Continue(SessionScope::new(&scope_name, RuntimeMode::Live)),
+    };
+
+    let (handle, mut events) = match chat.agent.open(selector).await {
         Ok(pair) => pair,
         Err(e) => {
             warn!("chat session open failed: {e}");

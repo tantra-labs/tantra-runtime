@@ -40,6 +40,7 @@ pub mod chat_ipo;
 pub mod chat_market;
 pub mod chat_strategy_store;
 pub mod chat_tax;
+pub mod chat_threads;
 pub mod chat_trade;
 mod dispatch;
 mod exec;
@@ -96,6 +97,10 @@ pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog, load
 pub use chat::{
     ChatAttachmentInput, ChatClientMessage, ChatRuntime, LlmProviderRegistry, acp_ws_handler,
     chat_scope_name, chat_ws_handler,
+};
+pub use chat_threads::{
+    ChatThreadDetailDto, ChatThreadDto, ChatThreadMessageDto, ChatThreadsListDto,
+    CreateChatThreadRequest, DeleteChatThreadResponse, PatchChatThreadRequest,
 };
 pub use dispatch::{DispatchError, build_target, dispatch, dispatch_stream};
 pub use executor::BacktestExecutor;
@@ -386,10 +391,13 @@ fn root_table() -> route_table::RouteTable {
 }
 
 /// The v1, v2-only and root route entries, each as registered.
-fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEntry>) {
+pub(crate) fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEntry>) {
     (
         v1::manifest(),
-        library_routes::v2_only_manifest(),
+        library_routes::v2_only_manifest()
+            .into_iter()
+            .chain(chat_threads::v2_only_manifest())
+            .collect(),
         root_table().finish().1,
     )
 }

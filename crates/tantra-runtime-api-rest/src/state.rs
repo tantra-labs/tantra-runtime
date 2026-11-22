@@ -211,6 +211,9 @@ pub struct AppState {
     /// The database backing `SqlxSessionStore` for chat session persistence; `None` until
     /// `with_database` (docs/gaps/0006).
     pub database: Option<Arc<tantra_runtime_persistence::Database>>,
+    /// Process-scoped in-memory chat session store used by `/api/v2/chat/threads` when neither
+    /// `chat` nor `database` is configured.
+    chat_sessions: Arc<tantra_agent_chat::InMemorySessionStore>,
     /// The process-scoped ledger repositories (docs/gaps/0006 design decision): the in-memory
     /// `tantra-ledger` account/position/order/ledger repositories plus a FIFO matched-lot
     /// history, populated from the real order/fill flow and read by the chat portfolio/tax
@@ -265,6 +268,7 @@ impl AppState {
             market_data_broadcast_tx: None,
             chat: None,
             database: None,
+            chat_sessions: Arc::new(tantra_agent_chat::InMemorySessionStore::new()),
             shared_ledger: Arc::new(tantra_runtime_api::SharedLedger::new()),
             lakehouse_root: None,
             data_commit: None,
@@ -329,6 +333,21 @@ impl AppState {
     pub fn with_database(mut self, database: tantra_runtime_persistence::Database) -> Self {
         self.database = Some(Arc::new(database));
         self
+    }
+
+    /// Returns the [`tantra_agent_core::ports::SessionStore`] backing `/api/v2/chat/threads`
+    /// and `/ws/chat` (preferring the active `ChatRuntime` store, then SQLx over `database`,
+    /// then the process-scoped in-memory store).
+    pub fn chat_session_store(&self) -> Arc<dyn tantra_agent_core::ports::SessionStore> {
+        if let Some(chat) = self.chat.as_ref() {
+            return chat.session_store();
+        }
+        if let Some(db) = self.database.as_ref() {
+            return Arc::new(tantra_runtime_persistence::SqlxSessionStore::new(
+                db.as_ref(),
+            ));
+        }
+        Arc::clone(&self.chat_sessions) as Arc<dyn tantra_agent_core::ports::SessionStore>
     }
 
     /// Enables the approval queue for order placements (E5-S4).
