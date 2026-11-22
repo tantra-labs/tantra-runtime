@@ -270,7 +270,12 @@ async fn approval_queue_holds_placements() {
     assert_eq!(status, StatusCode::OK);
     let queue = body["data"]["queue"].as_array().unwrap();
     assert_eq!(queue.len(), 1);
-    assert_eq!(queue[0]["queue_id"], json!("rest"));
+    // A keyless order is queued under a fresh UUID, never a shared constant (design 0006 R2a).
+    let queue_id = queue[0]["queue_id"].as_str().unwrap();
+    assert!(
+        uuid::Uuid::parse_str(queue_id).is_ok(),
+        "queue_id {queue_id}"
+    );
     assert_eq!(queue[0]["status"], json!("pending"));
     assert_eq!(queue[0]["instrument_id"], json!("X.NSE"));
     assert_eq!(queue[0]["side"], json!("buy"));

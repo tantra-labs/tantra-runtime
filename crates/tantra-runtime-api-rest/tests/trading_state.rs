@@ -272,7 +272,7 @@ async fn auth_refuses_insufficient_scope() {
     )
     .await;
     assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
-    assert_eq!(v["error"]["code"], json!("unauthorized"));
+    assert_eq!(v["error"]["code"], json!("forbidden"));
     assert_eq!(v["error"]["context"]["required_scope"], json!("admin"));
     let (s, _) = send(app, Method::GET, "/trading-state", None, Some("test")).await;
     assert_eq!(s, StatusCode::FORBIDDEN);
@@ -310,7 +310,7 @@ async fn write_orders_alone_can_no_longer_change_the_state() {
     )
     .await;
     assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
-    assert_eq!(v["error"]["code"], json!("unauthorized"));
+    assert_eq!(v["error"]["code"], json!("forbidden"));
     let (s, _) = send(app, Method::GET, "/trading-state", None, Some("test")).await;
     assert_eq!(s, StatusCode::FORBIDDEN);
 }
@@ -327,7 +327,7 @@ async fn admin_scope_does_not_imply_write_orders() {
     )
     .await;
     assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
-    assert_eq!(v["error"]["code"], json!("unauthorized"));
+    assert_eq!(v["error"]["code"], json!("forbidden"));
 }
 
 // ---- the operator journal (ADR 0018 decision 7) ----

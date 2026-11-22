@@ -273,7 +273,7 @@ async fn post_bars_refuses_a_read_scope_token() {
     let body = json!({"bars": [bar(1_000, 100.0)]});
     let (s, v) = send(router, Method::POST, "/bars", Some(body), Some("test")).await;
     assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
-    assert_eq!(v["error"]["code"], json!("unauthorized"));
+    assert_eq!(v["error"]["code"], json!("forbidden"));
 }
 
 #[tokio::test]
