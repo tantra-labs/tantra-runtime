@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use schemars::JsonSchema;
@@ -19,8 +19,8 @@ use tantra_runtime_api::{ErrorCode, ErrorDetail};
 use crate::caller::Caller;
 use crate::library_client::LibraryError;
 use crate::market::{ApiQuery, failure, success};
-use crate::route_table::RouteTable;
-use crate::{ApiJson, AppState, experimental_analysis};
+use crate::route_table::{RouteEntry, RouteTable};
+use crate::{ApiJson, AppState, RouteScope, experimental_analysis};
 
 /// Maximum request body for the library routes.
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
@@ -125,49 +125,74 @@ pub(crate) fn v2_only_routes() -> Router<Arc<AppState>> {
     v2_only_table().finish().0
 }
 
-/// `(METHOD, path)` of every route [`v2_only_routes`] serves (`:param` spelling).
-pub(crate) fn v2_only_manifest() -> Vec<(&'static str, &'static str)> {
+/// Every route [`v2_only_routes`] serves, with its scope and body cap (`:param` spelling).
+pub(crate) fn v2_only_manifest() -> Vec<RouteEntry> {
     v2_only_table().finish().1
 }
 
 fn v2_only_table() -> RouteTable {
-    RouteTable::new()
-        .get("/studies/library/entries", get_entries)
-        .get("/studies/library/entries/:id", get_entry)
-        .post("/studies/indicators/compute", post_compute)
-        .post("/studies/signal-study", post_signal_study)
-        .map(|r| r.layer(DefaultBodyLimit::max(MAX_BODY_BYTES)))
+    const READ: RouteScope = RouteScope::Required("read");
+    RouteTable::new_v2_only()
+        .get("/studies/library/entries", get_entries, READ)
+        .get("/studies/library/entries/:id", get_entry, READ)
+        .post_capped(
+            "/studies/indicators/compute",
+            post_compute,
+            READ,
+            MAX_BODY_BYTES,
+        )
+        .post_capped(
+            "/studies/signal-study",
+            post_signal_study,
+            READ,
+            MAX_BODY_BYTES,
+        )
         .get(
             "/studies/experimental-analysis/catalog",
             experimental_analysis::get_catalog,
+            READ,
         )
-        .post(
+        .post_capped(
             "/studies/experimental-analysis/returns",
             experimental_analysis::post_returns,
+            READ,
+            MAX_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/studies/experimental-analysis/intraday",
             experimental_analysis::post_intraday,
+            READ,
+            MAX_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/studies/experimental-analysis/correlation",
             experimental_analysis::post_correlation,
+            READ,
+            MAX_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/studies/experimental-analysis/options-overlay",
             experimental_analysis::post_options_overlay,
+            READ,
+            MAX_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/studies/experimental-analysis/forecast",
             experimental_analysis::post_forecast,
+            READ,
+            MAX_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/studies/experimental-analysis/events",
             experimental_analysis::post_events,
+            READ,
+            MAX_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/studies/experimental-analysis/outlier-news",
             experimental_analysis::post_outlier_news,
+            READ,
+            MAX_BODY_BYTES,
         )
 }
 

@@ -6,7 +6,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tantra_runtime_api::ENDPOINTS;
-use tantra_runtime_api_rest::{ROUTE_SCOPES, api_router, unscoped_routes};
+use tantra_runtime_api_rest::{api_router, route_registry, unscoped_routes};
 use tower::util::ServiceExt;
 
 #[test]
@@ -18,7 +18,7 @@ fn drift_test_fails_on_new_route() {
         unscoped_routes(ENDPOINTS)
     );
 
-    // Add a route that is not in `ROUTE_SCOPES`: the guard must report it, so a
+    // Add a route that is not in the route registry: the guard must report it, so a
     // new endpoint cannot ship as an accidental public route.
     let mut routes = ENDPOINTS.to_vec();
     routes.push(("GET", "/brand/new"));
@@ -34,13 +34,23 @@ fn drift_test_fails_on_new_route() {
 #[tokio::test]
 async fn every_scoped_route_is_registered_on_the_router() {
     let router = api_router();
-    for (method, path, _) in ROUTE_SCOPES {
-        let uri = path.replace("{id}", "X.NSE").replace("{name}", "main");
+    for entry in route_registry() {
+        let (method, path) = (entry.method, entry.path);
+        let concrete = path
+            .replace(":order_id", "ord1")
+            .replace(":id", "X.NSE")
+            .replace(":name", "main");
+        // v2-only routes are mounted under /api/v2 only.
+        let uri = if entry.v2_only {
+            format!("/api/v2{concrete}")
+        } else {
+            concrete
+        };
         let res = router
             .clone()
             .oneshot(
                 Request::builder()
-                    .method(*method)
+                    .method(method)
                     .uri(&uri)
                     .header("content-type", "application/json")
                     .body(Body::from("{}"))

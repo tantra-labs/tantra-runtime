@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use serde::Serialize;
@@ -26,16 +26,6 @@ pub(crate) use crate::caller::Caller;
 
 /// Longest accepted layout name or module id, in characters.
 const MAX_NAME_LEN: usize = 128;
-
-/// Largest request body accepted on the `PUT /profile*` routes, in bytes. Smaller than
-/// [`MAX_PROFILE_BYTES`](crate::profile_store::MAX_PROFILE_BYTES) so oversized bodies are refused
-/// (413) before they are buffered and parsed.
-pub(crate) const MAX_BODY_BYTES: usize = 1024 * 1024;
-
-/// The body-size layer of the `PUT /profile*` routes.
-pub(crate) fn body_limit() -> DefaultBodyLimit {
-    DefaultBodyLimit::max(MAX_BODY_BYTES)
-}
 
 /// Runs `work` for the caller's profile on the blocking pool and renders the result.
 async fn with_store<T: Serialize + Send + 'static>(

@@ -82,8 +82,8 @@ mod ws_live;
 
 pub use approval::ApprovalQueue;
 pub use auth::{
-    AuthConfig, AuthLayer, FileTokenStore, JwtClaims, JwtConfig, ROUTE_SCOPES, RouteScope,
-    TokenInfo, scope_for, unscoped_routes,
+    AuthConfig, AuthLayer, FileTokenStore, JwtClaims, JwtConfig, RouteScope, TokenInfo, scope_for,
+    unscoped_routes,
 };
 pub use bar_pump::BarPumpReport;
 pub use bootstrap::{
@@ -109,6 +109,7 @@ pub use portfolio_store::{
 pub use profile_store::{DEFAULT_USER_ID, Module, Profile, ProfileError, ProfileStore, Source};
 pub use registry::StrategyRegistry;
 pub use retention::{RetentionPolicy, evictions};
+pub use route_table::RouteEntry;
 pub use run_store::{OsEntropy, RecoveryReport, RunClock, RunEntropy, RunStore, SystemClock};
 pub use service::{
     DEFAULT_MAX_QUEUED, DEFAULT_SHUTDOWN_GRACE, RunService, RunServiceConfig, ShutdownReport,
@@ -365,20 +366,50 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
 /// Root-level documentation routes (GET only), shared by the router and [`served_routes`].
 fn root_table() -> route_table::RouteTable {
     route_table::RouteTable::new()
-        .get("/schema/openapi/v1.json", openapi::get_openapi_v1)
-        .get("/schema/openapi/v2.json", openapi::get_openapi_v2)
-        .get("/schema/openapi", openapi::get_openapi_index)
-        .get("/docs", openapi::get_swagger_ui)
-        .get("/swagger-ui", openapi::get_swagger_ui)
+        .get(
+            "/schema/openapi/v1.json",
+            openapi::get_openapi_v1,
+            RouteScope::Public,
+        )
+        .get(
+            "/schema/openapi/v2.json",
+            openapi::get_openapi_v2,
+            RouteScope::Public,
+        )
+        .get(
+            "/schema/openapi",
+            openapi::get_openapi_index,
+            RouteScope::Public,
+        )
+        .get("/docs", openapi::get_swagger_ui, RouteScope::Public)
+        .get("/swagger-ui", openapi::get_swagger_ui, RouteScope::Public)
+}
+
+/// The v1, v2-only and root route entries, each as registered.
+fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEntry>) {
+    (
+        v1::manifest(),
+        library_routes::v2_only_manifest(),
+        root_table().finish().1,
+    )
+}
+
+/// The route registry: every route the router serves with its auth scope and body cap
+/// (design 0006 R1a). It is the single source of truth `scope_for` and the drift guards read.
+/// Paths are relative to the version prefix, in the router's `:param` spelling.
+pub fn route_registry() -> &'static [RouteEntry] {
+    static REGISTRY: std::sync::OnceLock<Vec<RouteEntry>> = std::sync::OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let (v1, v2_only, root) = registry_parts();
+        v1.into_iter().chain(v2_only).chain(root).collect()
+    })
 }
 
 /// `(METHOD, full_path)` for every route the real router serves: v1 under `/api/v1` and the
 /// legacy root, v1 plus the v2-only routes under `/api/v2`, and the root documentation routes.
 /// The auth drift guard checks each of these has a scope row (design 0006 R0).
 pub fn served_routes() -> Vec<(String, String)> {
-    let v1 = v1::manifest();
-    let v2_only = library_routes::v2_only_manifest();
-    let (_, root) = root_table().finish();
+    let (v1, v2_only, root) = registry_parts();
     let mut out = Vec::new();
     let join = |prefix: &str, path: &str| {
         if prefix.is_empty() {
@@ -388,15 +419,15 @@ pub fn served_routes() -> Vec<(String, String)> {
         }
     };
     for prefix in ["/api/v1", ""] {
-        for (m, p) in &v1 {
-            out.push(((*m).to_owned(), join(prefix, p)));
+        for e in &v1 {
+            out.push((e.method.to_owned(), join(prefix, e.path)));
         }
     }
-    for (m, p) in v1.iter().chain(v2_only.iter()) {
-        out.push(((*m).to_owned(), join("/api/v2", p)));
+    for e in v1.iter().chain(v2_only.iter()) {
+        out.push((e.method.to_owned(), join("/api/v2", e.path)));
     }
-    for (m, p) in &root {
-        out.push(((*m).to_owned(), (*p).to_owned()));
+    for e in &root {
+        out.push((e.method.to_owned(), e.path.to_owned()));
     }
     out
 }

@@ -4,7 +4,6 @@ use std::sync::{Arc, PoisonError};
 
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::handler::Handler as _;
 use axum::http::StatusCode;
 use axum::response::{Json, Response};
 use tantra_runtime_api::{
@@ -19,7 +18,7 @@ use crate::reports::{
     get_concentration_risk, get_equity_curve, get_fees_report, get_ledger, get_order_fills,
     get_portfolio_snapshots, get_position_audit, get_tax_report, get_weighted_average_cost,
 };
-use crate::route_table::RouteTable;
+use crate::route_table::{RouteEntry, RouteTable};
 use crate::trade_journal::{
     get_trade_journal_accounts, get_trade_journal_calendar, get_trade_journal_compare,
     get_trade_journal_notes, get_trade_journal_overview, get_trade_journal_trades,
@@ -28,8 +27,9 @@ use crate::trade_journal::{
 use crate::ws::ws_handler;
 use crate::ws_live::ws_live_handler;
 use crate::{
-    ApiJson, AppState, capability_manifest, experimental_analysis, ingest, openapi, orders,
-    portfolio, profile, runs, screener, strategy_loop, streams::get_backtest_events, trading_state,
+    ApiJson, AppState, RouteScope, capability_manifest, experimental_analysis, ingest, openapi,
+    orders, portfolio, profile, runs, screener, strategy_loop, streams::get_backtest_events,
+    trading_state,
 };
 
 /// Get API capabilities for v1.
@@ -174,149 +174,199 @@ pub fn router() -> Router<Arc<AppState>> {
     router.layer(axum::middleware::from_fn(v1_headers))
 }
 
-/// `(METHOD, path)` of every route [`router`] serves (`:param` spelling).
-pub fn manifest() -> Vec<(&'static str, &'static str)> {
+/// Every route [`router`] serves, with its scope and body cap (`:param` spelling).
+pub fn manifest() -> Vec<RouteEntry> {
     table().finish().1
 }
 
+const PUBLIC: RouteScope = RouteScope::Public;
+const AUTHED: RouteScope = RouteScope::Authenticated;
+const READ: RouteScope = RouteScope::Required("read");
+const TRADE: RouteScope = RouteScope::Required("trade");
+const ADMIN: RouteScope = RouteScope::Required("admin");
+const RESEARCH: RouteScope = RouteScope::Required("research");
+
+/// Body cap of the `POST /bars` ingest route.
+const BARS_BODY_BYTES: usize = 16 * 1024 * 1024;
+/// Body cap of strategy, backtest, sweep and study POST routes.
+const STUDY_BODY_BYTES: usize = 4 * 1024 * 1024;
+
 fn table() -> RouteTable {
     RouteTable::new()
-        .get("/capabilities", get_capabilities)
-        .get("/health", get_health)
-        .get("/schema", get_schema)
-        .get("/instruments", market::get_instruments)
-        .get("/instruments/:id", market::get_instrument_by_id)
-        .get("/quotes", market::get_quotes)
-        .get("/bars/:id", market::get_bars)
-        .get("/depth/:id", market::get_depth)
+        .get("/capabilities", get_capabilities, PUBLIC)
+        .get("/health", get_health, PUBLIC)
+        .get("/schema", get_schema, PUBLIC)
+        .get("/instruments", market::get_instruments, READ)
+        .get("/instruments/:id", market::get_instrument_by_id, READ)
+        .get("/quotes", market::get_quotes, READ)
+        .get("/bars/:id", market::get_bars, READ)
+        .get("/depth/:id", market::get_depth, READ)
         // Market reference data (Phase 3): symbol profile + calendar, backed
         // by tantra-data's symbol-profile / calendar ingestion.
         .get(
             "/market-data/symbol-profile/:id",
             market::get_symbol_profile,
+            READ,
         )
-        .get("/market-data/calendar", market::get_market_calendar)
-        .get("/market-data/block-deals", market::get_block_deals)
-        .post("/bars", ingest::post_bars)
-        .get("/trading-state", trading_state::get_trading_state)
-        .put("/trading-state", trading_state::put_trading_state)
-        .get("/profile", profile::get_profile)
-        .put(
-            "/profile",
-            profile::put_profile.layer(profile::body_limit()),
+        .get("/market-data/calendar", market::get_market_calendar, READ)
+        .get("/market-data/block-deals", market::get_block_deals, READ)
+        .post_capped("/bars", ingest::post_bars, TRADE, BARS_BODY_BYTES)
+        .get("/trading-state", trading_state::get_trading_state, ADMIN)
+        .put("/trading-state", trading_state::put_trading_state, ADMIN)
+        .get("/profile", profile::get_profile, AUTHED)
+        .put("/profile", profile::put_profile, AUTHED)
+        .get("/profile/layouts", profile::get_layouts, AUTHED)
+        .put("/profile/layouts/:name", profile::put_layout, AUTHED)
+        .delete("/profile/layouts/:name", profile::delete_layout, AUTHED)
+        .get("/profile/modules", profile::get_modules, AUTHED)
+        .put("/profile/modules/:id", profile::put_module, AUTHED)
+        .delete("/profile/modules/:id", profile::delete_module, AUTHED)
+        .get("/portfolio", portfolio::get_portfolio, READ)
+        .get("/portfolio/accounts", portfolio::get_accounts, READ)
+        .get("/portfolio/positions", portfolio::get_positions, READ)
+        .get("/portfolio/holdings", portfolio::get_holdings, READ)
+        .get("/portfolio/trades", portfolio::get_trades, READ)
+        .get("/portfolio/chart", get_equity_curve, READ)
+        .get("/portfolio/concentration", get_concentration_risk, READ)
+        .get("/portfolio/wac", get_weighted_average_cost, READ)
+        .get("/ledger", get_ledger, READ)
+        .get("/tax/report", get_tax_report, READ)
+        .get("/fees", get_fees_report, READ)
+        .get("/positions", portfolio::get_positions, READ)
+        .get("/positions/audit", get_position_audit, READ)
+        .get("/trades", portfolio::get_trades, READ)
+        .get("/reports/ledger", get_ledger, READ)
+        .get("/reports/tax", get_tax_report, READ)
+        .get("/reports/snapshots", get_portfolio_snapshots, READ)
+        .get("/reports/audit", get_position_audit, READ)
+        .get("/reports/concentration", get_concentration_risk, READ)
+        .get("/reports/wac", get_weighted_average_cost, READ)
+        .get("/reports/fees", get_fees_report, READ)
+        .get("/reports/equity-curve", get_equity_curve, READ)
+        .get("/reports/fills/:order_id", get_order_fills, READ)
+        .post_capped("/strategies", post_strategies, RESEARCH, STUDY_BODY_BYTES)
+        .get("/strategies", get_strategies, RESEARCH)
+        .post_capped(
+            "/strategies/verify",
+            post_verify_strategy,
+            RESEARCH,
+            STUDY_BODY_BYTES,
         )
-        .get("/profile/layouts", profile::get_layouts)
-        .put(
-            "/profile/layouts/:name",
-            profile::put_layout.layer(profile::body_limit()),
+        .post_capped(
+            "/backtests",
+            runs::post_backtests,
+            RESEARCH,
+            STUDY_BODY_BYTES,
         )
-        .delete("/profile/layouts/:name", profile::delete_layout)
-        .get("/profile/modules", profile::get_modules)
-        .put(
-            "/profile/modules/:id",
-            profile::put_module.layer(profile::body_limit()),
+        .get("/backtests", runs::get_backtests, RESEARCH)
+        .get("/backtests/:id", runs::get_backtest_by_id, RESEARCH)
+        .get(
+            "/backtests/:id/journal",
+            runs::get_backtest_journal,
+            RESEARCH,
         )
-        .delete("/profile/modules/:id", profile::delete_module)
-        .get("/portfolio", portfolio::get_portfolio)
-        .get("/portfolio/accounts", portfolio::get_accounts)
-        .get("/portfolio/positions", portfolio::get_positions)
-        .get("/portfolio/holdings", portfolio::get_holdings)
-        .get("/portfolio/trades", portfolio::get_trades)
-        .get("/portfolio/chart", get_equity_curve)
-        .get("/portfolio/concentration", get_concentration_risk)
-        .get("/portfolio/wac", get_weighted_average_cost)
-        .get("/ledger", get_ledger)
-        .get("/tax/report", get_tax_report)
-        .get("/fees", get_fees_report)
-        .get("/positions", portfolio::get_positions)
-        .get("/positions/audit", get_position_audit)
-        .get("/trades", portfolio::get_trades)
-        .get("/reports/ledger", get_ledger)
-        .get("/reports/tax", get_tax_report)
-        .get("/reports/snapshots", get_portfolio_snapshots)
-        .get("/reports/audit", get_position_audit)
-        .get("/reports/concentration", get_concentration_risk)
-        .get("/reports/wac", get_weighted_average_cost)
-        .get("/reports/fees", get_fees_report)
-        .get("/reports/equity-curve", get_equity_curve)
-        .get("/reports/fills/:order_id", get_order_fills)
-        .post("/strategies", post_strategies)
-        .get("/strategies", get_strategies)
-        .post("/strategies/verify", post_verify_strategy)
-        .post("/backtests", runs::post_backtests)
-        .get("/backtests", runs::get_backtests)
-        .get("/backtests/:id", runs::get_backtest_by_id)
-        .get("/backtests/:id/journal", runs::get_backtest_journal)
-        .get("/backtests/:id/events", get_backtest_events)
-        .post("/sweeps", post_sweeps)
-        .get("/sweeps", runs::get_sweeps)
-        .get("/sweeps/:id", get_sweep_by_id)
-        .get("/sweeps/:id/journal", runs::get_sweep_journal)
-        .post("/orders", post_orders)
-        .get("/orders", get_orders)
-        .delete("/orders/:id", delete_order)
-        .get("/orders/:id/fills", get_order_fills)
-        .post("/positions/close", post_close_positions)
-        .get("/approval/queue", orders::get_approval_queue)
-        .post("/approval/approve", orders::post_approve_order)
-        .post("/approval/reject", orders::post_reject_order)
-        .get("/screener/scan", screener::get_screener_scan)
+        .get("/backtests/:id/events", get_backtest_events, RESEARCH)
+        .post_capped("/sweeps", post_sweeps, RESEARCH, STUDY_BODY_BYTES)
+        .get("/sweeps", runs::get_sweeps, RESEARCH)
+        .get("/sweeps/:id", get_sweep_by_id, RESEARCH)
+        .get("/sweeps/:id/journal", runs::get_sweep_journal, RESEARCH)
+        .post("/orders", post_orders, TRADE)
+        .get("/orders", get_orders, TRADE)
+        .delete("/orders/:id", delete_order, TRADE)
+        .get("/orders/:id/fills", get_order_fills, READ)
+        .post("/positions/close", post_close_positions, TRADE)
+        .get("/approval/queue", orders::get_approval_queue, ADMIN)
+        .post("/approval/approve", orders::post_approve_order, ADMIN)
+        .post("/approval/reject", orders::post_reject_order, ADMIN)
+        .get("/screener/scan", screener::get_screener_scan, READ)
         .get(
             "/experimental-analysis/catalog",
             experimental_analysis::get_catalog,
+            READ,
         )
-        .post(
+        .post_capped(
             "/experimental-analysis/returns",
             experimental_analysis::post_returns,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/experimental-analysis/intraday",
             experimental_analysis::post_intraday,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/experimental-analysis/correlation",
             experimental_analysis::post_correlation,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/experimental-analysis/options-overlay",
             experimental_analysis::post_options_overlay,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/experimental-analysis/forecast",
             experimental_analysis::post_forecast,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/experimental-analysis/events",
             experimental_analysis::post_events,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/experimental-analysis/outlier-news",
             experimental_analysis::post_outlier_news,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post(
+        .post_capped(
             "/studies/strategy-loop/evaluate",
             strategy_loop::post_evaluate,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .post("/studies/strategy-loop/sweep", strategy_loop::post_sweep)
-        .post(
+        .post_capped(
+            "/studies/strategy-loop/sweep",
+            strategy_loop::post_sweep,
+            READ,
+            STUDY_BODY_BYTES,
+        )
+        .post_capped(
             "/studies/strategy-loop/recommend-hedge",
             strategy_loop::post_recommend_hedge,
+            READ,
+            STUDY_BODY_BYTES,
         )
-        .get("/journals/:id", runs::get_journal_by_id)
+        .get("/journals/:id", runs::get_journal_by_id, RESEARCH)
         // Trade-performance journal (distinct from run/backtest journals and
         // the operator journal): backed by tantra-ledger-performance.
-        .get("/trade-journal/accounts", get_trade_journal_accounts)
-        .post("/trade-journal/accounts", post_trade_journal_account)
-        .get("/trade-journal/overview", get_trade_journal_overview)
-        .get("/trade-journal/trades", get_trade_journal_trades)
-        .patch("/trade-journal/trades/:id", patch_trade_journal_trade)
-        .get("/trade-journal/calendar", get_trade_journal_calendar)
-        .get("/trade-journal/notes", get_trade_journal_notes)
-        .post("/trade-journal/notes", post_trade_journal_note)
-        .get("/trade-journal/compare", get_trade_journal_compare)
-        .get("/ws", ws_handler)
-        .get("/ws/market", ws_handler)
-        .get("/ws/live", ws_live_handler)
-        .get("/ws/chat", chat_ws_handler)
-        .get("/acp", acp_ws_handler)
+        .get("/trade-journal/accounts", get_trade_journal_accounts, READ)
+        .post("/trade-journal/accounts", post_trade_journal_account, TRADE)
+        .get("/trade-journal/overview", get_trade_journal_overview, READ)
+        .get("/trade-journal/trades", get_trade_journal_trades, READ)
+        .patch(
+            "/trade-journal/trades/:id",
+            patch_trade_journal_trade,
+            TRADE,
+        )
+        .get("/trade-journal/calendar", get_trade_journal_calendar, READ)
+        .get("/trade-journal/notes", get_trade_journal_notes, READ)
+        .post("/trade-journal/notes", post_trade_journal_note, TRADE)
+        .get("/trade-journal/compare", get_trade_journal_compare, READ)
+        .get("/ws", ws_handler, PUBLIC)
+        .get("/ws/market", ws_handler, PUBLIC)
+        // Paper-exchange live socket: accepts place/cancel order commands.
+        .get("/ws/live", ws_live_handler, TRADE)
+        // Chat WebSocket: hits a real LLM, unlike the public /ws and /ws/market feeds, so it
+        // requires any valid token rather than being public.
+        .get("/ws/chat", chat_ws_handler, AUTHED)
+        // ACP agent WebSocket (agent plan 0019 Phase 2): real LLM + tools, any valid token.
+        .get("/acp", acp_ws_handler, AUTHED)
 }

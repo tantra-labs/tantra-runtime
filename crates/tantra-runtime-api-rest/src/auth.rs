@@ -253,322 +253,8 @@ pub enum RouteScope {
     Authenticated,
 }
 
-/// Scope rows for routes mounted only under `/api/v2` (library, signal study, canonical
-/// `/studies/experimental-analysis/*`). Without a row a route is denied, so every v2-only
-/// route must be listed here.
-pub const V2_ONLY_SCOPES: &[(&str, &str, RouteScope)] = &[
-    (
-        "GET",
-        "/studies/library/entries",
-        RouteScope::Required("read"),
-    ),
-    (
-        "GET",
-        "/studies/library/entries/{id}",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/indicators/compute",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/signal-study",
-        RouteScope::Required("read"),
-    ),
-    (
-        "GET",
-        "/studies/experimental-analysis/catalog",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/experimental-analysis/returns",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/experimental-analysis/intraday",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/experimental-analysis/correlation",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/experimental-analysis/options-overlay",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/experimental-analysis/forecast",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/experimental-analysis/events",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/experimental-analysis/outlier-news",
-        RouteScope::Required("read"),
-    ),
-];
-
-/// The canonical route-to-scope map (ADR 0023 §2).
-///
-/// Every route the router serves has exactly one row, so scope enforcement is a
-/// lookup rather than a set of prefix rules that can silently miss a new route.
-/// Paths use the `{param}` spelling of [`tantra_runtime_api::ENDPOINTS`], so the drift
-/// guard can compare the two by key. The five scopes are `read:market`,
-/// `read:account`, `write:orders`, `research` and `operator`; `read:account` governs the
-/// per-user portfolio reads (ADR 0032). Scopes are explicit: none implies another.
-/// RBAC scopes (Phase 6.2): coarse-grained roles replacing the previous fine-grained
-/// `read:market`/`write:orders`/`research`/`operator`/`read:account` hierarchy.
-///
-/// - `read`: general read access (market data, quotes, instruments, depth, bars, portfolio)
-/// - `trade`: general trade access (place, modify, cancel orders, close positions)
-/// - `admin`: administrative access (operator routes, approval queue, system config)
-///
-/// Legacy fine-grained scopes (`read:market`, `write:orders`, etc.) are still supported
-/// for backward compatibility but new routes should use these RBAC roles.
-pub const ROUTE_SCOPES: &[(&str, &str, RouteScope)] = &[
-    // Public routes (no auth required)
-    ("GET", "/capabilities", RouteScope::Public),
-    ("GET", "/health", RouteScope::Public),
-    ("GET", "/schema", RouteScope::Public),
-    // Read routes: `read` RBAC scope
-    ("GET", "/instruments", RouteScope::Required("read")),
-    ("GET", "/instruments/{id}", RouteScope::Required("read")),
-    ("GET", "/quotes", RouteScope::Required("read")),
-    ("GET", "/bars/{id}", RouteScope::Required("read")),
-    ("GET", "/depth/{id}", RouteScope::Required("read")),
-    // Write/Trade routes: `trade` RBAC scope
-    ("POST", "/bars", RouteScope::Required("trade")),
-    ("POST", "/orders", RouteScope::Required("trade")),
-    ("DELETE", "/orders/{id}", RouteScope::Required("trade")),
-    ("POST", "/positions/close", RouteScope::Required("trade")),
-    // Operator / Admin routes: `admin` RBAC scope
-    ("GET", "/trading-state", RouteScope::Required("admin")),
-    ("PUT", "/trading-state", RouteScope::Required("admin")),
-    ("GET", "/screener/scan", RouteScope::Required("read")),
-    (
-        "GET",
-        "/experimental-analysis/catalog",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/experimental-analysis/returns",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/experimental-analysis/intraday",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/experimental-analysis/correlation",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/experimental-analysis/options-overlay",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/experimental-analysis/forecast",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/experimental-analysis/events",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/experimental-analysis/outlier-news",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/strategy-loop/evaluate",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/strategy-loop/sweep",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/studies/strategy-loop/recommend-hedge",
-        RouteScope::Required("read"),
-    ),
-    // Profile routes: any valid token, scoped to its own `token_id` by the handlers.
-    ("GET", "/profile", RouteScope::Authenticated),
-    ("PUT", "/profile", RouteScope::Authenticated),
-    ("GET", "/profile/layouts", RouteScope::Authenticated),
-    ("PUT", "/profile/layouts/{name}", RouteScope::Authenticated),
-    (
-        "DELETE",
-        "/profile/layouts/{name}",
-        RouteScope::Authenticated,
-    ),
-    ("GET", "/profile/modules", RouteScope::Authenticated),
-    ("PUT", "/profile/modules/{id}", RouteScope::Authenticated),
-    ("DELETE", "/profile/modules/{id}", RouteScope::Authenticated),
-    // Portfolio routes: `read` scope for read-only portfolio access (ADR 0032 §1, §6)
-    ("GET", "/portfolio", RouteScope::Required("read")),
-    ("GET", "/portfolio/accounts", RouteScope::Required("read")),
-    ("GET", "/portfolio/positions", RouteScope::Required("read")),
-    ("GET", "/portfolio/holdings", RouteScope::Required("read")),
-    ("GET", "/portfolio/trades", RouteScope::Required("read")),
-    // Research routes: still use `research` scope for backward compatibility
-    ("GET", "/strategies", RouteScope::Required("research")),
-    ("POST", "/strategies", RouteScope::Required("research")),
-    (
-        "POST",
-        "/strategies/verify",
-        RouteScope::Required("research"),
-    ),
-    ("POST", "/backtests", RouteScope::Required("research")),
-    ("GET", "/backtests/{id}", RouteScope::Required("research")),
-    (
-        "GET",
-        "/backtests/{id}/journal",
-        RouteScope::Required("research"),
-    ),
-    (
-        "GET",
-        "/backtests/{id}/events",
-        RouteScope::Required("research"),
-    ),
-    ("POST", "/sweeps", RouteScope::Required("research")),
-    ("GET", "/sweeps/{id}", RouteScope::Required("research")),
-    (
-        "GET",
-        "/sweeps/{id}/journal",
-        RouteScope::Required("research"),
-    ),
-    ("GET", "/journals/{id}", RouteScope::Required("research")),
-    // Approval queue routes: `admin` scope
-    ("GET", "/approval/queue", RouteScope::Required("admin")),
-    ("POST", "/approval/approve", RouteScope::Required("admin")),
-    ("POST", "/approval/reject", RouteScope::Required("admin")),
-    // WebSocket routes: public
-    ("GET", "/ws", RouteScope::Public),
-    ("GET", "/ws/market", RouteScope::Public),
-    // Chat WebSocket: hits a real LLM, unlike the public /ws and /ws/market feeds, so it
-    // requires any valid token rather than being public.
-    ("GET", "/ws/chat", RouteScope::Authenticated),
-    // ACP agent WebSocket (agent plan 0019 Phase 2): real LLM + tools, any valid token
-    ("GET", "/acp", RouteScope::Authenticated),
-    // Additional research / run routes
-    ("GET", "/backtests", RouteScope::Required("research")),
-    ("GET", "/sweeps", RouteScope::Required("research")),
-    // Additional orders & positions & portfolio routes
-    ("GET", "/orders", RouteScope::Required("trade")),
-    ("GET", "/orders/{id}/fills", RouteScope::Required("read")),
-    ("GET", "/positions", RouteScope::Required("read")),
-    ("GET", "/positions/audit", RouteScope::Required("read")),
-    ("GET", "/trades", RouteScope::Required("read")),
-    ("GET", "/portfolio/chart", RouteScope::Required("read")),
-    (
-        "GET",
-        "/portfolio/concentration",
-        RouteScope::Required("read"),
-    ),
-    ("GET", "/portfolio/wac", RouteScope::Required("read")),
-    ("GET", "/ledger", RouteScope::Required("read")),
-    ("GET", "/tax/report", RouteScope::Required("read")),
-    ("GET", "/fees", RouteScope::Required("read")),
-    // Additional reports routes
-    ("GET", "/reports/ledger", RouteScope::Required("read")),
-    ("GET", "/reports/tax", RouteScope::Required("read")),
-    ("GET", "/reports/snapshots", RouteScope::Required("read")),
-    ("GET", "/reports/audit", RouteScope::Required("read")),
-    (
-        "GET",
-        "/reports/concentration",
-        RouteScope::Required("read"),
-    ),
-    ("GET", "/reports/wac", RouteScope::Required("read")),
-    ("GET", "/reports/fees", RouteScope::Required("read")),
-    ("GET", "/reports/equity-curve", RouteScope::Required("read")),
-    (
-        "GET",
-        "/reports/fills/{order_id}",
-        RouteScope::Required("read"),
-    ),
-    // Market reference data
-    (
-        "GET",
-        "/market-data/symbol-profile/{id}",
-        RouteScope::Required("read"),
-    ),
-    ("GET", "/market-data/calendar", RouteScope::Required("read")),
-    (
-        "GET",
-        "/market-data/block-deals",
-        RouteScope::Required("read"),
-    ),
-    // Paper-exchange live socket: accepts place/cancel order commands
-    ("GET", "/ws/live", RouteScope::Required("trade")),
-    // Trade-performance journal
-    (
-        "GET",
-        "/trade-journal/accounts",
-        RouteScope::Required("read"),
-    ),
-    (
-        "POST",
-        "/trade-journal/accounts",
-        RouteScope::Required("trade"),
-    ),
-    (
-        "GET",
-        "/trade-journal/overview",
-        RouteScope::Required("read"),
-    ),
-    ("GET", "/trade-journal/trades", RouteScope::Required("read")),
-    (
-        "PATCH",
-        "/trade-journal/trades/{id}",
-        RouteScope::Required("trade"),
-    ),
-    (
-        "GET",
-        "/trade-journal/calendar",
-        RouteScope::Required("read"),
-    ),
-    ("GET", "/trade-journal/notes", RouteScope::Required("read")),
-    (
-        "POST",
-        "/trade-journal/notes",
-        RouteScope::Required("trade"),
-    ),
-    (
-        "GET",
-        "/trade-journal/compare",
-        RouteScope::Required("read"),
-    ),
-    // Documentation / OpenAPI routes
-    ("GET", "/schema/openapi/v1.json", RouteScope::Public),
-    ("GET", "/schema/openapi/v2.json", RouteScope::Public),
-    ("GET", "/schema/openapi", RouteScope::Public),
-    ("GET", "/docs", RouteScope::Public),
-    ("GET", "/swagger-ui", RouteScope::Public),
-];
-
-/// The scope required for a concrete request, or `None` when the route is not in
-/// [`ROUTE_SCOPES`].
+/// The scope required for a concrete request, or `None` when the route is not in the route
+/// registry ([`crate::route_registry`]).
 ///
 /// `None` means the request matched no row: with auth enabled the middleware denies it by
 /// default (401/403, design 0006 R0), and the drift guard (`unscoped_routes`) forbids a
@@ -586,24 +272,20 @@ pub fn scope_for(method: &str, path: &str) -> Option<RouteScope> {
         .strip_prefix("/api/v1")
         .or_else(|| path.strip_prefix("/api/v2"))
         .unwrap_or(path);
-    // Routes that exist only under /api/v2 (never a route a v1/root path may reach).
-    if path.starts_with("/api/v2/")
-        && let Some((_, _, scope)) = V2_ONLY_SCOPES.iter().find(|(m, pattern, _)| {
-            m.eq_ignore_ascii_case(method) && path_matches(pattern, unversioned_path)
-        })
-    {
-        return Some(*scope);
-    }
-    ROUTE_SCOPES
+    // v2-only routes are never reachable from a v1 or root path.
+    let v2 = path.starts_with("/api/v2/");
+    crate::route_registry()
         .iter()
-        .find(|(m, pattern, _)| {
-            m.eq_ignore_ascii_case(method) && path_matches(pattern, unversioned_path)
+        .find(|e| {
+            (v2 || !e.v2_only)
+                && e.method.eq_ignore_ascii_case(method)
+                && path_matches(e.path, unversioned_path)
         })
-        .map(|(_, _, scope)| *scope)
+        .map(|e| e.scope)
 }
 
 /// Whether concrete request `path` matches a route `pattern` whose `{param}`
-/// segments are single-segment wildcards.
+/// or `:param` segments are single-segment wildcards.
 fn path_matches(pattern: &str, path: &str) -> bool {
     let mut want = pattern.split('/');
     let mut got = path.split('/');
@@ -611,7 +293,7 @@ fn path_matches(pattern: &str, path: &str) -> bool {
         match (want.next(), got.next()) {
             (None, None) => return true,
             (Some(pat), Some(seg)) => {
-                let wildcard = pat.starts_with('{') && pat.ends_with('}');
+                let wildcard = (pat.starts_with('{') && pat.ends_with('}')) || pat.starts_with(':');
                 if wildcard {
                     if seg.is_empty() {
                         return false;
@@ -625,8 +307,8 @@ fn path_matches(pattern: &str, path: &str) -> bool {
     }
 }
 
-/// The routes in `routes` (given as `(METHOD, path)` pairs) with no row in
-/// [`ROUTE_SCOPES`].
+/// The routes in `routes` (given as `(METHOD, path)` pairs) with no entry in the route
+/// registry.
 ///
 /// The drift guard asserts this is empty for [`tantra_runtime_api::ENDPOINTS`] and that a
 /// route added without a scope makes it non-empty, so a new endpoint cannot ship
