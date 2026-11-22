@@ -24,6 +24,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod alerts_routes;
 mod approval;
 mod auth;
 mod bar_pump;
@@ -399,6 +400,7 @@ pub(crate) fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEn
             .into_iter()
             .chain(chat_threads::v2_only_manifest())
             .chain(v2_canonical::v2_only_manifest())
+            .chain(alerts_routes::v2_only_manifest())
             .collect(),
         root_table().finish().1,
     )
