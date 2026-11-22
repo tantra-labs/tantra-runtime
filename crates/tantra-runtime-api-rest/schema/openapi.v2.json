@@ -4513,6 +4513,40 @@
       "patch": null,
       "delete": null
     },
+    "/stream": {
+      "get": {
+        "tags": [
+          "stream"
+        ],
+        "summary": "GET /stream",
+        "operationId": "getStream",
+        "parameters": [],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "AnyValue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/studies/experimental-analysis/catalog": {
       "get": {
         "tags": [
@@ -7424,7 +7458,7 @@
         "tags": [
           "ws"
         ],
-        "summary": "WebSocket live stream",
+        "summary": "WebSocket live stream (successor: /stream)",
         "operationId": "getWs",
         "parameters": [],
         "requestBody": null,
@@ -7440,7 +7474,8 @@
             }
           }
         },
-        "security": []
+        "security": [],
+        "deprecated": true
       },
       "post": null,
       "put": null,
@@ -7484,7 +7519,7 @@
         "tags": [
           "ws"
         ],
-        "summary": "GET /ws/live (successor: /ws)",
+        "summary": "GET /ws/live (successor: /stream)",
         "operationId": "getWsLive",
         "parameters": [],
         "requestBody": null,
@@ -7519,7 +7554,7 @@
         "tags": [
           "ws"
         ],
-        "summary": "WebSocket market data stream (successor: /ws)",
+        "summary": "WebSocket market data stream (successor: /stream)",
         "operationId": "getWsMarket",
         "parameters": [],
         "requestBody": null,

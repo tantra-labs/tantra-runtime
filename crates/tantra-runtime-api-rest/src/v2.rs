@@ -20,6 +20,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(crate::chat_threads::v2_only_routes())
         .merge(crate::v2_canonical::v2_only_routes())
         .merge(crate::alerts_routes::v2_only_routes())
+        .merge(crate::stream::v2_only_routes())
         .layer(axum::middleware::from_fn(v2_response_envelope))
 }
 

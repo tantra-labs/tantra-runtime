@@ -25,6 +25,9 @@ use tracing::debug;
 use crate::AppState;
 use crate::caller::Caller;
 
+/// Largest response body buffered for a result frame.
+const MAX_RESULT_BYTES: usize = 1024 * 1024;
+
 /// Upgrades an HTTP connection to a WebSocket streaming the paper exchange's events.
 pub async fn ws_live_handler(
     _caller: Caller,
@@ -177,7 +180,8 @@ async fn dispatch_command(
             let response = crate::orders::post_orders(
                 State(state.clone()),
                 crate::ApiJson(order),
-                "ws".to_string(),
+                // A fresh key per keyless order; a constant would collapse them into one.
+                uuid::Uuid::new_v4().to_string(),
             )
             .await;
             let status = response.status().as_u16();
@@ -205,7 +209,7 @@ async fn dispatch_command(
 
 /// The response envelope body as JSON (or `null` when it is not JSON).
 async fn response_body(response: Response) -> Value {
-    axum::body::to_bytes(response.into_body(), usize::MAX)
+    axum::body::to_bytes(response.into_body(), MAX_RESULT_BYTES)
         .await
         .map(|bytes| serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null))
         .unwrap_or(Value::Null)

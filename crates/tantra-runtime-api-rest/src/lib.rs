@@ -71,6 +71,7 @@ mod screener;
 mod service;
 mod state;
 mod strategy_loop;
+mod stream;
 mod streams;
 pub mod ticks_file;
 mod trade_journal;
@@ -401,6 +402,7 @@ pub(crate) fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEn
             .chain(chat_threads::v2_only_manifest())
             .chain(v2_canonical::v2_only_manifest())
             .chain(alerts_routes::v2_only_manifest())
+            .chain(stream::v2_only_manifest())
             .collect(),
         root_table().finish().1,
     )

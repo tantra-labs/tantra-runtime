@@ -421,11 +421,12 @@ fn table() -> RouteTable {
         .get("/trade-journal/notes", get_trade_journal_notes, READ)
         .post("/trade-journal/notes", post_trade_journal_note, TRADE)
         .get("/trade-journal/compare", get_trade_journal_compare, READ)
+        .v2_deprecated("/stream")
         .get("/ws", ws_handler, PUBLIC)
-        .v2_deprecated("/ws")
+        .v2_deprecated("/stream")
         .get("/ws/market", ws_handler, PUBLIC)
         // Paper-exchange live socket: accepts place/cancel order commands.
-        .v2_deprecated("/ws")
+        .v2_deprecated("/stream")
         .get("/ws/live", ws_live_handler, TRADE)
         // Chat WebSocket: hits a real LLM, unlike the public /ws and /ws/market feeds, so it
         // requires any valid token rather than being public.
