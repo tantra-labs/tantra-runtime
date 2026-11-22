@@ -10,6 +10,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 | # | Title | Target Scope | Status |
 |---|---|---|---|
 | [0013](0013-per-caller-journal-and-paper-account.md) | Trade journal store and `/ws/live` paper account are shared by every authenticated caller (not keyed by `Caller`) | `tantra-runtime-api-rest` (`state.rs`, `trade_journal.rs`, `ws_live.rs`) | Open (2026-11-22), follow-up to 0012 |
+| [0014](0014-chat-trace-streaming-and-thread-persistence.md) | `/ws/chat` lacks `thought_delta`, `token_usage`, `raw_input`/`raw_output` events and caller-scoped `/api/v2/chat/threads` CRUD persistence | `tantra-runtime-api-rest::chat`, `tantra-runtime-persistence` (consumer: `tantra-ui-web` plan `0020`) | Open (2026-11-22), paired with `tantra-agent` gap `0010` |
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |
