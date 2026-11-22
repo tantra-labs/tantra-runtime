@@ -7,7 +7,6 @@ use axum::extract::{Path, State};
 use axum::handler::Handler as _;
 use axum::http::StatusCode;
 use axum::response::{Json, Response};
-use axum::routing::{delete, get, patch, post, put};
 use tantra_runtime_api::{
     ApiResponse, Capabilities, CapabilitiesResponse, CompiledStrategy, OrdersRequest,
     ResponseEnvelope, StrategiesResponse, SweepRequest, VerifyStrategyRequest,
@@ -20,6 +19,7 @@ use crate::reports::{
     get_concentration_risk, get_equity_curve, get_fees_report, get_ledger, get_order_fills,
     get_portfolio_snapshots, get_position_audit, get_tax_report, get_weighted_average_cost,
 };
+use crate::route_table::RouteTable;
 use crate::trade_journal::{
     get_trade_journal_accounts, get_trade_journal_calendar, get_trade_journal_compare,
     get_trade_journal_notes, get_trade_journal_overview, get_trade_journal_trades,
@@ -170,148 +170,153 @@ pub fn routes(state: Arc<AppState>) -> Router {
 
 /// Build the v1 router expecting State<Arc<AppState>>.
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/capabilities", get(get_capabilities))
-        .route("/health", get(get_health))
-        .route("/schema", get(get_schema))
-        .route("/instruments", get(market::get_instruments))
-        .route("/instruments/:id", get(market::get_instrument_by_id))
-        .route("/quotes", get(market::get_quotes))
-        .route("/bars/:id", get(market::get_bars))
-        .route("/depth/:id", get(market::get_depth))
+    let (router, _) = table().finish();
+    router.layer(axum::middleware::from_fn(v1_headers))
+}
+
+/// `(METHOD, path)` of every route [`router`] serves (`:param` spelling).
+pub fn manifest() -> Vec<(&'static str, &'static str)> {
+    table().finish().1
+}
+
+fn table() -> RouteTable {
+    RouteTable::new()
+        .get("/capabilities", get_capabilities)
+        .get("/health", get_health)
+        .get("/schema", get_schema)
+        .get("/instruments", market::get_instruments)
+        .get("/instruments/:id", market::get_instrument_by_id)
+        .get("/quotes", market::get_quotes)
+        .get("/bars/:id", market::get_bars)
+        .get("/depth/:id", market::get_depth)
         // Market reference data (Phase 3): symbol profile + calendar, backed
         // by tantra-data's symbol-profile / calendar ingestion.
-        .route(
+        .get(
             "/market-data/symbol-profile/:id",
-            get(market::get_symbol_profile),
+            market::get_symbol_profile,
         )
-        .route("/market-data/calendar", get(market::get_market_calendar))
-        .route("/market-data/block-deals", get(market::get_block_deals))
-        .route("/bars", post(ingest::post_bars))
-        .route(
-            "/trading-state",
-            get(trading_state::get_trading_state).put(trading_state::put_trading_state),
-        )
-        .route(
+        .get("/market-data/calendar", market::get_market_calendar)
+        .get("/market-data/block-deals", market::get_block_deals)
+        .post("/bars", ingest::post_bars)
+        .get("/trading-state", trading_state::get_trading_state)
+        .put("/trading-state", trading_state::put_trading_state)
+        .get("/profile", profile::get_profile)
+        .put(
             "/profile",
-            get(profile::get_profile).put(profile::put_profile.layer(profile::body_limit())),
+            profile::put_profile.layer(profile::body_limit()),
         )
-        .route("/profile/layouts", get(profile::get_layouts))
-        .route(
+        .get("/profile/layouts", profile::get_layouts)
+        .put(
             "/profile/layouts/:name",
-            put(profile::put_layout.layer(profile::body_limit())).delete(profile::delete_layout),
+            profile::put_layout.layer(profile::body_limit()),
         )
-        .route("/profile/modules", get(profile::get_modules))
-        .route(
+        .delete("/profile/layouts/:name", profile::delete_layout)
+        .get("/profile/modules", profile::get_modules)
+        .put(
             "/profile/modules/:id",
-            put(profile::put_module.layer(profile::body_limit())).delete(profile::delete_module),
+            profile::put_module.layer(profile::body_limit()),
         )
-        .route("/portfolio", get(portfolio::get_portfolio))
-        .route("/portfolio/accounts", get(portfolio::get_accounts))
-        .route("/portfolio/positions", get(portfolio::get_positions))
-        .route("/portfolio/holdings", get(portfolio::get_holdings))
-        .route("/portfolio/trades", get(portfolio::get_trades))
-        .route("/portfolio/chart", get(get_equity_curve))
-        .route("/portfolio/concentration", get(get_concentration_risk))
-        .route("/portfolio/wac", get(get_weighted_average_cost))
-        .route("/ledger", get(get_ledger))
-        .route("/tax/report", get(get_tax_report))
-        .route("/fees", get(get_fees_report))
-        .route("/positions", get(portfolio::get_positions))
-        .route("/positions/audit", get(get_position_audit))
-        .route("/trades", get(portfolio::get_trades))
-        .route("/reports/ledger", get(get_ledger))
-        .route("/reports/tax", get(get_tax_report))
-        .route("/reports/snapshots", get(get_portfolio_snapshots))
-        .route("/reports/audit", get(get_position_audit))
-        .route("/reports/concentration", get(get_concentration_risk))
-        .route("/reports/wac", get(get_weighted_average_cost))
-        .route("/reports/fees", get(get_fees_report))
-        .route("/reports/equity-curve", get(get_equity_curve))
-        .route("/reports/fills/:order_id", get(get_order_fills))
-        .route("/strategies", post(post_strategies).get(get_strategies))
-        .route("/strategies/verify", post(post_verify_strategy))
-        .route(
-            "/backtests",
-            post(runs::post_backtests).get(runs::get_backtests),
-        )
-        .route("/backtests/:id", get(runs::get_backtest_by_id))
-        .route("/backtests/:id/journal", get(runs::get_backtest_journal))
-        .route("/backtests/:id/events", get(get_backtest_events))
-        .route("/sweeps", post(post_sweeps).get(runs::get_sweeps))
-        .route("/sweeps/:id", get(get_sweep_by_id))
-        .route("/sweeps/:id/journal", get(runs::get_sweep_journal))
-        .route("/orders", post(post_orders).get(get_orders))
-        .route("/orders/:id", delete(delete_order))
-        .route("/orders/:id/fills", get(get_order_fills))
-        .route("/positions/close", post(post_close_positions))
-        .route("/approval/queue", get(orders::get_approval_queue))
-        .route("/approval/approve", post(orders::post_approve_order))
-        .route("/approval/reject", post(orders::post_reject_order))
-        .route("/screener/scan", get(screener::get_screener_scan))
-        .route(
+        .delete("/profile/modules/:id", profile::delete_module)
+        .get("/portfolio", portfolio::get_portfolio)
+        .get("/portfolio/accounts", portfolio::get_accounts)
+        .get("/portfolio/positions", portfolio::get_positions)
+        .get("/portfolio/holdings", portfolio::get_holdings)
+        .get("/portfolio/trades", portfolio::get_trades)
+        .get("/portfolio/chart", get_equity_curve)
+        .get("/portfolio/concentration", get_concentration_risk)
+        .get("/portfolio/wac", get_weighted_average_cost)
+        .get("/ledger", get_ledger)
+        .get("/tax/report", get_tax_report)
+        .get("/fees", get_fees_report)
+        .get("/positions", portfolio::get_positions)
+        .get("/positions/audit", get_position_audit)
+        .get("/trades", portfolio::get_trades)
+        .get("/reports/ledger", get_ledger)
+        .get("/reports/tax", get_tax_report)
+        .get("/reports/snapshots", get_portfolio_snapshots)
+        .get("/reports/audit", get_position_audit)
+        .get("/reports/concentration", get_concentration_risk)
+        .get("/reports/wac", get_weighted_average_cost)
+        .get("/reports/fees", get_fees_report)
+        .get("/reports/equity-curve", get_equity_curve)
+        .get("/reports/fills/:order_id", get_order_fills)
+        .post("/strategies", post_strategies)
+        .get("/strategies", get_strategies)
+        .post("/strategies/verify", post_verify_strategy)
+        .post("/backtests", runs::post_backtests)
+        .get("/backtests", runs::get_backtests)
+        .get("/backtests/:id", runs::get_backtest_by_id)
+        .get("/backtests/:id/journal", runs::get_backtest_journal)
+        .get("/backtests/:id/events", get_backtest_events)
+        .post("/sweeps", post_sweeps)
+        .get("/sweeps", runs::get_sweeps)
+        .get("/sweeps/:id", get_sweep_by_id)
+        .get("/sweeps/:id/journal", runs::get_sweep_journal)
+        .post("/orders", post_orders)
+        .get("/orders", get_orders)
+        .delete("/orders/:id", delete_order)
+        .get("/orders/:id/fills", get_order_fills)
+        .post("/positions/close", post_close_positions)
+        .get("/approval/queue", orders::get_approval_queue)
+        .post("/approval/approve", orders::post_approve_order)
+        .post("/approval/reject", orders::post_reject_order)
+        .get("/screener/scan", screener::get_screener_scan)
+        .get(
             "/experimental-analysis/catalog",
-            get(experimental_analysis::get_catalog),
+            experimental_analysis::get_catalog,
         )
-        .route(
+        .post(
             "/experimental-analysis/returns",
-            post(experimental_analysis::post_returns),
+            experimental_analysis::post_returns,
         )
-        .route(
+        .post(
             "/experimental-analysis/intraday",
-            post(experimental_analysis::post_intraday),
+            experimental_analysis::post_intraday,
         )
-        .route(
+        .post(
             "/experimental-analysis/correlation",
-            post(experimental_analysis::post_correlation),
+            experimental_analysis::post_correlation,
         )
-        .route(
+        .post(
             "/experimental-analysis/options-overlay",
-            post(experimental_analysis::post_options_overlay),
+            experimental_analysis::post_options_overlay,
         )
-        .route(
+        .post(
             "/experimental-analysis/forecast",
-            post(experimental_analysis::post_forecast),
+            experimental_analysis::post_forecast,
         )
-        .route(
+        .post(
             "/experimental-analysis/events",
-            post(experimental_analysis::post_events),
+            experimental_analysis::post_events,
         )
-        .route(
+        .post(
             "/experimental-analysis/outlier-news",
-            post(experimental_analysis::post_outlier_news),
+            experimental_analysis::post_outlier_news,
         )
-        .route(
+        .post(
             "/studies/strategy-loop/evaluate",
-            post(strategy_loop::post_evaluate),
+            strategy_loop::post_evaluate,
         )
-        .route(
-            "/studies/strategy-loop/sweep",
-            post(strategy_loop::post_sweep),
-        )
-        .route(
+        .post("/studies/strategy-loop/sweep", strategy_loop::post_sweep)
+        .post(
             "/studies/strategy-loop/recommend-hedge",
-            post(strategy_loop::post_recommend_hedge),
+            strategy_loop::post_recommend_hedge,
         )
-        .route("/journals/:id", get(runs::get_journal_by_id))
+        .get("/journals/:id", runs::get_journal_by_id)
         // Trade-performance journal (distinct from run/backtest journals and
         // the operator journal): backed by tantra-ledger-performance.
-        .route("/trade-journal/accounts", get(get_trade_journal_accounts))
-        .route("/trade-journal/accounts", post(post_trade_journal_account))
-        .route("/trade-journal/overview", get(get_trade_journal_overview))
-        .route("/trade-journal/trades", get(get_trade_journal_trades))
-        .route(
-            "/trade-journal/trades/:id",
-            patch(patch_trade_journal_trade),
-        )
-        .route("/trade-journal/calendar", get(get_trade_journal_calendar))
-        .route("/trade-journal/notes", get(get_trade_journal_notes))
-        .route("/trade-journal/notes", post(post_trade_journal_note))
-        .route("/trade-journal/compare", get(get_trade_journal_compare))
-        .route("/ws", get(ws_handler))
-        .route("/ws/market", get(ws_handler))
-        .route("/ws/live", get(ws_live_handler))
-        .route("/ws/chat", get(chat_ws_handler))
-        .route("/acp", get(acp_ws_handler))
-        .layer(axum::middleware::from_fn(v1_headers))
+        .get("/trade-journal/accounts", get_trade_journal_accounts)
+        .post("/trade-journal/accounts", post_trade_journal_account)
+        .get("/trade-journal/overview", get_trade_journal_overview)
+        .get("/trade-journal/trades", get_trade_journal_trades)
+        .patch("/trade-journal/trades/:id", patch_trade_journal_trade)
+        .get("/trade-journal/calendar", get_trade_journal_calendar)
+        .get("/trade-journal/notes", get_trade_journal_notes)
+        .post("/trade-journal/notes", post_trade_journal_note)
+        .get("/trade-journal/compare", get_trade_journal_compare)
+        .get("/ws", ws_handler)
+        .get("/ws/market", ws_handler)
+        .get("/ws/live", ws_live_handler)
+        .get("/ws/chat", chat_ws_handler)
+        .get("/acp", acp_ws_handler)
 }

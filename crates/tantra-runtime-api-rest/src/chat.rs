@@ -571,17 +571,31 @@ pub struct ChatQuery {
     workspace: Option<String>,
 }
 
+/// The chat session scope for `caller_id` and an optional `workspace`: the workspace (trimmed,
+/// blank means `"default"`) namespaced by the caller so two callers never share a session. The
+/// auth-off default user keeps the bare workspace so existing sessions still resume.
+#[doc(hidden)]
+pub fn chat_scope_name(caller_id: &str, workspace: Option<&str>) -> String {
+    let workspace = workspace
+        .map(str::trim)
+        .filter(|w| !w.is_empty())
+        .unwrap_or("default");
+    if caller_id == crate::profile_store::DEFAULT_USER_ID {
+        workspace.to_owned()
+    } else {
+        format!("{caller_id}/{workspace}")
+    }
+}
+
 /// Upgrades an HTTP connection to a WebSocket bound to one chat-agent session, scoped to the
 /// requested workspace (`?workspace=<id>`).
 pub async fn chat_ws_handler(
+    Caller(caller_id): Caller,
     ws: WebSocketUpgrade,
     State(app_state): State<Arc<AppState>>,
     Query(query): Query<ChatQuery>,
 ) -> Response {
-    let scope_name = query
-        .workspace
-        .filter(|w| !w.trim().is_empty())
-        .unwrap_or_else(|| "default".to_string());
+    let scope_name = chat_scope_name(&caller_id, query.workspace.as_deref());
     ws.on_upgrade(move |socket| handle_chat_socket(socket, app_state, scope_name))
 }
 

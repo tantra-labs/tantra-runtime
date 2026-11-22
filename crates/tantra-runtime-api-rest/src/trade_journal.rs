@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::Response;
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,7 @@ use tantra_runtime_api::{ErrorCode, ErrorDetail};
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::caller::Caller;
 use crate::market::{failure, success};
 use tantra_ledger_performance::calendar::build_calendar;
 use tantra_ledger_performance::metrics::{MetricsInput, compute_edge_score, compute_metrics};
@@ -446,11 +447,22 @@ fn edge_score_dto(e: &tantra_ledger_performance::metrics::EdgeScore) -> EdgeScor
 // Handlers
 // ---------------------------------------------------------------------------
 
+/// A 201 response carrying `data` in the standard envelope.
+fn created<T: Serialize>(data: T) -> Response {
+    let mut response = success(data);
+    *response.status_mut() = StatusCode::CREATED;
+    response
+}
+
 /// `GET /trade-journal/accounts` — list journal accounts.
 ///
 /// Distinct from `/portfolio/accounts` (live OMS/trading accounts): a journal
 /// account is an analytics grouping, not a live-execution account.
-pub async fn get_trade_journal_accounts(State(state): State<Arc<AppState>>) -> Response {
+pub async fn get_trade_journal_accounts(
+    _caller: Caller,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -472,9 +484,11 @@ pub async fn get_trade_journal_accounts(State(state): State<Arc<AppState>>) -> R
 
 /// `POST /trade-journal/accounts` — create a journal account.
 pub async fn post_trade_journal_account(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     axum::extract::Json(request): axum::extract::Json<CreateAccountRequest>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -510,17 +524,13 @@ pub async fn post_trade_journal_account(
             currency,
             bal,
         ) {
-            Ok(account) => (
-                StatusCode::CREATED,
-                Json(serde_json::json!({
-                    "id": account.id,
-                    "display_name": account.display_name,
-                    "provenance": format!("{:?}", account.provenance),
-                    "currency": account.currency.code(),
-                    "starting_balance": account.starting_balance.map(|m| m.amount.to_string()),
-                })),
-            )
-                .into_response(),
+            Ok(account) => created(serde_json::json!({
+                "id": account.id,
+                "display_name": account.display_name,
+                "provenance": format!("{:?}", account.provenance),
+                "currency": account.currency.code(),
+                "starting_balance": account.starting_balance.map(|m| m.amount.to_string()),
+            })),
             Err(StoreError::AccountAlreadyExists(id)) => failure(
                 StatusCode::CONFLICT,
                 ErrorDetail::new(
@@ -545,9 +555,11 @@ pub async fn post_trade_journal_account(
 
 /// `GET /trade-journal/overview` — metrics + edge score.
 pub async fn get_trade_journal_overview(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     Query(query): Query<OverviewQuery>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -607,9 +619,11 @@ pub async fn get_trade_journal_overview(
 
 /// `GET /trade-journal/trades` — closed trades with annotations, cursor-paginated.
 pub async fn get_trade_journal_trades(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     Query(query): Query<TradesQuery>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -634,10 +648,12 @@ pub async fn get_trade_journal_trades(
 
 /// `PATCH /trade-journal/trades/:id` — set a trade's annotation.
 pub async fn patch_trade_journal_trade(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     Path(trade_id): Path<String>,
     axum::extract::Json(request): axum::extract::Json<PatchTradeRequest>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -669,9 +685,11 @@ pub async fn patch_trade_journal_trade(
 
 /// `GET /trade-journal/calendar` — daily P&L heatmap for a month.
 pub async fn get_trade_journal_calendar(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     Query(query): Query<CalendarQuery>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -721,9 +739,11 @@ pub async fn get_trade_journal_calendar(
 
 /// `GET /trade-journal/notes` — day-keyed journal notes for an account.
 pub async fn get_trade_journal_notes(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     Query(query): Query<NotesQuery>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -757,9 +777,11 @@ pub async fn get_trade_journal_notes(
 
 /// `POST /trade-journal/notes` — create or replace a day-keyed note.
 pub async fn post_trade_journal_note(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     axum::extract::Json(request): axum::extract::Json<CreateNoteRequest>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,
@@ -787,14 +809,16 @@ pub async fn post_trade_journal_note(
             ),
         );
     }
-    (StatusCode::CREATED, Json(serde_json::json!({"ok": true}))).into_response()
+    created(serde_json::json!({"ok": true}))
 }
 
 /// `GET /trade-journal/compare` — two-sided metrics comparison.
 pub async fn get_trade_journal_compare(
+    _caller: Caller,
     State(state): State<Arc<AppState>>,
     Query(query): Query<CompareQuery>,
 ) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
         Ok(s) => s,
         Err(r) => return r,

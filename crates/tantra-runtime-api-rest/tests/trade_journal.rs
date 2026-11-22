@@ -129,9 +129,9 @@ async fn create_account() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["display_name"], "New Account");
-    assert_eq!(body["provenance"], "Imported");
-    assert_eq!(body["starting_balance"], "50000.00");
+    assert_eq!(body["data"]["display_name"], "New Account");
+    assert_eq!(body["data"]["provenance"], "Imported");
+    assert_eq!(body["data"]["starting_balance"], "50000.00");
 
     // Listing now shows two accounts.
     let (status, body) = call(&router, "GET", "/api/v1/trade-journal/accounts", None).await;

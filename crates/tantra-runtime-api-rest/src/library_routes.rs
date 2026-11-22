@@ -11,7 +11,6 @@ use axum::Router;
 use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum::routing::{get, post};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -20,6 +19,7 @@ use tantra_runtime_api::{ErrorCode, ErrorDetail};
 use crate::caller::Caller;
 use crate::library_client::LibraryError;
 use crate::market::{ApiQuery, failure, success};
+use crate::route_table::RouteTable;
 use crate::{ApiJson, AppState, experimental_analysis};
 
 /// Maximum request body for the library routes.
@@ -122,43 +122,52 @@ pub struct SignalStudyRequest {
 
 /// Routes mounted only under `/api/v2`.
 pub(crate) fn v2_only_routes() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/studies/library/entries", get(get_entries))
-        .route("/studies/library/entries/:id", get(get_entry))
-        .route("/studies/indicators/compute", post(post_compute))
-        .route("/studies/signal-study", post(post_signal_study))
-        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .route(
+    v2_only_table().finish().0
+}
+
+/// `(METHOD, path)` of every route [`v2_only_routes`] serves (`:param` spelling).
+pub(crate) fn v2_only_manifest() -> Vec<(&'static str, &'static str)> {
+    v2_only_table().finish().1
+}
+
+fn v2_only_table() -> RouteTable {
+    RouteTable::new()
+        .get("/studies/library/entries", get_entries)
+        .get("/studies/library/entries/:id", get_entry)
+        .post("/studies/indicators/compute", post_compute)
+        .post("/studies/signal-study", post_signal_study)
+        .map(|r| r.layer(DefaultBodyLimit::max(MAX_BODY_BYTES)))
+        .get(
             "/studies/experimental-analysis/catalog",
-            get(experimental_analysis::get_catalog),
+            experimental_analysis::get_catalog,
         )
-        .route(
+        .post(
             "/studies/experimental-analysis/returns",
-            post(experimental_analysis::post_returns),
+            experimental_analysis::post_returns,
         )
-        .route(
+        .post(
             "/studies/experimental-analysis/intraday",
-            post(experimental_analysis::post_intraday),
+            experimental_analysis::post_intraday,
         )
-        .route(
+        .post(
             "/studies/experimental-analysis/correlation",
-            post(experimental_analysis::post_correlation),
+            experimental_analysis::post_correlation,
         )
-        .route(
+        .post(
             "/studies/experimental-analysis/options-overlay",
-            post(experimental_analysis::post_options_overlay),
+            experimental_analysis::post_options_overlay,
         )
-        .route(
+        .post(
             "/studies/experimental-analysis/forecast",
-            post(experimental_analysis::post_forecast),
+            experimental_analysis::post_forecast,
         )
-        .route(
+        .post(
             "/studies/experimental-analysis/events",
-            post(experimental_analysis::post_events),
+            experimental_analysis::post_events,
         )
-        .route(
+        .post(
             "/studies/experimental-analysis/outlier-news",
-            post(experimental_analysis::post_outlier_news),
+            experimental_analysis::post_outlier_news,
         )
 }
 

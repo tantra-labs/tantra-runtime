@@ -241,7 +241,7 @@ impl FileTokenStore {
     }
 }
 
-/// The scope a route requires, or that it is public (E5-S3, ADR 0023 §2).
+/// The scope a route requires, or that it is public (E5-S3, ADR 0023 §2). A route with no row at all is denied by default.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RouteScope {
     /// No token is required; the route is health or metadata.
@@ -254,7 +254,7 @@ pub enum RouteScope {
 }
 
 /// Scope rows for routes mounted only under `/api/v2` (library, signal study, canonical
-/// `/studies/experimental-analysis/*`). Without a row a route is public, so every v2-only
+/// `/studies/experimental-analysis/*`). Without a row a route is denied, so every v2-only
 /// route must be listed here.
 pub const V2_ONLY_SCOPES: &[(&str, &str, RouteScope)] = &[
     (
@@ -507,6 +507,58 @@ pub const ROUTE_SCOPES: &[(&str, &str, RouteScope)] = &[
         "/reports/fills/{order_id}",
         RouteScope::Required("read"),
     ),
+    // Market reference data
+    (
+        "GET",
+        "/market-data/symbol-profile/{id}",
+        RouteScope::Required("read"),
+    ),
+    ("GET", "/market-data/calendar", RouteScope::Required("read")),
+    (
+        "GET",
+        "/market-data/block-deals",
+        RouteScope::Required("read"),
+    ),
+    // Paper-exchange live socket: accepts place/cancel order commands
+    ("GET", "/ws/live", RouteScope::Required("trade")),
+    // Trade-performance journal
+    (
+        "GET",
+        "/trade-journal/accounts",
+        RouteScope::Required("read"),
+    ),
+    (
+        "POST",
+        "/trade-journal/accounts",
+        RouteScope::Required("trade"),
+    ),
+    (
+        "GET",
+        "/trade-journal/overview",
+        RouteScope::Required("read"),
+    ),
+    ("GET", "/trade-journal/trades", RouteScope::Required("read")),
+    (
+        "PATCH",
+        "/trade-journal/trades/{id}",
+        RouteScope::Required("trade"),
+    ),
+    (
+        "GET",
+        "/trade-journal/calendar",
+        RouteScope::Required("read"),
+    ),
+    ("GET", "/trade-journal/notes", RouteScope::Required("read")),
+    (
+        "POST",
+        "/trade-journal/notes",
+        RouteScope::Required("trade"),
+    ),
+    (
+        "GET",
+        "/trade-journal/compare",
+        RouteScope::Required("read"),
+    ),
     // Documentation / OpenAPI routes
     ("GET", "/schema/openapi/v1.json", RouteScope::Public),
     ("GET", "/schema/openapi/v2.json", RouteScope::Public),
@@ -518,9 +570,9 @@ pub const ROUTE_SCOPES: &[(&str, &str, RouteScope)] = &[
 /// The scope required for a concrete request, or `None` when the route is not in
 /// [`ROUTE_SCOPES`].
 ///
-/// `None` means the request matched no row: the router answers 404/405 for it,
-/// but the drift guard (`unscoped_routes`) forbids a registered endpoint from
-/// ever landing here.
+/// `None` means the request matched no row: with auth enabled the middleware denies it by
+/// default (401/403, design 0006 R0), and the drift guard (`unscoped_routes`) forbids a
+/// registered endpoint from ever landing here.
 ///
 /// `HEAD` is looked up as `GET`: the router answers it from the `GET` handler, so it needs the
 /// same token and scope.
@@ -621,8 +673,8 @@ impl AuthLayer {
     pub(crate) fn required_scope(method: &str, path: &str) -> Option<&'static str> {
         match scope_for(method, path) {
             Some(RouteScope::Required(scope)) => Some(scope),
-            // Public, a route the table does not know (the router answers 404/405 for it, and
-            // the drift guard keeps it that way), or one that needs a token but no scope.
+            // Public, one that needs a token but no scope, or a route the table does not know
+            // (`extract` denies that by default; the drift guard keeps real routes out of it).
             Some(RouteScope::Authenticated) | Some(RouteScope::Public) | None => None,
         }
     }
@@ -667,8 +719,33 @@ impl AuthLayer {
         }
     }
 
+    fn deny_unscoped(
+        &self,
+        path: &str,
+        method: &str,
+        info: &TokenInfo,
+        client_ip: Option<&str>,
+    ) -> (StatusCode, Json<ResponseEnvelope<serde_json::Value>>) {
+        self.audit(AuditEntry {
+            token_id: Some(&info.token_id),
+            route: path,
+            method,
+            decision: "denied",
+            reason: Some("no_scope_row"),
+            required_scope: None,
+            token_scopes: Some(&info.scopes),
+            client_ip,
+        });
+        let detail = ErrorDetail::new(
+            ErrorCode::Unauthorized,
+            "route has no scope row; denied by default (design 0006 R0)",
+        );
+        (StatusCode::FORBIDDEN, Json(ApiResponse::error(detail)))
+    }
+
     /// Extract token info from request, enforcing scope.
-    /// Returns None if route is public.
+    /// Returns None if route is public (or a CORS preflight). A route with no scope row is
+    /// denied: 401 without a valid token, 403 with one.
     pub async fn extract(
         &self,
         method: &str,
@@ -676,8 +753,18 @@ impl AuthLayer {
         headers: &HeaderMap,
         client_ip: Option<&str>,
     ) -> Result<Option<TokenInfo>, (StatusCode, Json<ResponseEnvelope<serde_json::Value>>)> {
+        let scope = scope_for(method, path);
         let required = Self::required_scope(method, path);
-        let any_token = scope_for(method, path) == Some(RouteScope::Authenticated);
+        // A route with no scope row is denied by default (design 0006 R0); only CORS preflight,
+        // which carries no credentials, is let through to the CORS layer's answer.
+        let unscoped = scope.is_none();
+        if unscoped
+            && method.eq_ignore_ascii_case("OPTIONS")
+            && headers.contains_key(axum::http::header::ACCESS_CONTROL_REQUEST_METHOD)
+        {
+            return Ok(None);
+        }
+        let any_token = scope == Some(RouteScope::Authenticated) || unscoped;
         if required.is_none() && !any_token {
             return Ok(None);
         }
@@ -711,6 +798,9 @@ impl AuthLayer {
 
         // First, try file-based token validation (backward compatible)
         if let Some(info) = self.store.as_ref().and_then(|st| st.validate(token).ok()) {
+            if unscoped {
+                return Err(self.deny_unscoped(path, method, &info, client_ip));
+            }
             if required.is_some_and(|r| !info.scopes.iter().any(|s| s == r)) {
                 let required = required.unwrap_or_default();
                 self.audit(AuditEntry {
@@ -752,6 +842,9 @@ impl AuthLayer {
         if let Some(config) = &self.jwt_config {
             match validate_jwt(token, config) {
                 Ok(info) => {
+                    if unscoped {
+                        return Err(self.deny_unscoped(path, method, &info, client_ip));
+                    }
                     if required.is_some_and(|r| !info.scopes.iter().any(|s| s == r)) {
                         let required = required.unwrap_or_default();
                         self.audit(AuditEntry {

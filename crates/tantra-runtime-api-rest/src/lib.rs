@@ -15,7 +15,6 @@ use axum::{
     extract::{FromRequest, Request, rejection::JsonRejection},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
-    routing::get,
 };
 use std::sync::Arc;
 use tantra_runtime_api::{ApiResponse, ErrorCode, ErrorDetail};
@@ -63,6 +62,7 @@ mod profile_store;
 mod registry;
 mod reports;
 mod retention;
+mod route_table;
 mod run_store;
 mod runs;
 mod screener;
@@ -95,7 +95,7 @@ pub use bootstrap::{
 pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog, load_lakehouse_v3};
 pub use chat::{
     ChatAttachmentInput, ChatClientMessage, ChatRuntime, LlmProviderRegistry, acp_ws_handler,
-    chat_ws_handler,
+    chat_scope_name, chat_ws_handler,
 };
 pub use dispatch::{DispatchError, build_target, dispatch, dispatch_stream};
 pub use executor::BacktestExecutor;
@@ -323,6 +323,7 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
 
     let v1_router = v1::router();
     let v2_router = v2::router();
+    let (root_routes, _) = root_table().finish();
 
     let router = Router::new()
         .nest("/api/v1", v1_router.clone())
@@ -333,11 +334,7 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
             v1_router.layer(axum::middleware::from_fn(legacy_v1_deprecation_notice)),
         )
         // OpenAPI specifications per version
-        .route("/schema/openapi/v1.json", get(openapi::get_openapi_v1))
-        .route("/schema/openapi/v2.json", get(openapi::get_openapi_v2))
-        .route("/schema/openapi", get(openapi::get_openapi_index))
-        .route("/docs", get(openapi::get_swagger_ui))
-        .route("/swagger-ui", get(openapi::get_swagger_ui))
+        .merge(root_routes)
         .fallback(unknown_route)
         .method_not_allowed_fallback(unsupported_method)
         .with_state(state)
@@ -363,6 +360,45 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
     } else {
         router
     }
+}
+
+/// Root-level documentation routes (GET only), shared by the router and [`served_routes`].
+fn root_table() -> route_table::RouteTable {
+    route_table::RouteTable::new()
+        .get("/schema/openapi/v1.json", openapi::get_openapi_v1)
+        .get("/schema/openapi/v2.json", openapi::get_openapi_v2)
+        .get("/schema/openapi", openapi::get_openapi_index)
+        .get("/docs", openapi::get_swagger_ui)
+        .get("/swagger-ui", openapi::get_swagger_ui)
+}
+
+/// `(METHOD, full_path)` for every route the real router serves: v1 under `/api/v1` and the
+/// legacy root, v1 plus the v2-only routes under `/api/v2`, and the root documentation routes.
+/// The auth drift guard checks each of these has a scope row (design 0006 R0).
+pub fn served_routes() -> Vec<(String, String)> {
+    let v1 = v1::manifest();
+    let v2_only = library_routes::v2_only_manifest();
+    let (_, root) = root_table().finish();
+    let mut out = Vec::new();
+    let join = |prefix: &str, path: &str| {
+        if prefix.is_empty() {
+            path.to_owned()
+        } else {
+            format!("{prefix}{path}")
+        }
+    };
+    for prefix in ["/api/v1", ""] {
+        for (m, p) in &v1 {
+            out.push(((*m).to_owned(), join(prefix, p)));
+        }
+    }
+    for (m, p) in v1.iter().chain(v2_only.iter()) {
+        out.push(((*m).to_owned(), join("/api/v2", p)));
+    }
+    for (m, p) in &root {
+        out.push(((*m).to_owned(), (*p).to_owned()));
+    }
+    out
 }
 
 fn versioned_failure(uri: &axum::http::Uri, status: StatusCode, detail: ErrorDetail) -> Response {

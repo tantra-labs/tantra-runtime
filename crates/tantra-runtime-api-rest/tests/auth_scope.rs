@@ -71,3 +71,25 @@ async fn every_scoped_route_is_registered_on_the_router() {
         }
     }
 }
+
+/// Every route the real router serves has a scope row (design 0006 R0): the manifest is
+/// recorded by the router builder itself, so this cannot drift like the endpoint registry.
+#[test]
+fn every_served_route_has_a_scope_row() {
+    let served = tantra_runtime_api_rest::served_routes();
+    assert!(served.len() > 100, "manifest looks empty: {}", served.len());
+    let mut pairs: Vec<(&str, &str)> = served
+        .iter()
+        .map(|(m, p)| (m.as_str(), p.as_str()))
+        .collect();
+    assert!(
+        unscoped_routes(&pairs).is_empty(),
+        "served routes without a scope row: {:?}",
+        unscoped_routes(&pairs)
+    );
+    pairs.push(("GET", "/api/v2/brand/new"));
+    assert_eq!(
+        unscoped_routes(&pairs),
+        vec!["GET /api/v2/brand/new".to_owned()]
+    );
+}

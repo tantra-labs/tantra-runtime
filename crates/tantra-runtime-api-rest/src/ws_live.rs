@@ -23,9 +23,15 @@ use tantra_runtime_api::OrdersRequest;
 use tracing::debug;
 
 use crate::AppState;
+use crate::caller::Caller;
 
 /// Upgrades an HTTP connection to a WebSocket streaming the paper exchange's events.
-pub async fn ws_live_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
+pub async fn ws_live_handler(
+    _caller: Caller,
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     ws.on_upgrade(move |socket| handle_live_socket(socket, state))
 }
 
