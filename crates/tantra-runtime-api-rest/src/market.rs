@@ -202,6 +202,14 @@ pub(crate) fn failure(status: StatusCode, detail: ErrorDetail) -> Response {
     (status, Json(body)).into_response()
 }
 
+/// Error envelope whose HTTP status is derived from the code (design 0006 section 3).
+#[allow(dead_code)]
+pub(crate) fn error(detail: ErrorDetail) -> Response {
+    let status = StatusCode::from_u16(detail.code.http_status())
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    failure(status, detail)
+}
+
 pub(crate) fn success<T: serde::Serialize>(data: T) -> Response {
     let body: ResponseEnvelope<T> = ApiResponse::success(data);
     (StatusCode::OK, Json(body)).into_response()

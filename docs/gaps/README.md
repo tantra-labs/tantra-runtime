@@ -10,6 +10,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 | # | Title | Target Scope | Status |
 |---|---|---|---|
 | [0013](0013-per-caller-journal-and-paper-account.md) | Trade journal store and `/ws/live` paper account are shared by every authenticated caller (not keyed by `Caller`) | `tantra-runtime-api-rest` (`state.rs`, `trade_journal.rs`, `ws_live.rs`) | Open (2026-11-22), follow-up to 0012 |
+| [0015](0015-error-code-status-mismatches.md) | 34 v2 routes answer an HTTP status that disagrees with `ErrorCode::http_status()` (33× 503 + `not_implemented`, calendar 400) | `tantra-runtime-api-rest` (store-missing helpers, `runs.rs`, `trade_journal.rs`) | Open (2026-11-22), design 0006 R1c follow-up |
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |

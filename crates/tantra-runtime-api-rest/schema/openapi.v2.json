@@ -7725,6 +7725,13 @@
             ]
           },
           {
+            "description": "The caller is authenticated but lacks the required scope.",
+            "type": "string",
+            "enum": [
+              "forbidden"
+            ]
+          },
+          {
             "description": "The addressed resource does not exist.",
             "type": "string",
             "enum": [

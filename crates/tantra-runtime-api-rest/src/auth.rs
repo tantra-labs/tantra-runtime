@@ -419,7 +419,7 @@ impl AuthLayer {
             client_ip,
         });
         let detail = ErrorDetail::new(
-            ErrorCode::Unauthorized,
+            ErrorCode::Forbidden,
             "route has no scope row; denied by default (design 0006 R0)",
         );
         (StatusCode::FORBIDDEN, Json(ApiResponse::error(detail)))
@@ -496,7 +496,7 @@ impl AuthLayer {
                     client_ip,
                 });
                 let detail = ErrorDetail::new(
-                    ErrorCode::Unauthorized,
+                    ErrorCode::Forbidden,
                     format!("Token does not have required scope: {}", required),
                 )
                 .with_context(serde_json::json!({
@@ -540,7 +540,7 @@ impl AuthLayer {
                             client_ip,
                         });
                         let detail = ErrorDetail::new(
-                            ErrorCode::Unauthorized,
+                            ErrorCode::Forbidden,
                             format!("Token does not have required scope: {}", required),
                         )
                         .with_context(serde_json::json!({

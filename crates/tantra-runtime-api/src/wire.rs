@@ -144,6 +144,8 @@ pub enum ErrorCode {
     ValidationInvalidRequest,
     /// The caller is not authenticated or not allowed to.
     Unauthorized,
+    /// The caller is authenticated but lacks the required scope.
+    Forbidden,
     /// The addressed resource does not exist.
     NotFound,
     /// The request conflicts with the current state (e.g. a duplicate id).
@@ -184,6 +186,7 @@ impl ErrorCode {
         match self {
             Self::ValidationInvalidRequest => "validation_invalid_request",
             Self::Unauthorized => "unauthorized",
+            Self::Forbidden => "forbidden",
             Self::NotFound => "not_found",
             Self::Conflict => "conflict",
             Self::NotImplemented => "not_implemented",
@@ -200,6 +203,48 @@ impl ErrorCode {
             Self::RateLimited => "rate_limited",
             Self::ServiceUnavailable => "service_unavailable",
             Self::BadGateway => "bad_gateway",
+        }
+    }
+
+    /// The one HTTP status this code is served with (design 0006 section 3).
+    pub fn http_status(&self) -> u16 {
+        match self {
+            Self::ValidationInvalidRequest
+            | Self::Unsupported
+            | Self::RiskMaxNotionalExceeded
+            | Self::RiskTradingHalted
+            | Self::RiskReduceOnlyViolation
+            | Self::RiskPriceCollar
+            | Self::RiskLotMultipleViolation
+            | Self::RiskTickSizeViolation
+            | Self::RiskInstrumentUnknown => 422,
+            Self::Unauthorized => 401,
+            Self::Forbidden => 403,
+            Self::NotFound => 404,
+            Self::Conflict => 409,
+            Self::RateLimited => 429,
+            Self::InternalError => 500,
+            Self::NotImplemented => 501,
+            Self::BadGateway => 502,
+            Self::ServiceUnavailable => 503,
+            Self::Timeout => 504,
+        }
+    }
+
+    /// Best-effort reverse of [`Self::http_status`], used to wrap non-envelope responses.
+    pub fn from_status(status: u16) -> Self {
+        match status {
+            400 | 413 | 415 | 422 => Self::ValidationInvalidRequest,
+            401 => Self::Unauthorized,
+            403 => Self::Forbidden,
+            404 => Self::NotFound,
+            405 | 501 => Self::NotImplemented,
+            409 => Self::Conflict,
+            429 => Self::RateLimited,
+            502 => Self::BadGateway,
+            503 => Self::ServiceUnavailable,
+            504 => Self::Timeout,
+            _ => Self::InternalError,
         }
     }
 

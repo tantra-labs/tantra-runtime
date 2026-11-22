@@ -46,12 +46,25 @@ pub async fn v2_response_envelope(
         HeaderValue::from_static("2"),
     );
 
+    let status = parts.status;
+    if status == axum::http::StatusCode::SWITCHING_PROTOCOLS
+        || status == axum::http::StatusCode::NO_CONTENT
+        || status == axum::http::StatusCode::NOT_MODIFIED
+    {
+        return Response::from_parts(parts, body);
+    }
+    let ok = status.is_success();
+    let json = is_json(&parts.headers);
+    if ok && !json {
+        return Response::from_parts(parts, body);
+    }
+
     let declared_len = parts
         .headers
         .get(axum::http::header::CONTENT_LENGTH)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<usize>().ok());
-    if !is_json(&parts.headers) || declared_len.is_some_and(|n| n > MAX_ENVELOPE_BYTES) {
+    if declared_len.is_some_and(|n| n > MAX_ENVELOPE_BYTES) {
         return Response::from_parts(parts, body);
     }
 
@@ -73,18 +86,72 @@ pub async fn v2_response_envelope(
         }
     };
 
-    if let Ok(mut val) = serde_json::from_slice::<serde_json::Value>(&bytes)
-        && val.is_object()
-        && val.get("api_version").is_some()
-    {
-        val["api_version"] = serde_json::json!("v2");
-        if let Ok(new_body) = serde_json::to_vec(&val) {
-            parts.headers.insert(
-                axum::http::header::CONTENT_LENGTH,
-                HeaderValue::from(new_body.len()),
-            );
-            return Response::from_parts(parts, axum::body::Body::from(new_body));
+    let parsed = if json {
+        serde_json::from_slice::<serde_json::Value>(&bytes).ok()
+    } else {
+        None
+    };
+
+    let rewritten: Option<serde_json::Value> = match parsed {
+        Some(mut val) if val.is_object() && val.get("api_version").is_some() => {
+            val["api_version"] = serde_json::json!("v2");
+            if status == axum::http::StatusCode::PAYLOAD_TOO_LARGE
+                && val.get("error").is_some_and(|e| e.is_object())
+            {
+                if !val["error"]["context"].is_object() {
+                    val["error"]["context"] = serde_json::json!({});
+                }
+                if val["error"]["context"].get("reason").is_none() {
+                    val["error"]["context"]["reason"] = serde_json::json!("payload_too_large");
+                }
+            }
+            Some(val)
         }
+        Some(val) if ok => {
+            tracing::debug!("v2 envelope: wrapping bare JSON success body");
+            let mut env: tantra_runtime_api::ResponseEnvelope<serde_json::Value> =
+                tantra_runtime_api::ApiResponse::success(val);
+            env.api_version = tantra_runtime_api::ApiVersion::from("v2");
+            serde_json::to_value(env).ok()
+        }
+        _ if ok => None,
+        _ => {
+            let code = tantra_runtime_api::ErrorCode::from_status(status.as_u16());
+            let text = String::from_utf8_lossy(&bytes);
+            let trimmed: String = text.trim().chars().take(512).collect();
+            let message = if trimmed.is_empty() {
+                status.canonical_reason().unwrap_or("error").to_string()
+            } else {
+                trimmed
+            };
+            let mut ctx = serde_json::json!({"wrapped": true});
+            if status == axum::http::StatusCode::PAYLOAD_TOO_LARGE {
+                ctx["reason"] = serde_json::json!("payload_too_large");
+            }
+            tracing::debug!(
+                status = status.as_u16(),
+                "v2 envelope: wrapping non-envelope error"
+            );
+            let detail = tantra_runtime_api::ErrorDetail::new(code, message).with_context(ctx);
+            let mut env: tantra_runtime_api::ResponseEnvelope<serde_json::Value> =
+                tantra_runtime_api::ApiResponse::error(detail);
+            env.api_version = tantra_runtime_api::ApiVersion::from("v2");
+            serde_json::to_value(env).ok()
+        }
+    };
+
+    if let Some(val) = rewritten
+        && let Ok(new_body) = serde_json::to_vec(&val)
+    {
+        parts.headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        parts.headers.insert(
+            axum::http::header::CONTENT_LENGTH,
+            HeaderValue::from(new_body.len()),
+        );
+        return Response::from_parts(parts, axum::body::Body::from(new_body));
     }
     Response::from_parts(parts, axum::body::Body::from(bytes))
 }
