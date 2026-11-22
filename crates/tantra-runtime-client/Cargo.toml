@@ -1,0 +1,28 @@
+[package]
+name = "tantra-runtime-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Typed HTTP client for the Tantra runtime canonical /api/v2 surface"
+
+[lib]
+name = "tantra_runtime_client"
+
+[features]
+default = []
+# Adds `BlockingRuntimeClient` (for synchronous CLIs).
+blocking = ["reqwest/blocking"]
+
+[dependencies]
+tantra-runtime-api.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tantra-runtime-api-rest.workspace = true
+tokio.workspace = true
+axum.workspace = true

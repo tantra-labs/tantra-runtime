@@ -6,6 +6,7 @@ members = [
   "crates/tantra-runtime-api",
   "crates/tantra-runtime-api-rest",
   "crates/tantra-runtime-backtest",
+  "crates/tantra-runtime-client",
   "crates/tantra-runtime-config",
   "crates/tantra-runtime-enhancer",
   "crates/tantra-runtime-jobs",
@@ -35,6 +36,7 @@ tantra-runtime-actors = { path = "crates/tantra-runtime-actors" }
 tantra-runtime-api = { path = "crates/tantra-runtime-api" }
 tantra-runtime-api-rest = { path = "crates/tantra-runtime-api-rest" }
 tantra-runtime-backtest = { path = "crates/tantra-runtime-backtest" }
+tantra-runtime-client = { path = "crates/tantra-runtime-client" }
 tantra-runtime-config = { path = "crates/tantra-runtime-config" }
 tantra-runtime-enhancer = { path = "crates/tantra-runtime-enhancer" }
 tantra-runtime-persistence = { path = "crates/tantra-runtime-persistence" }
