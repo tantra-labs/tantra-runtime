@@ -15,7 +15,10 @@ use crate::market_feed::{DatasetReader, LiveQuoteStore, ReaderError};
 use tantra_core::Currency;
 use tantra_core::rust_decimal::Decimal;
 use tantra_ledger_performance::store::JournalStore;
-use tantra_market_store::{BlockDealsProjectionReader, ManifestCommit, ManifestResolver};
+use tantra_market_store::{
+    BlockDealsProjectionReader, ManifestCommit, ManifestResolver, OpenInterestStore,
+    ParquetOpenInterestStore,
+};
 use tantra_risk::RiskEngine;
 use tantra_runtime_api::{
     ErrorDetail, LoopSessionSnapshotSummaryDto, StrategyCatalog, TradingState,
@@ -157,6 +160,9 @@ pub struct AppState {
     /// behind `GET /market-data/block-deals`; `None` until configured
     /// ([`AppState::with_block_deals`]).
     pub block_deals: Option<BlockDealsProjectionReader>,
+    /// Optional open-interest snapshot store (`ParquetOpenInterestStore` or
+    /// `InMemoryOpenInterestStore`) for option-chain and OI buildup reads.
+    oi_store: Option<Arc<dyn OpenInterestStore>>,
     /// NDJSON file `PUT /trading-state` appends one record per change to; `None` until
     /// configured ([`AppState::with_operator_journal`]). The state is never restored from it.
     pub operator_journal: Option<PathBuf>,
@@ -176,7 +182,7 @@ pub struct AppState {
     pub risk_engine: Arc<Mutex<RiskEngine>>,
     /// Approval queue for order placements (E5-S4).
     ///
-    /// When enabled, `POST /orders` is held here until approved by an operator.
+    /// When enabled, `POST /orders` is held in the queue until approved by an operator.
     /// Cancel and modify bypass the queue.
     pub approval_queue: Option<Arc<ApprovalQueue>>,
     /// In-memory trade-performance journal store backing `/trade-journal/*`.
@@ -251,6 +257,7 @@ impl AppState {
             profiles: None,
             portfolios: None,
             block_deals: None,
+            oi_store: None,
             operator_journal: None,
             account_currency: Currency::Inr,
             // `tantra_runtime_api::TradingState` has no `Default` (ADR 0018 enumerates three
@@ -300,6 +307,17 @@ impl AppState {
     /// ports has none. The bar pump writes each bar here before advancing the market.
     pub fn live_quotes(&self) -> Option<&Arc<LiveQuoteStore>> {
         self.live.as_ref()
+    }
+
+    /// Attaches an open-interest snapshot store for option-chain and OI buildup queries.
+    pub fn with_oi_store(mut self, store: Arc<dyn OpenInterestStore>) -> Self {
+        self.oi_store = Some(store);
+        self
+    }
+
+    /// Configured open-interest snapshot store, when available.
+    pub fn oi_store(&self) -> Option<&Arc<dyn OpenInterestStore>> {
+        self.oi_store.as_ref()
     }
 
     /// Configured Lakehouse/catalog root directory when constructed from a data directory.
@@ -591,6 +609,9 @@ impl AppState {
         let mut state = Self::new(listing.clone(), Arc::new(bars), live.clone(), listing);
         state.live = Some(live);
         state.lakehouse_root = Some(root.to_path_buf());
+        if let Ok(oi) = ParquetOpenInterestStore::open(root) {
+            state.oi_store = Some(Arc::new(oi));
+        }
         Ok(state)
     }
 
@@ -608,6 +629,9 @@ impl AppState {
         state.live = Some(live);
         state.lakehouse_root = Some(root.to_path_buf());
         state.data_commit = commit;
+        if let Ok(oi) = ParquetOpenInterestStore::open(root) {
+            state.oi_store = Some(Arc::new(oi));
+        }
         Ok(state)
     }
 

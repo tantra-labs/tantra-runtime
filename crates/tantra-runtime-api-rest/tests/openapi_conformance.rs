@@ -176,6 +176,11 @@ fn wire_schemas_are_registered() {
         "CreateChatThreadRequest",
         "PatchChatThreadRequest",
         "DeleteChatThreadResponse",
+        "OptionsChainResponse",
+        "OptionChainRowDto",
+        "OptionLegSnapshotDto",
+        "OptionExpiryDto",
+        "OptionChainSource",
     ] {
         assert!(
             doc.components.schemas.contains_key(name),

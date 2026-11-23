@@ -2967,6 +2967,104 @@
       "patch": null,
       "delete": null
     },
+    "/options/chain": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "Live multi-expiry option chain with OI, IV, Greeks, PCR, and Max Pain",
+        "operationId": "getOptionsChain",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "expiry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": {
+          "200": {
+            "description": "Multi-expiry option chain snapshot inside the v2 envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "ResponseEnvelope_for_OptionsChainResponse",
+                  "description": "The response envelope every transport wraps a payload in (ADR 0012).\n\nA success carries `data`; a failure carries `error`. Both are optional on the wire so a payload from a newer server (extra fields, both absent) still parses for an older client.",
+                  "type": "object",
+                  "properties": {
+                    "api_version": {
+                      "description": "The API version the server answered under.",
+                      "default": "v1",
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "The payload; absent on a failure.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/OptionsChainResponse"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "description": "The failure; absent on a success.",
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ErrorDetail"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The wire schema version the payload was written against.",
+                      "default": "4",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "post": null,
+      "put": null,
+      "patch": null,
+      "delete": null
+    },
     "/orders": {
       "get": {
         "tags": [
@@ -12389,6 +12487,205 @@
           }
         }
       },
+      "OptionChainRowDto": {
+        "title": "OptionChainRowDto",
+        "description": "Symmetrical Call + Strike + Put row for an option chain table.",
+        "type": "object",
+        "required": [
+          "call",
+          "call_itm",
+          "is_atm",
+          "put",
+          "put_itm",
+          "strike"
+        ],
+        "properties": {
+          "call": {
+            "description": "Call (`CE`) leg snapshot.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OptionLegSnapshotDto"
+              }
+            ]
+          },
+          "call_itm": {
+            "description": "`true` when `strike < spot_price`.",
+            "type": "boolean"
+          },
+          "is_atm": {
+            "description": "`true` for the nearest at-the-money strike.",
+            "type": "boolean"
+          },
+          "put": {
+            "description": "Put (`PE`) leg snapshot.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OptionLegSnapshotDto"
+              }
+            ]
+          },
+          "put_itm": {
+            "description": "`true` when `strike > spot_price`.",
+            "type": "boolean"
+          },
+          "strike": {
+            "description": "Strike price.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
+      "OptionChainSource": {
+        "title": "OptionChainSource",
+        "description": "Origin of the option-chain snapshot rows.",
+        "oneOf": [
+          {
+            "description": "Populated from `InstrumentChainReader::options_chain` (with live quotes/OI when available).",
+            "type": "string",
+            "enum": [
+              "live_chain"
+            ]
+          },
+          {
+            "description": "Theoretical Black-Scholes strike ladder over underlying spot when live contracts are offline.",
+            "type": "string",
+            "enum": [
+              "theoretical_bs"
+            ]
+          }
+        ]
+      },
+      "OptionExpiryDto": {
+        "title": "OptionExpiryDto",
+        "description": "One expiry entry in the option chain's expiry selector.",
+        "type": "object",
+        "required": [
+          "dte",
+          "expiry",
+          "is_weekly",
+          "label",
+          "short_label"
+        ],
+        "properties": {
+          "dte": {
+            "description": "Calendar days to expiry relative to `as_of` (at least `1`).",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          },
+          "expiry": {
+            "description": "ISO date (`YYYY-MM-DD`).",
+            "type": "string"
+          },
+          "is_weekly": {
+            "description": "True for weekly expiries, false for monthly expiries.",
+            "type": "boolean"
+          },
+          "label": {
+            "description": "Descriptive label with horizon (e.g. `\"24 Nov (1 week)\"`).",
+            "type": "string"
+          },
+          "short_label": {
+            "description": "Compact display label (e.g. `\"24 Nov\"`).",
+            "type": "string"
+          }
+        }
+      },
+      "OptionLegSnapshotDto": {
+        "title": "OptionLegSnapshotDto",
+        "description": "Call or Put contract leg metrics at one strike price.",
+        "type": "object",
+        "required": [
+          "contract_symbol",
+          "delta",
+          "gamma",
+          "iv_pct",
+          "live_quoted",
+          "ltp",
+          "ltp_change_pct",
+          "oi",
+          "oi_change_pct",
+          "theta",
+          "vega",
+          "volume"
+        ],
+        "properties": {
+          "ask": {
+            "description": "Live top-of-book ask price (`null` when the live feed is offline).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "bid": {
+            "description": "Live top-of-book bid price (`null` when the live feed is offline).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "contract_symbol": {
+            "description": "Exchange contract symbol (e.g. `NFO:NIFTY24NOV25800CE`).",
+            "type": "string"
+          },
+          "delta": {
+            "description": "Black-Scholes `∂price/∂spot`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "gamma": {
+            "description": "Black-Scholes `∂²price/∂spot²`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "iv_pct": {
+            "description": "Implied volatility percentage (e.g. `14.25` for 14.25%).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "live_quoted": {
+            "description": "`true` when this leg reflects a live market quote rather than pure Black-Scholes fair value.",
+            "type": "boolean"
+          },
+          "ltp": {
+            "description": "Last traded price, bid/ask mid, or theoretical Black-Scholes fair value when offline.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "ltp_change_pct": {
+            "description": "Session LTP percent change (`0` when unavailable).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "oi": {
+            "description": "Open interest in contracts (`0` when no OI snapshot is available).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "oi_change_pct": {
+            "description": "Open interest percent change (`0` when no prior OI snapshot exists).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "theta": {
+            "description": "Black-Scholes per-calendar-day time decay (`∂price/∂time / 365`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "vega": {
+            "description": "Black-Scholes sensitivity per 1% volatility (`∂price/∂vol / 100`).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "volume": {
+            "description": "Session traded volume (`0` when no trade volume exists).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
+      },
       "OptionLegSpec": {
         "description": "Single option or underlying leg inside a multi-leg structure.",
         "type": "object",
@@ -12501,6 +12798,126 @@
             ]
           }
         ]
+      },
+      "OptionsChainResponse": {
+        "title": "OptionsChainResponse",
+        "description": "Full option-chain snapshot returned by `GET /api/v2/options/chain`.",
+        "type": "object",
+        "required": [
+          "active_expiry",
+          "atm_iv_pct",
+          "atm_strike",
+          "availability_note",
+          "currency",
+          "expiries",
+          "instrument_id",
+          "iv_percentile",
+          "iv_percentile_regime",
+          "live_contract_count",
+          "lot_size",
+          "max_pain_strike",
+          "pcr",
+          "rows",
+          "source",
+          "spot_change",
+          "spot_change_pct",
+          "spot_price"
+        ],
+        "properties": {
+          "active_expiry": {
+            "description": "Active expiry ISO date (`YYYY-MM-DD`) represented by `rows`.",
+            "type": "string"
+          },
+          "atm_iv_pct": {
+            "description": "Implied volatility proxy at ATM in percentage points.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "atm_strike": {
+            "description": "Nearest at-the-money strike.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "availability_note": {
+            "description": "Honest note explaining live/offline feed status and whether bid/ask quotes are populated.",
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO-4217 settlement currency code (e.g. `INR`).",
+            "type": "string"
+          },
+          "expiries": {
+            "description": "Available expiry entries ordered ascending.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OptionExpiryDto"
+            }
+          },
+          "instrument_id": {
+            "description": "Canonical underlying instrument identifier (e.g. `NSE:NIFTY50-INDEX`).",
+            "type": "string"
+          },
+          "iv_percentile": {
+            "description": "Historical volatility / IV percentile in `[0, 100]`.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "iv_percentile_regime": {
+            "description": "Human-readable regime classification (`\"Low\"`, `\"Mid\"`, or `\"High\"`).",
+            "type": "string"
+          },
+          "live_contract_count": {
+            "description": "Count of live option contracts fetched from `InstrumentChainReader`.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0.0
+          },
+          "lot_size": {
+            "description": "Standard F&O contract lot size.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "max_pain_strike": {
+            "description": "Strike minimizing total option-writer expiry payout.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "pcr": {
+            "description": "Put-Call OI ratio (`0` when Call OI sum is zero).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "rows": {
+            "description": "Strike-sorted Call/Put rows for `active_expiry`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/OptionChainRowDto"
+            }
+          },
+          "source": {
+            "description": "Whether rows come from live chain contracts or theoretical Black-Scholes fallback.",
+            "allOf": [
+              {
+                "$ref": "#/definitions/OptionChainSource"
+              }
+            ]
+          },
+          "spot_change": {
+            "description": "Absolute session change in underlying spot (`0` when prior close is unavailable).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "spot_change_pct": {
+            "description": "Percentage session change in underlying spot (`0` when prior close is unavailable).",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          },
+          "spot_price": {
+            "description": "Spot reference price of the underlying.",
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+          }
+        }
       },
       "OrbBacktestResult": {
         "description": "Tab 10: Complete 15m Opening Range Breakout + Flip simulation result.",

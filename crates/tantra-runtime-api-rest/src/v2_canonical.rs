@@ -5,7 +5,7 @@ use axum::Router;
 use std::sync::Arc;
 
 use crate::route_table::{RouteEntry, RouteTable};
-use crate::{AppState, RouteScope, market, orders, screener};
+use crate::{AppState, RouteScope, market, options_chain, orders, screener};
 
 pub(crate) fn v2_only_routes() -> Router<Arc<AppState>> {
     v2_only_table().finish().0
@@ -38,4 +38,5 @@ fn v2_only_table() -> RouteTable {
         .get("/instruments/:id/profile", market::get_symbol_profile, READ)
         .get("/calendar", market::get_market_calendar, READ)
         .get("/block-deals", market::get_block_deals, READ)
+        .get("/options/chain", options_chain::get_options_chain, READ)
 }

@@ -55,6 +55,7 @@ mod market;
 pub mod market_feed;
 pub mod openapi;
 mod operator_journal;
+mod options_chain;
 pub mod orders;
 pub mod paper_serve;
 mod portfolio;
@@ -82,7 +83,7 @@ pub mod v1;
 pub mod v2;
 mod v2_canonical;
 pub mod ws;
-mod ws_live;
+pub mod ws_live;
 
 pub use approval::ApprovalQueue;
 pub use auth::{

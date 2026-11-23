@@ -20,6 +20,7 @@ pub mod chat_adapters;
 pub mod experimental_analysis;
 pub mod ingest;
 pub mod market;
+pub mod options_chain;
 pub mod profile;
 pub mod requests;
 pub mod responses;
@@ -63,6 +64,12 @@ pub use ingest::{MAX_INGEST_BARS, check_ingest_batch};
 pub use market::{
     DEFAULT_DEPTH_LEVELS, DEFAULT_TIMEFRAME, MAX_DEPTH_LEVELS, ResolvedBarsQuery,
     ResolvedQuotesQuery, instrument_json, parse_instrument_id, parse_timeframe,
+};
+pub use options_chain::{
+    OptionChainRowDto, OptionChainSource, OptionExpiryDto, OptionLegSnapshotDto, OptionsChainQuery,
+    OptionsChainResponse, ResolvedOptionsChainQuery, build_tuesday_expiry_schedule,
+    compute_atm_strike, compute_max_pain_strike, compute_pcr, format_contract_symbol,
+    format_expiry_entry, iv_regime_label, resolve_underlying_symbol, strike_step_for,
 };
 pub use profile::{
     LayoutDocument, LayoutsResponse, Module, ModulesResponse, Profile, ProfileRevision, Source,

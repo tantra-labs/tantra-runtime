@@ -2567,6 +2567,7 @@ impl OpenApiDocument {
         let mut base = Self::hand_base();
         base.add_study_hand_ops();
         base.add_v2_chat_thread_paths();
+        base.add_v2_options_chain_paths();
         (base.paths, base.components.schemas)
     }
 
@@ -2987,6 +2988,93 @@ impl OpenApiDocument {
                     deprecated: false,
                     security: bearer(),
                 }),
+            },
+        );
+    }
+
+    /// Registers the v2-only `/options/chain` route and component schemas (`gap 0016`).
+    fn add_v2_options_chain_paths(&mut self) {
+        use tantra_runtime_api::options_chain::{
+            OptionChainRowDto, OptionChainSource, OptionExpiryDto, OptionLegSnapshotDto,
+            OptionsChainResponse,
+        };
+        let bearer = || {
+            vec![SecurityRequirement {
+                scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+            }]
+        };
+        let json_content = |schema: Schema| {
+            BTreeMap::from([("application/json".to_string(), MediaType { schema })])
+        };
+        let responses = |description: &str, schema: Schema| {
+            BTreeMap::from([(
+                "200".to_string(),
+                Response {
+                    description: description.to_string(),
+                    content: json_content(schema),
+                },
+            )])
+        };
+
+        let resp_schema =
+            register_schema::<ResponseEnvelope<OptionsChainResponse>>(&mut self.components.schemas);
+        for (name, schema) in [
+            (
+                "OptionsChainResponse",
+                schema_for!(OptionsChainResponse).schema.into(),
+            ),
+            (
+                "OptionChainRowDto",
+                schema_for!(OptionChainRowDto).schema.into(),
+            ),
+            (
+                "OptionLegSnapshotDto",
+                schema_for!(OptionLegSnapshotDto).schema.into(),
+            ),
+            (
+                "OptionExpiryDto",
+                schema_for!(OptionExpiryDto).schema.into(),
+            ),
+            (
+                "OptionChainSource",
+                schema_for!(OptionChainSource).schema.into(),
+            ),
+        ] {
+            self.components.schemas.insert(name.to_string(), schema);
+        }
+
+        self.paths.insert(
+            "/options/chain".to_string(),
+            PathItem {
+                get: Some(Operation {
+                    tags: vec!["market".to_string()],
+                    summary:
+                        "Live multi-expiry option chain with OI, IV, Greeks, PCR, and Max Pain"
+                            .to_string(),
+                    operation_id: "getOptionsChain".to_string(),
+                    parameters: vec![
+                        Parameter {
+                            name: "symbol".to_string(),
+                            r#in: "query".to_string(),
+                            required: true,
+                            schema: schema_for!(String).schema.into(),
+                        },
+                        query_param("expiry"),
+                        query_param("as_of"),
+                    ],
+                    request_body: None,
+                    responses: responses(
+                        "Multi-expiry option chain snapshot inside the v2 envelope",
+                        resp_schema,
+                    ),
+                    max_body_bytes: None,
+                    deprecated: false,
+                    security: bearer(),
+                }),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
             },
         );
     }
