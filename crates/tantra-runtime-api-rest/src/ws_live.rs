@@ -30,12 +30,11 @@ const MAX_RESULT_BYTES: usize = 1024 * 1024;
 
 /// Upgrades an HTTP connection to a WebSocket streaming the paper exchange's events.
 pub async fn ws_live_handler(
-    _caller: Caller,
+    caller: Caller,
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    ws.on_upgrade(move |socket| handle_live_socket(socket, state))
+    ws.on_upgrade(move |socket| handle_live_socket(socket, state, caller.0))
 }
 
 /// One client command on the `/ws/live` socket, tagged by `action`.
@@ -70,7 +69,7 @@ enum WsLiveCommand {
 }
 
 /// Handles one `/ws/live` connection: the client's commands and the broadcast event stream.
-async fn handle_live_socket(socket: WebSocket, state: Arc<AppState>) {
+async fn handle_live_socket(socket: WebSocket, state: Arc<AppState>, owner: String) {
     let (mut sender, mut receiver) = socket.split();
     let mut events_rx = state.exec.subscribe_events();
     let mut subscribed: HashSet<String> = HashSet::new();
@@ -89,7 +88,7 @@ async fn handle_live_socket(socket: WebSocket, state: Arc<AppState>) {
                     debug!("WebSocket connection closed");
                     break;
                 };
-                if handle_client_message(&state, &mut sender, &mut subscribed, msg).await {
+                if handle_client_message(&state, &owner, &mut sender, &mut subscribed, msg).await {
                     break;
                 }
             }
@@ -98,7 +97,14 @@ async fn handle_live_socket(socket: WebSocket, state: Arc<AppState>) {
             event = events_rx.recv() => {
                 match event {
                     Ok(payload) => {
-                        if should_stream(&payload, &subscribed)
+                        // Order lifecycle and fills are private to the placing caller (gap 0013);
+                        // account-wide snapshots: docs/gaps/0017-per-caller-paper-accounts.md.
+                        let private = matches!(
+                            payload.get("type").and_then(Value::as_str),
+                            Some("OrderAccepted" | "Cancelled" | "Rejected" | "StopTriggered" | "Fill" | "PartialFill")
+                        );
+                        if (!private || state.exec.event_owned_by(&state.orders, &payload, &owner))
+                            && should_stream(&payload, &subscribed)
                             && sender.send(Message::Text(payload.to_string())).await.is_err()
                         {
                             break;
@@ -118,12 +124,13 @@ async fn handle_live_socket(socket: WebSocket, state: Arc<AppState>) {
 /// close (a close frame, or a reply that could not be sent).
 async fn handle_client_message(
     state: &Arc<AppState>,
+    owner: &str,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
     subscribed: &mut HashSet<String>,
     msg: Message,
 ) -> bool {
     match msg {
-        Message::Text(text) => dispatch_command(state, sender, subscribed, &text).await,
+        Message::Text(text) => dispatch_command(state, owner, sender, subscribed, &text).await,
         Message::Ping(bytes) => sender.send(Message::Pong(bytes.clone())).await.is_err(),
         Message::Close(_) => {
             debug!("WebSocket connection closed");
@@ -137,6 +144,7 @@ async fn handle_client_message(
 /// should close (the command was `close`, or the reply could not be sent).
 async fn dispatch_command(
     state: &Arc<AppState>,
+    owner: &str,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
     subscribed: &mut HashSet<String>,
     text: &str,
@@ -182,6 +190,7 @@ async fn dispatch_command(
                 crate::ApiJson(order),
                 // A fresh key per keyless order; a constant would collapse them into one.
                 uuid::Uuid::new_v4().to_string(),
+                owner,
             )
             .await;
             let status = response.status().as_u16();
@@ -195,9 +204,12 @@ async fn dispatch_command(
             sender.send(Message::Text(reply.to_string())).await.is_err()
         }
         WsLiveCommand::CancelOrder { order_id } => {
-            let response =
-                crate::orders::delete_order(State(state.clone()), axum::extract::Path(order_id))
-                    .await;
+            let response = crate::orders::delete_order(
+                State(state.clone()),
+                Caller(owner.to_string()),
+                axum::extract::Path(order_id),
+            )
+            .await;
             let status = response.status().as_u16();
             let body = response_body(response).await;
             let reply = json!({"type": "CancelResult", "status": status, "data": body});

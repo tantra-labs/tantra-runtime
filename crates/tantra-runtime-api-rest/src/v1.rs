@@ -127,9 +127,10 @@ pub async fn get_sweep_by_id(
 /// Get orders.
 pub async fn get_orders(
     State(state): State<Arc<AppState>>,
+    caller: crate::caller::Caller,
     query: ApiQuery<tantra_runtime_api::OrdersQuery>,
 ) -> Response {
-    orders::get_orders(State(state), query).await
+    orders::get_orders(State(state), caller, query).await
 }
 
 /// Post orders.
@@ -139,6 +140,7 @@ pub async fn get_orders(
 /// make every keyless order a duplicate of the first). Differing header and body keys are a 422.
 pub async fn post_orders(
     State(state): State<Arc<AppState>>,
+    caller: crate::caller::Caller,
     headers: axum::http::HeaderMap,
     ApiJson(mut body): ApiJson<OrdersRequest>,
 ) -> Response {
@@ -165,17 +167,24 @@ pub async fn post_orders(
         }
     }
     let order_id = uuid::Uuid::new_v4().to_string();
-    orders::post_orders(State(state), ApiJson(body), order_id).await
+    orders::post_orders(State(state), ApiJson(body), order_id, &caller.0).await
 }
 
 /// Delete order.
-pub async fn delete_order(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    orders::delete_order(State(state), Path(id)).await
+pub async fn delete_order(
+    State(state): State<Arc<AppState>>,
+    caller: crate::caller::Caller,
+    Path(id): Path<String>,
+) -> Response {
+    orders::delete_order(State(state), caller, Path(id)).await
 }
 
 /// Close positions.
-pub async fn post_close_positions(State(state): State<Arc<AppState>>) -> Response {
-    orders::post_close_positions(State(state)).await
+pub async fn post_close_positions(
+    State(state): State<Arc<AppState>>,
+    caller: crate::caller::Caller,
+) -> Response {
+    orders::post_close_positions(State(state), caller).await
 }
 
 /// Adds v1 version header to response.

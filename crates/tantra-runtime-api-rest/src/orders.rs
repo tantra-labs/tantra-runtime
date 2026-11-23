@@ -69,6 +69,7 @@ use tantra_ledger::OrderRecord as LedgerOrderRecord;
 use tantra_risk::RiskRefusal;
 use tantra_runtime_api::{ErrorCode, ErrorDetail, OrdersQuery, OrdersRequest};
 
+use crate::caller::Caller;
 use crate::market::{ApiQuery, error, failure, success};
 use crate::state::AppState;
 
@@ -388,6 +389,9 @@ pub struct OrderLedger {
     /// The full error envelope of every risk refusal recorded as a `Rejected` row, by order id,
     /// so a repeat of the id answers with the same 422 (context included).
     refusals: Arc<Mutex<BTreeMap<String, ErrorDetail>>>,
+    /// The caller that placed each row (gap 0013); rows without an entry belong to
+    /// `DEFAULT_USER_ID`.
+    owners: Arc<Mutex<BTreeMap<String, String>>>,
 }
 
 impl OrderLedger {
@@ -494,6 +498,46 @@ impl OrderLedger {
             .unwrap_or_else(PoisonError::into_inner)
             .remove(order.order_id());
         guard.insert(order.order_id().to_owned(), order);
+    }
+
+    /// Records `order` and its placing `owner` (see [`OrderLedger::owner_of`]).
+    pub fn record_owned(&self, order: Order, owner: &str) {
+        self.set_owner(order.order_id(), owner);
+        self.record(order);
+    }
+
+    /// Records a risk refusal (see [`OrderLedger::record_refusal`]) owned by `owner`; an id that
+    /// already has a row keeps its owner.
+    pub(crate) fn record_refusal_owned(&self, order: Order, detail: ErrorDetail, owner: &str) {
+        if self.get(order.order_id()).is_none() {
+            self.set_owner(order.order_id(), owner);
+        }
+        self.record_refusal(order, detail);
+    }
+
+    pub(crate) fn set_owner(&self, id: &str, owner: &str) {
+        self.owners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id.to_owned(), owner.to_owned());
+    }
+
+    /// The caller that owns row `id`: the recorded owner, `DEFAULT_USER_ID` for an unowned row,
+    /// `None` for an unknown id.
+    pub fn owner_of(&self, id: &str) -> Option<String> {
+        self.get(id)?;
+        let owner = self
+            .owners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(id)
+            .cloned();
+        Some(owner.unwrap_or_else(|| crate::profile_store::DEFAULT_USER_ID.to_string()))
+    }
+
+    /// Whether `caller` owns row `id` (false for an unknown id).
+    pub(crate) fn is_owned_by(&self, id: &str, caller: &str) -> bool {
+        self.owner_of(id).as_deref() == Some(caller)
     }
 
     /// Records a risk-refused `order` as a `Rejected` row carrying `detail` as its
@@ -918,9 +962,11 @@ fn refusal_detail(refusal: &RiskRefusal) -> ErrorDetail {
 /// refusal also becomes a `Rejected` ledger row, so `GET /orders` shows it and a repeat of the
 /// key replays this answer; the response itself is unchanged. A keyless refusal has no stable
 /// identity (the route placeholder key is shared) and is never recorded.
-fn refuse(state: &AppState, record: Option<Order>, detail: &ErrorDetail) -> Response {
+fn refuse(state: &AppState, record: Option<Order>, detail: &ErrorDetail, owner: &str) -> Response {
     if let Some(order) = record {
-        state.orders.record_refusal(order, detail.clone());
+        state
+            .orders
+            .record_refusal_owned(order, detail.clone(), owner);
     }
     failure(StatusCode::UNPROCESSABLE_ENTITY, detail.clone())
 }
@@ -996,6 +1042,7 @@ pub(crate) async fn post_orders(
     State(state): State<Arc<AppState>>,
     crate::ApiJson(req): crate::ApiJson<OrdersRequest>,
     order_id: OrderId,
+    owner: &str,
 ) -> Response {
     let (instrument_id, side, order_type, quantity, price) = match parse_order(&req) {
         Ok(v) => v,
@@ -1012,6 +1059,13 @@ pub(crate) async fn post_orders(
         .map(|s| s.to_string())
         .unwrap_or_else(|| order_id.clone());
     if let Some(existing) = state.orders.get(ledger_id.as_str()) {
+        if !state.orders.is_owned_by(ledger_id.as_str(), owner) {
+            return failure(
+                StatusCode::CONFLICT,
+                ErrorDetail::new(ErrorCode::Conflict, "client_order_id is already in use")
+                    .with_context(json!({"reason": "client_order_id_in_use"})),
+            );
+        }
         if let Some(detail) = state.orders.refusal(ledger_id.as_str()) {
             return failure(StatusCode::UNPROCESSABLE_ENTITY, detail);
         }
@@ -1025,7 +1079,7 @@ pub(crate) async fn post_orders(
         // (`.agents/rules/security-and-secrets.md` §2.3).
         let mut queued = req.clone();
         queued.client_order_id = Some(ledger_id.clone());
-        let position = match queue.enqueue(ledger_id.clone(), queued) {
+        let position = match queue.enqueue_owned(ledger_id.clone(), queued, owner) {
             Ok(pos) => pos,
             Err(detail) => return failure(StatusCode::TOO_MANY_REQUESTS, detail),
         };
@@ -1056,7 +1110,7 @@ pub(crate) async fn post_orders(
                 Utc::now(),
             )
             .with_status(OrderStatus::Submitted);
-            state.orders.record(order.clone());
+            state.orders.record_owned(order.clone(), owner);
             record_into_shared(&state, &order);
             state
                 .exec
@@ -1078,7 +1132,7 @@ pub(crate) async fn post_orders(
                     Utc::now(),
                 )
             });
-            refuse(&state, record, &detail)
+            refuse(&state, record, &detail, owner)
         }
     }
 }
@@ -1098,9 +1152,13 @@ struct OrdersListResponse {
 /// starts empty.
 pub(crate) async fn get_orders(
     State(state): State<Arc<AppState>>,
+    caller: Caller,
     ApiQuery(query): ApiQuery<OrdersQuery>,
 ) -> Response {
     let orders = state.orders.filter(|order| {
+        if !state.orders.is_owned_by(order.order_id(), &caller.0) {
+            return false;
+        }
         let symbol_ok = match query.symbol.as_deref() {
             None => true,
             Some(symbol) => order.instrument_id().symbol == symbol,
@@ -1119,9 +1177,13 @@ pub(crate) async fn get_orders(
 /// an unknown id keep their 200 answer so a repeated cancel stays a no-op, not an error.
 pub(crate) async fn delete_order(
     State(state): State<Arc<AppState>>,
+    caller: Caller,
     Path(id): Path<String>,
 ) -> Response {
-    if state.orders.cancel(id.as_str()) == Some(true) {
+    // A row owned by another caller is the same 200 no-op as an unknown id.
+    if state.orders.is_owned_by(id.as_str(), &caller.0)
+        && state.orders.cancel(id.as_str()) == Some(true)
+    {
         state.exec.cancel(&state.orders, id.as_str());
     }
     success(serde_json::json!({"status": "cancelled"}))
@@ -1133,7 +1195,10 @@ pub(crate) async fn delete_order(
 /// queue when one is enabled, else risk checked and recorded; a refusal (for example a halted
 /// engine) is returned as is. A flat ledger generates nothing. The body is not read, so there is
 /// no filter.
-pub(crate) async fn post_close_positions(State(state): State<Arc<AppState>>) -> Response {
+pub(crate) async fn post_close_positions(
+    State(state): State<Arc<AppState>>,
+    caller: Caller,
+) -> Response {
     for (instrument_id, net) in state.orders.positions() {
         let side = if net > Decimal::ZERO { "sell" } else { "buy" };
         let key = format!(
@@ -1152,10 +1217,12 @@ pub(crate) async fn post_close_positions(State(state): State<Arc<AppState>>) -> 
             client_order_id: Some(key.clone()),
         };
         if let Some(queue) = &state.approval_queue {
-            if let Err(detail) = queue.enqueue(key.clone(), req) {
+            if let Err(detail) = queue.enqueue_owned(key.clone(), req, &caller.0) {
                 return failure(StatusCode::TOO_MANY_REQUESTS, detail);
             }
-        } else if let Err(response) = gate_and_record(&state, &req, key.clone(), false).await {
+        } else if let Err(response) =
+            gate_and_record(&state, &req, key.clone(), false, &caller.0).await
+        {
             return response;
         }
     }
@@ -1174,7 +1241,7 @@ pub(crate) async fn get_approval_queue(State(state): State<Arc<AppState>>) -> Re
 
 /// POST /approval/approve: approve the oldest pending order (E5-S4).
 pub(crate) async fn post_approve_order(State(state): State<Arc<AppState>>) -> Response {
-    approve_with(state, |queue| queue.approve_oldest()).await
+    approve_with(state, |queue| queue.approve_oldest_owned()).await
 }
 
 /// `POST /approvals/{id}/approve`: approve the queued order `id` (404 when it is not pending).
@@ -1182,17 +1249,17 @@ pub(crate) async fn post_approve_order_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Response {
-    approve_with(state, |queue| queue.approve(&id)).await
+    approve_with(state, |queue| queue.approve_owned(&id)).await
 }
 
 /// Shared tail of the approve routes: pick the request from the queue, then run it through the
 /// risk stage bypassing the queue.
 async fn approve_with(
     state: Arc<AppState>,
-    pick: impl FnOnce(&crate::approval::ApprovalQueue) -> Option<OrdersRequest>,
+    pick: impl FnOnce(&crate::approval::ApprovalQueue) -> Option<(OrdersRequest, String)>,
 ) -> Response {
     if let Some(queue) = &state.approval_queue {
-        if let Some(req) = pick(queue) {
+        if let Some((req, owner)) = pick(queue) {
             // Re-process the approved order through the risk stage BYPASSING the queue. The
             // queued row keeps the caller's idempotency key (ADR 0019 decision 3), so approval
             // records under the same key the client first sent.
@@ -1202,7 +1269,7 @@ async fn approve_with(
                 .client_order_id
                 .clone()
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-            post_orders_direct(state.clone(), crate::ApiJson(req), order_id).await
+            post_orders_direct(state.clone(), crate::ApiJson(req), order_id, &owner).await
         } else {
             failure(
                 StatusCode::NOT_FOUND,
@@ -1226,9 +1293,14 @@ async fn approve_with(
 /// `GET /orders/{id}`: the ledger row, or 404.
 pub(crate) async fn get_order_by_id(
     State(state): State<Arc<AppState>>,
+    caller: Caller,
     Path(id): Path<String>,
 ) -> Response {
-    match state.orders.get(id.as_str()) {
+    match state
+        .orders
+        .get(id.as_str())
+        .filter(|_| state.orders.is_owned_by(id.as_str(), &caller.0))
+    {
         Some(order) => success(order_json(&order)),
         None => crate::market::error(ErrorDetail::new(ErrorCode::NotFound, "order not found")),
     }
@@ -1247,9 +1319,10 @@ async fn post_orders_direct(
     state: Arc<AppState>,
     crate::ApiJson(req): crate::ApiJson<OrdersRequest>,
     order_id: OrderId,
+    owner: &str,
 ) -> Response {
     let keyed = req.client_order_id.is_some();
-    match gate_and_record(&state, &req, order_id, keyed).await {
+    match gate_and_record(&state, &req, order_id, keyed, owner).await {
         Ok(order) => success(order_json(&order)),
         Err(response) => response,
     }
@@ -1262,6 +1335,7 @@ async fn gate_and_record(
     req: &OrdersRequest,
     order_id: OrderId,
     record_refusal: bool,
+    owner: &str,
 ) -> Result<Order, Response> {
     let (instrument_id, side, order_type, quantity, price) =
         parse_order(req).map_err(|detail| failure(StatusCode::UNPROCESSABLE_ENTITY, detail))?;
@@ -1278,7 +1352,7 @@ async fn gate_and_record(
                 Utc::now(),
             )
             .with_status(OrderStatus::Submitted);
-            state.orders.record(order.clone());
+            state.orders.record_owned(order.clone(), owner);
             record_into_shared(state, &order);
             state
                 .exec
@@ -1298,7 +1372,7 @@ async fn gate_and_record(
                     Utc::now(),
                 )
             });
-            Err(refuse(state, record, &detail))
+            Err(refuse(state, record, &detail, owner))
         }
     }
 }

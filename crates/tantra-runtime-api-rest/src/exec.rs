@@ -65,6 +65,9 @@ pub(crate) struct ExecGateway {
     exchange: Arc<Mutex<PaperExchange>>,
     /// Ledger order id -> broker order id (`PAPER-0001`-style) as returned by the exchange.
     ledger_to_broker: Arc<Mutex<HashMap<String, String>>>,
+    /// Broker order id -> ledger order id, kept after cancel/fill so a terminal lifecycle event
+    /// broadcast after the forward mapping is dropped still resolves to its owner (gap 0013).
+    broker_to_ledger: Arc<Mutex<HashMap<String, String>>>,
     /// Cumulative filled quantity per ledger order id, so partial fills report a running
     /// cumulative quantity to the ledger.
     cum_qty: Arc<Mutex<HashMap<String, Decimal>>>,
@@ -85,6 +88,7 @@ impl ExecGateway {
         Self {
             exchange: Arc::new(Mutex::new(exchange)),
             ledger_to_broker: Arc::default(),
+            broker_to_ledger: Arc::default(),
             cum_qty: Arc::default(),
             last_seen_fills: Arc::default(),
             last_seen_events: Arc::default(),
@@ -118,6 +122,32 @@ impl ExecGateway {
             .lock()
             .ok()
             .and_then(|m| m.get(ledger_id).cloned())
+    }
+
+    /// The ledger id the exchange's `broker_id` belongs to (reverse of [`Self::broker_id_for`]).
+    pub(crate) fn ledger_id_for_broker(&self, broker_id: &str) -> Option<String> {
+        self.broker_to_ledger
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(broker_id)
+            .cloned()
+    }
+
+    /// Whether an order-lifecycle or fill `payload` concerns an order owned by `caller` (gap
+    /// 0013). Payloads without a resolvable broker order id, or with an unmapped one, are not.
+    pub(crate) fn event_owned_by(
+        &self,
+        ledger: &OrderLedger,
+        payload: &serde_json::Value,
+        caller: &str,
+    ) -> bool {
+        let broker_id = payload
+            .get("broker_order_id")
+            .or_else(|| payload.pointer("/fill/order_id"))
+            .and_then(serde_json::Value::as_str);
+        broker_id
+            .and_then(|b| self.ledger_id_for_broker(b))
+            .is_some_and(|ledger_id| ledger.is_owned_by(&ledger_id, caller))
     }
 
     /// Publishes one wire payload to every `/ws/live` subscriber. A full channel drops the
@@ -174,6 +204,10 @@ impl ExecGateway {
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .insert(ledger_id.clone(), broker_id.clone());
+                self.broker_to_ledger
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(broker_id.clone(), ledger_id.clone());
                 // A marketable order fills on submit; a resting one (or an armed stop) must at
                 // least read as `Accepted` in the ledger.
                 self.drain_fills(ledger, shared);

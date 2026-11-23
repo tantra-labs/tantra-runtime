@@ -181,7 +181,7 @@ pub struct AppState {
     pub approval_queue: Option<Arc<ApprovalQueue>>,
     /// In-memory trade-performance journal store backing `/trade-journal/*`.
     /// `None` until configured with [`AppState::with_journal_store`].
-    pub journal: Option<Arc<Mutex<JournalStore>>>,
+    pub journal: Option<Arc<crate::trade_journal::CallerJournals>>,
     /// The write ledger every risk-approved placement lands in (E11-S7, ADR 0019
     /// decision 3). `GET /orders` reads it; a restart empties it.
     pub orders: OrderLedger,
@@ -362,7 +362,10 @@ impl AppState {
     /// Configures the in-memory trade-performance journal store backing
     /// `/trade-journal/*` (annotations, metrics, calendar, comparison).
     pub fn with_journal_store(mut self, store: JournalStore) -> Self {
-        self.journal = Some(Arc::new(Mutex::new(store)));
+        self.journal = Some(Arc::new(crate::trade_journal::CallerJournals::seeded(
+            crate::profile_store::DEFAULT_USER_ID,
+            store,
+        )));
         self
     }
 

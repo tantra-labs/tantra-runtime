@@ -325,9 +325,60 @@ pub struct AccountComparisonSideDto {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Maximum number of per-caller journal partitions held in memory.
+pub const MAX_JOURNAL_PARTITIONS: usize = 4096;
+
+/// Per-caller trade-journal partitions (gap 0013): each authenticated caller gets its own
+/// [`JournalStore`], created lazily. Locks are held only for the map lookup.
+#[derive(Debug, Default)]
+pub struct CallerJournals {
+    inner: std::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<JournalStore>>>>,
+}
+
+impl CallerJournals {
+    /// Seeds `store` as the partition of `owner`.
+    pub fn seeded(owner: &str, store: JournalStore) -> Self {
+        let mut map = std::collections::HashMap::new();
+        map.insert(owner.to_string(), Arc::new(Mutex::new(store)));
+        Self {
+            inner: std::sync::RwLock::new(map),
+        }
+    }
+
+    /// The caller's partition, created empty on first use.
+    pub fn for_caller(&self, caller: &str) -> Result<Arc<Mutex<JournalStore>>, ErrorDetail> {
+        {
+            let map = self
+                .inner
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(store) = map.get(caller) {
+                return Ok(Arc::clone(store));
+            }
+        }
+        let mut map = self
+            .inner
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(store) = map.get(caller) {
+            return Ok(Arc::clone(store));
+        }
+        if map.len() >= MAX_JOURNAL_PARTITIONS {
+            return Err(ErrorDetail::new(
+                ErrorCode::ServiceUnavailable,
+                "too many trade-journal partitions",
+            )
+            .with_context(serde_json::json!({"reason": "journal_partitions_exhausted"})));
+        }
+        let store = Arc::new(Mutex::new(JournalStore::new()));
+        map.insert(caller.to_string(), Arc::clone(&store));
+        Ok(store)
+    }
+}
+
 #[allow(clippy::result_large_err)]
-fn journal_store(state: &AppState) -> Result<Arc<Mutex<JournalStore>>, Response> {
-    state.journal.as_ref().cloned().ok_or_else(|| {
+fn journal_store(state: &AppState, caller: &str) -> Result<Arc<Mutex<JournalStore>>, Response> {
+    let journals = state.journal.as_ref().ok_or_else(|| {
         error(
             ErrorDetail::new(
                 ErrorCode::ServiceUnavailable,
@@ -335,7 +386,8 @@ fn journal_store(state: &AppState) -> Result<Arc<Mutex<JournalStore>>, Response>
             )
             .with_context(serde_json::json!({"reason": "no_journal_store"})),
         )
-    })
+    })?;
+    journals.for_caller(caller).map_err(error)
 }
 
 fn money_dto(money: &tantra_ledger_performance::Money) -> MoneyDto {
@@ -458,15 +510,16 @@ fn created<T: Serialize>(data: T) -> Response {
 /// Distinct from `/portfolio/accounts` (live OMS/trading accounts): a journal
 /// account is an analytics grouping, not a live-execution account.
 pub async fn get_trade_journal_accounts(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let store = store.lock().expect("journal store lock poisoned");
+    let store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let accounts: Vec<JournalAccountDto> = store
         .accounts()
         .iter()
@@ -483,12 +536,11 @@ pub async fn get_trade_journal_accounts(
 
 /// `POST /trade-journal/accounts` — create a journal account.
 pub async fn post_trade_journal_account(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     axum::extract::Json(request): axum::extract::Json<CreateAccountRequest>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
@@ -508,7 +560,9 @@ pub async fn post_trade_journal_account(
             );
         }
     };
-    let mut store = store.lock().expect("journal store lock poisoned");
+    let mut store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let id = JournalAccountId::new(format!("jn-{}", Uuid::new_v4()));
     let starting_balance = request
         .starting_balance
@@ -554,16 +608,17 @@ pub async fn post_trade_journal_account(
 
 /// `GET /trade-journal/overview` — metrics + edge score.
 pub async fn get_trade_journal_overview(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     ApiQuery(query): ApiQuery<OverviewQuery>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let store = store.lock().expect("journal store lock poisoned");
+    let store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // The HTTP layer is allowed the wall clock; the metrics engine itself is
     // domain-pure (tantra-ledger plan 0004 — `MetricsInput::new` takes the
     // as-of explicitly and never queries the clock).
@@ -618,16 +673,17 @@ pub async fn get_trade_journal_overview(
 
 /// `GET /trade-journal/trades` — closed trades with annotations, cursor-paginated.
 pub async fn get_trade_journal_trades(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     ApiQuery(query): ApiQuery<TradesQuery>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let store = store.lock().expect("journal store lock poisoned");
+    let store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut trades: Vec<&ClosedTrade> = store.closed_trades_in_range(query.from, query.to);
     // Start after the cursor (exclusive), if given.
     if let Some(cursor) = &query.cursor {
@@ -647,17 +703,18 @@ pub async fn get_trade_journal_trades(
 
 /// `PATCH /trade-journal/trades/:id` — set a trade's annotation.
 pub async fn patch_trade_journal_trade(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     Path(trade_id): Path<String>,
     axum::extract::Json(request): axum::extract::Json<PatchTradeRequest>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let mut store = store.lock().expect("journal store lock poisoned");
+    let mut store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let existing = store.annotation(&trade_id).cloned().unwrap_or_default();
     let annotation = TradeAnnotation {
         tags: request.tags.unwrap_or(existing.tags),
@@ -684,16 +741,17 @@ pub async fn patch_trade_journal_trade(
 
 /// `GET /trade-journal/calendar` — daily P&L heatmap for a month.
 pub async fn get_trade_journal_calendar(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     ApiQuery(query): ApiQuery<CalendarQuery>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let store = store.lock().expect("journal store lock poisoned");
+    let store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let (year, month) = match parse_month(&query.month) {
         Ok(v) => v,
         Err(r) => return r,
@@ -738,16 +796,17 @@ pub async fn get_trade_journal_calendar(
 
 /// `GET /trade-journal/notes` — day-keyed journal notes for an account.
 pub async fn get_trade_journal_notes(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     ApiQuery(query): ApiQuery<NotesQuery>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let store = store.lock().expect("journal store lock poisoned");
+    let store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let account_id = match query.account {
         Some(a) => JournalAccountId::new(a),
         None => {
@@ -776,12 +835,11 @@ pub async fn get_trade_journal_notes(
 
 /// `POST /trade-journal/notes` — create or replace a day-keyed note.
 pub async fn post_trade_journal_note(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     axum::extract::Json(request): axum::extract::Json<CreateNoteRequest>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
@@ -798,7 +856,9 @@ pub async fn post_trade_journal_note(
             );
         }
     };
-    let mut store = store.lock().expect("journal store lock poisoned");
+    let mut store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if store.set_note(&account_id, day, request.text).is_err() {
         return failure(
             StatusCode::NOT_FOUND,
@@ -813,16 +873,17 @@ pub async fn post_trade_journal_note(
 
 /// `GET /trade-journal/compare` — two-sided metrics comparison.
 pub async fn get_trade_journal_compare(
-    _caller: Caller,
+    caller: Caller,
     State(state): State<Arc<AppState>>,
     ApiQuery(query): ApiQuery<CompareQuery>,
 ) -> Response {
-    // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
-    let store = match journal_store(&state) {
+    let store = match journal_store(&state, &caller.0) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let store = store.lock().expect("journal store lock poisoned");
+    let store = store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = Utc::now();
 
     let (trades_a, trades_b, is_prior_period, id_a, id_b) = if let (Some(a), Some(b)) =

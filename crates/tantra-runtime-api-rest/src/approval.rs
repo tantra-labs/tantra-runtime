@@ -38,6 +38,7 @@ struct QueuedOrder {
     request: OrdersRequest,
     queued_at: Instant,
     status: QueueStatus,
+    owner: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -73,6 +74,16 @@ impl ApprovalQueue {
     ///
     /// Returns the queue position (1-indexed) on success, or an error if the queue is full.
     pub fn enqueue(&self, order_id: OrderId, request: OrdersRequest) -> Result<usize, ErrorDetail> {
+        self.enqueue_owned(order_id, request, crate::profile_store::DEFAULT_USER_ID)
+    }
+
+    /// Queues a new order for approval, remembering the `owner` caller that placed it.
+    pub fn enqueue_owned(
+        &self,
+        order_id: OrderId,
+        request: OrdersRequest,
+        owner: &str,
+    ) -> Result<usize, ErrorDetail> {
         let mut inner = self.lock();
         if inner.items.len() >= inner.max_size {
             return Err(
@@ -90,6 +101,7 @@ impl ApprovalQueue {
             request,
             queued_at: Instant::now(),
             status: QueueStatus::Pending,
+            owner: owner.to_string(),
         });
         Ok(position)
     }
@@ -124,6 +136,11 @@ impl ApprovalQueue {
     /// Returns the approved order request, or None if no pending orders.
     /// The approved order is removed from the queue.
     pub fn approve_oldest(&self) -> Option<OrdersRequest> {
+        self.approve_oldest_owned().map(|(req, _)| req)
+    }
+
+    /// [`ApprovalQueue::approve_oldest`], also returning the owning caller.
+    pub fn approve_oldest_owned(&self) -> Option<(OrdersRequest, String)> {
         let mut inner = self.lock();
         let pos = inner
             .items
@@ -132,7 +149,7 @@ impl ApprovalQueue {
         inner
             .items
             .remove(pos)
-            .map(|item: QueuedOrder| item.request)
+            .map(|item: QueuedOrder| (item.request, item.owner))
     }
 
     /// Reject the oldest pending order.
@@ -153,6 +170,11 @@ impl ApprovalQueue {
 
     /// Approve a specific order by queue_id.
     pub fn approve(&self, queue_id: &OrderId) -> Option<OrdersRequest> {
+        self.approve_owned(queue_id).map(|(req, _)| req)
+    }
+
+    /// [`ApprovalQueue::approve`], also returning the owning caller.
+    pub fn approve_owned(&self, queue_id: &OrderId) -> Option<(OrdersRequest, String)> {
         let mut inner = self.lock();
         inner
             .items
@@ -160,7 +182,7 @@ impl ApprovalQueue {
             .find(|q| q.id == *queue_id && q.status == QueueStatus::Pending)
             .map(|q| {
                 q.status = QueueStatus::Approved;
-                q.request.clone()
+                (q.request.clone(), q.owner.clone())
             })
     }
 

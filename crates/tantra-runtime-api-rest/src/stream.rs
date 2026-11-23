@@ -54,7 +54,7 @@ fn table() -> RouteTable {
 
 /// Upgrades to the multiplexed stream socket.
 async fn stream_handler(
-    _caller: Caller,
+    caller: Caller,
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     token: Option<Extension<TokenInfo>>,
@@ -66,7 +66,7 @@ async fn stream_handler(
             .as_ref()
             .is_some_and(|Extension(t)| t.scopes.iter().any(|s| s == "trade"));
     ws.max_message_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| run(socket, state, can_trade))
+        .on_upgrade(move |socket| run(socket, state, can_trade, caller.0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -152,6 +152,8 @@ type Sink = SplitSink<WebSocket, Message>;
 struct Conn {
     state: Arc<AppState>,
     can_trade: bool,
+    /// The authenticated caller; order commands and order/fill events are scoped to it.
+    owner: String,
     subs: HashMap<Channel, Sub>,
     market_rx: Option<Receiver<Tick>>,
     market_warned: bool,
@@ -172,12 +174,13 @@ async fn recv_market(rx: &mut Option<Receiver<Tick>>) -> Result<Tick, RecvError>
     }
 }
 
-async fn run(socket: WebSocket, state: Arc<AppState>, can_trade: bool) {
+async fn run(socket: WebSocket, state: Arc<AppState>, can_trade: bool, owner: String) {
     let (mut sender, mut receiver) = socket.split();
     let mut exec_rx = state.exec.subscribe_events();
     let mut conn = Conn {
         state,
         can_trade,
+        owner,
         subs: HashMap::new(),
         market_rx: None,
         market_warned: false,
@@ -289,6 +292,7 @@ impl Conn {
                     State(self.state.clone()),
                     crate::ApiJson(order),
                     key,
+                    &self.owner,
                 )
                 .await;
                 send(
@@ -306,6 +310,7 @@ impl Conn {
                 }
                 let response = crate::orders::delete_order(
                     State(self.state.clone()),
+                    Caller(self.owner.clone()),
                     axum::extract::Path(order_id),
                 )
                 .await;
@@ -494,6 +499,17 @@ impl Conn {
             "EquitySnapshot" => (Channel::Portfolio, Vec::new()),
             _ => return false,
         };
+        // Order lifecycle and fills are private to the placing caller (gap 0013); an unmapped
+        // broker id is dropped. Depth is market data and stays unfiltered. Portfolio snapshots
+        // remain account-wide until docs/gaps/0017-per-caller-paper-accounts.md lands.
+        if matches!(ch, Channel::Orders | Channel::Fills)
+            && !self
+                .state
+                .exec
+                .event_owned_by(&self.state.orders, payload, &self.owner)
+        {
+            return false;
+        }
         self.emit(sender, ch, &symbols, payload.clone()).await
     }
 }
