@@ -481,7 +481,7 @@ async fn unsupported_method(method: Method, uri: axum::http::Uri) -> Response {
         &uri,
         StatusCode::METHOD_NOT_ALLOWED,
         ErrorDetail::new(
-            ErrorCode::NotImplemented,
+            ErrorCode::Unsupported,
             format!("{method} is not supported on {}", uri.path()),
         ),
     )

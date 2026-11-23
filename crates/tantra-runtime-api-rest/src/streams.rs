@@ -18,7 +18,7 @@ use tantra_runtime_api::{
 use tokio::time::interval;
 
 use crate::AppState;
-use crate::market::failure;
+use crate::market::{error, failure};
 
 const DEFAULT_TICK_MS: u64 = 25;
 const KEEP_ALIVE_SECS: u64 = 15;
@@ -154,10 +154,9 @@ pub async fn get_backtest_events(
     Query(query): Query<BacktestEventsQuery>,
 ) -> Response {
     let Some(runs) = state.runs.clone() else {
-        return failure(
-            StatusCode::SERVICE_UNAVAILABLE,
+        return error(
             ErrorDetail::new(
-                ErrorCode::NotImplemented,
+                ErrorCode::ServiceUnavailable,
                 "no journals directory is configured",
             )
             .with_context(json!({"reason": "no_journals_dir"})),

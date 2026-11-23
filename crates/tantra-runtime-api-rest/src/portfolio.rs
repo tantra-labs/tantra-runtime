@@ -38,15 +38,14 @@ use tantra_runtime_api::{ErrorCode, ErrorDetail};
 use tracing::error;
 
 use crate::caller::Caller;
-use crate::market::{failure, success};
+use crate::market::{error, failure, success};
 use crate::{AppState, PortfolioDocument, PortfolioError};
 
 /// The 503 for a `tantra serve` with no portfolios directory configured.
 fn no_store() -> Response {
-    failure(
-        StatusCode::SERVICE_UNAVAILABLE,
+    error(
         ErrorDetail::new(
-            ErrorCode::NotImplemented,
+            ErrorCode::ServiceUnavailable,
             "no portfolios directory is configured",
         )
         .with_context(json!({"reason": "no_portfolios_dir"})),

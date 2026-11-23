@@ -307,7 +307,7 @@ async fn modules_crud_and_id_mismatch() {
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["error"]["context"]["reason"], json!("id_mismatch"));
 
     let (_, body) = send(&app, Method::GET, "/profile/modules", None, None).await;
@@ -323,7 +323,7 @@ async fn modules_crud_and_id_mismatch() {
 }
 
 #[tokio::test]
-async fn bad_names_are_400() {
+async fn bad_names_are_422() {
     let (app, dir) = router(&[]);
     let long = "n".repeat(129);
     for name in [long.as_str(), "a%00b", "a%0Ab", "a%7Fb"] {
@@ -337,10 +337,14 @@ async fn bad_names_are_400() {
                 json!({})
             };
             let (status, resp) = send(&app, Method::PUT, &uri, Some(body), None).await;
-            assert_eq!(status, StatusCode::BAD_REQUEST, "PUT {uri}: {resp}");
+            assert_eq!(
+                status,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "PUT {uri}: {resp}"
+            );
             assert_eq!(resp["error"]["code"], json!("validation_invalid_request"));
             let (status, _) = send(&app, Method::DELETE, &uri, None, None).await;
-            assert_eq!(status, StatusCode::BAD_REQUEST, "DELETE {uri}");
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "DELETE {uri}");
         }
     }
     assert!(!dir.path().join("profiles").exists());
@@ -411,12 +415,12 @@ async fn put_profile_validates_map_keys_like_the_sub_resources() {
     ];
     for body in bad_bodies {
         let (status, resp) = send(&app, Method::PUT, "/profile", Some(body.clone()), None).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {resp}");
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}: {resp}");
         assert_eq!(resp["error"]["context"]["reason"], json!("invalid_name"));
     }
     let mismatch = json!({"modules": {"m1": module("m2")}});
     let (status, resp) = send(&app, Method::PUT, "/profile", Some(mismatch), None).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{resp}");
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{resp}");
     assert_eq!(resp["error"]["context"]["reason"], json!("id_mismatch"));
     assert!(!dir.path().join("profiles").exists());
 

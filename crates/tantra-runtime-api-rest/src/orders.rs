@@ -69,7 +69,7 @@ use tantra_ledger::OrderRecord as LedgerOrderRecord;
 use tantra_risk::RiskRefusal;
 use tantra_runtime_api::{ErrorCode, ErrorDetail, OrdersQuery, OrdersRequest};
 
-use crate::market::{ApiQuery, failure, success};
+use crate::market::{ApiQuery, error, failure, success};
 use crate::state::AppState;
 
 /// Order idempotency key — a plain `String` since `tantra_runtime_api::OrderId` was removed in
@@ -1213,12 +1213,12 @@ async fn approve_with(
             )
         }
     } else {
-        failure(
-            StatusCode::BAD_REQUEST,
+        error(
             ErrorDetail::new(
-                ErrorCode::ValidationInvalidRequest,
+                ErrorCode::ServiceUnavailable,
                 "approval queue is not enabled",
-            ),
+            )
+            .with_context(serde_json::json!({"reason": "approval_queue_disabled"})),
         )
     }
 }
@@ -1328,12 +1328,12 @@ fn reject_with(
             )
         }
     } else {
-        failure(
-            StatusCode::BAD_REQUEST,
+        error(
             ErrorDetail::new(
-                ErrorCode::ValidationInvalidRequest,
+                ErrorCode::ServiceUnavailable,
                 "approval queue is not enabled",
-            ),
+            )
+            .with_context(serde_json::json!({"reason": "approval_queue_disabled"})),
         )
     }
 }

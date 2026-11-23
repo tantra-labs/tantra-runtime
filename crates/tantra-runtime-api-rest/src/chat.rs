@@ -40,8 +40,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tracing::{debug, warn};
@@ -60,7 +59,7 @@ use tantra_agent_llm::{
     Usage,
 };
 use tantra_risk::RiskEngine;
-use tantra_runtime_api::{LedgerPortfolioReader, SharedLedger};
+use tantra_runtime_api::{ErrorCode, ErrorDetail, LedgerPortfolioReader, SharedLedger};
 
 use crate::AppState;
 use crate::caller::Caller;
@@ -862,21 +861,20 @@ pub async fn acp_ws_handler(
     caller: Caller,
 ) -> Response {
     let Some(chat) = state.chat.clone() else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            axum::Json(serde_json::json!({
-                "error": "chat not configured — add an LLM provider to tantra.jsonc"
-            })),
-        )
-            .into_response();
+        return crate::market::error(
+            ErrorDetail::new(
+                ErrorCode::ServiceUnavailable,
+                "chat not configured — add an LLM provider to tantra.jsonc",
+            )
+            .with_context(serde_json::json!({"reason": "chat_not_configured"})),
+        );
     };
     let bridge = Arc::clone(&chat.acp);
     let Ok(permit) = Arc::clone(&bridge.slots).try_acquire_owned() else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            axum::Json(serde_json::json!({ "error": "too many ACP connections" })),
-        )
-            .into_response();
+        return crate::market::error(
+            ErrorDetail::new(ErrorCode::ServiceUnavailable, "too many ACP connections")
+                .with_context(serde_json::json!({"reason": "acp_slots_exhausted"})),
+        );
     };
     tracing::info!(caller = %caller.0, "acp connection");
     ws.max_message_size(1 << 20)

@@ -6,34 +6,21 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::response::Response;
 use serde_json::json;
 use tantra_runtime_api::{BacktestRequest, RunKind, SweepRequest, TradesResponse};
 use tantra_runtime_api::{ErrorCode, ErrorDetail};
 
-use crate::market::{failure, success};
+use crate::market::{error, success};
 use crate::registry::StrategyRegistry;
 use crate::service::resolve_strategy;
 use crate::trades::trades_from_journal;
 use crate::{ApiJson, AppState};
 
-/// The HTTP status of a run-route failure.
-fn status_of(detail: &ErrorDetail) -> StatusCode {
-    match detail.code {
-        ErrorCode::ValidationInvalidRequest
-        | ErrorCode::NotImplemented
-        | ErrorCode::Unsupported => StatusCode::UNPROCESSABLE_ENTITY,
-        ErrorCode::NotFound => StatusCode::NOT_FOUND,
-        ErrorCode::RateLimited | ErrorCode::Timeout => StatusCode::TOO_MANY_REQUESTS,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
 fn respond<T: serde::Serialize>(result: Result<T, ErrorDetail>) -> Response {
     match result {
         Ok(data) => success(data),
-        Err(detail) => failure(status_of(&detail), detail),
+        Err(detail) => error(detail),
     }
 }
 
@@ -70,11 +57,10 @@ pub(crate) async fn post_backtests(
             )
         });
         return match checked {
-            Err(detail) => failure(status_of(&detail), detail),
-            Ok(_) => failure(
-                StatusCode::SERVICE_UNAVAILABLE,
+            Err(detail) => error(detail),
+            Ok(_) => error(
                 ErrorDetail::new(
-                    ErrorCode::NotImplemented,
+                    ErrorCode::ServiceUnavailable,
                     "no journals directory is configured",
                 )
                 .with_context(json!({"reason": "no_journals_dir"})),
@@ -186,11 +172,10 @@ pub(crate) async fn post_sweeps(
             )
         });
         return match checked {
-            Err(detail) => failure(status_of(&detail), detail),
-            Ok(_) => failure(
-                StatusCode::SERVICE_UNAVAILABLE,
+            Err(detail) => error(detail),
+            Ok(_) => error(
                 ErrorDetail::new(
-                    ErrorCode::NotImplemented,
+                    ErrorCode::ServiceUnavailable,
                     "no journals directory is configured",
                 )
                 .with_context(json!({"reason": "no_journals_dir"})),

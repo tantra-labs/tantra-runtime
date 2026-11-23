@@ -12,7 +12,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::{NaiveDate, Utc};
@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::caller::Caller;
-use crate::market::{failure, success};
+use crate::market::{ApiQuery, error, failure, success};
 use tantra_ledger_performance::calendar::build_calendar;
 use tantra_ledger_performance::metrics::{MetricsInput, compute_edge_score, compute_metrics};
 use tantra_ledger_performance::store::StoreError;
@@ -328,10 +328,9 @@ pub struct AccountComparisonSideDto {
 #[allow(clippy::result_large_err)]
 fn journal_store(state: &AppState) -> Result<Arc<Mutex<JournalStore>>, Response> {
     state.journal.as_ref().cloned().ok_or_else(|| {
-        failure(
-            StatusCode::SERVICE_UNAVAILABLE,
+        error(
             ErrorDetail::new(
-                ErrorCode::NotImplemented,
+                ErrorCode::ServiceUnavailable,
                 "no trade-performance journal store is configured",
             )
             .with_context(serde_json::json!({"reason": "no_journal_store"})),
@@ -557,7 +556,7 @@ pub async fn post_trade_journal_account(
 pub async fn get_trade_journal_overview(
     _caller: Caller,
     State(state): State<Arc<AppState>>,
-    Query(query): Query<OverviewQuery>,
+    ApiQuery(query): ApiQuery<OverviewQuery>,
 ) -> Response {
     // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
@@ -621,7 +620,7 @@ pub async fn get_trade_journal_overview(
 pub async fn get_trade_journal_trades(
     _caller: Caller,
     State(state): State<Arc<AppState>>,
-    Query(query): Query<TradesQuery>,
+    ApiQuery(query): ApiQuery<TradesQuery>,
 ) -> Response {
     // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
@@ -687,7 +686,7 @@ pub async fn patch_trade_journal_trade(
 pub async fn get_trade_journal_calendar(
     _caller: Caller,
     State(state): State<Arc<AppState>>,
-    Query(query): Query<CalendarQuery>,
+    ApiQuery(query): ApiQuery<CalendarQuery>,
 ) -> Response {
     // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
@@ -741,7 +740,7 @@ pub async fn get_trade_journal_calendar(
 pub async fn get_trade_journal_notes(
     _caller: Caller,
     State(state): State<Arc<AppState>>,
-    Query(query): Query<NotesQuery>,
+    ApiQuery(query): ApiQuery<NotesQuery>,
 ) -> Response {
     // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {
@@ -816,7 +815,7 @@ pub async fn post_trade_journal_note(
 pub async fn get_trade_journal_compare(
     _caller: Caller,
     State(state): State<Arc<AppState>>,
-    Query(query): Query<CompareQuery>,
+    ApiQuery(query): ApiQuery<CompareQuery>,
 ) -> Response {
     // single shared store/account; per-caller partitioning: tantra-runtime/docs/gaps/0013-per-caller-journal-and-paper-account.md
     let store = match journal_store(&state) {

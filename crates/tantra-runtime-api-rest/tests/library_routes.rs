@@ -149,7 +149,7 @@ async fn validation_rejects_bad_inputs() {
             Some(json!({"id":"rsi","bars_file":bars_file})),
         )
         .await;
-        assert_eq!(s, StatusCode::BAD_REQUEST, "{bars_file:?}");
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{bars_file:?}");
     }
     let bars: Vec<Value> = (0..5001).map(|i| json!({"c": i})).collect();
     let (s, _, _) = send(

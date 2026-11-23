@@ -181,7 +181,7 @@ async fn without_a_pump_the_route_is_unavailable_with_a_reason_code() {
     let st = state();
     let (s, v) = post_bars(&st, vec![bar(1_000, 100.0)]).await;
     assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{v}");
-    assert_eq!(v["error"]["code"], json!("not_found"));
+    assert_eq!(v["error"]["code"], json!("service_unavailable"));
     assert_eq!(reason(&v), "bar_ingest_disabled");
 }
 

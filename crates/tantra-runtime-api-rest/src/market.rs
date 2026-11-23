@@ -203,7 +203,6 @@ pub(crate) fn failure(status: StatusCode, detail: ErrorDetail) -> Response {
 }
 
 /// Error envelope whose HTTP status is derived from the code (design 0006 section 3).
-#[allow(dead_code)]
 pub(crate) fn error(detail: ErrorDetail) -> Response {
     let status = StatusCode::from_u16(detail.code.http_status())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -247,7 +246,10 @@ pub(crate) async fn master_get(
 pub(crate) fn port_failure(error: PortError) -> Response {
     let (status, code) = match &error {
         PortError::Unsupported(_) => (StatusCode::NOT_FOUND, ErrorCode::NotFound),
-        PortError::Terminal(_) => (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::Conflict),
+        PortError::Terminal(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorCode::ServiceUnavailable,
+        ),
         PortError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError),
     };
     failure(status, ErrorDetail::new(code, error.to_string()))
@@ -693,13 +695,10 @@ pub(crate) async fn get_block_deals(
     ApiQuery(query): ApiQuery<BlockDealsQuery>,
 ) -> Response {
     let Some(reader) = &state.block_deals else {
-        return failure(
-            StatusCode::NOT_IMPLEMENTED,
-            ErrorDetail::new(
-                ErrorCode::NotImplemented,
-                "no block-deal projections configured",
-            ),
-        );
+        return error(ErrorDetail::new(
+            ErrorCode::ServiceUnavailable,
+            "no block-deal projections configured",
+        ));
     };
     let instrument = match &query.instrument {
         Some(raw) => match parse_instrument_id(raw) {

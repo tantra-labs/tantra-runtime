@@ -28,7 +28,7 @@ use tantra_runtime_api::{
 use tracing::error;
 
 use crate::caller::Caller;
-use crate::market::{failure, success};
+use crate::market::{error, failure, success};
 use crate::{AppState, PortfolioDocument, PortfolioError};
 
 /// Deterministic pseudo-random value in `[0, 1)` from a seed (timestamp), as exact `Decimal`.
@@ -102,10 +102,9 @@ async fn document_for(
 }
 
 fn no_store() -> axum::response::Response {
-    failure(
-        StatusCode::SERVICE_UNAVAILABLE,
+    error(
         ErrorDetail::new(
-            ErrorCode::NotImplemented,
+            ErrorCode::ServiceUnavailable,
             "no portfolios directory is configured",
         )
         .with_context(json!({"reason": "no_portfolios_dir"})),

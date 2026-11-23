@@ -23,7 +23,7 @@ use tantra_runtime_api::{BarsIngestRequest, BarsIngestResponse};
 use tantra_runtime_api::{ErrorCode, ErrorDetail};
 use tokio::sync::mpsc::error::TrySendError;
 
-use crate::market::{failure, success};
+use crate::market::{error, failure, success};
 use crate::{ApiJson, AppState};
 
 pub(crate) async fn post_bars(
@@ -35,10 +35,9 @@ pub(crate) async fn post_bars(
         return failure(StatusCode::UNPROCESSABLE_ENTITY, detail);
     }
     let Some(sender) = state.bar_ingest_sender() else {
-        return failure(
-            StatusCode::SERVICE_UNAVAILABLE,
+        return error(
             ErrorDetail::new(
-                ErrorCode::NotFound,
+                ErrorCode::ServiceUnavailable,
                 "bar ingest is not running on this server",
             )
             .with_context(json!({"reason": "bar_ingest_disabled"})),
@@ -76,9 +75,8 @@ pub(crate) async fn post_bars(
         }
         // The pump went away between the lookup and the send.
         Err(TrySendError::Closed(())) => {
-            return failure(
-                StatusCode::SERVICE_UNAVAILABLE,
-                ErrorDetail::new(ErrorCode::NotFound, "bar ingest has stopped")
+            return error(
+                ErrorDetail::new(ErrorCode::ServiceUnavailable, "bar ingest has stopped")
                     .with_context(json!({"reason": "bar_ingest_disabled"})),
             );
         }

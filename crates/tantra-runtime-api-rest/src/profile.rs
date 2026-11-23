@@ -18,7 +18,7 @@ use tantra_runtime_api::{
 };
 use tracing::error;
 
-use crate::market::{failure, success};
+use crate::market::{error, failure, success};
 use crate::profile_store::Result;
 use crate::{ApiJson, AppState, Module, Profile, ProfileError, ProfileStore};
 
@@ -34,10 +34,9 @@ async fn with_store<T: Serialize + Send + 'static>(
     work: impl FnOnce(&ProfileStore, &str) -> Result<T> + Send + 'static,
 ) -> Response {
     let Some(store) = state.profiles.clone() else {
-        return failure(
-            StatusCode::SERVICE_UNAVAILABLE,
+        return error(
             ErrorDetail::new(
-                ErrorCode::NotImplemented,
+                ErrorCode::ServiceUnavailable,
                 "no profiles directory is configured",
             )
             .with_context(json!({"reason": "no_profiles_dir"})),
@@ -133,8 +132,7 @@ fn check_profile(profile: &Profile) -> Option<Response> {
 }
 
 fn bad_request(message: String, reason: &str) -> Response {
-    failure(
-        StatusCode::BAD_REQUEST,
+    error(
         ErrorDetail::new(ErrorCode::ValidationInvalidRequest, message)
             .with_context(json!({"reason": reason})),
     )

@@ -147,9 +147,9 @@ async fn block_deals_route_rejects_bad_date() {
 }
 
 #[tokio::test]
-async fn block_deals_route_unconfigured_is_not_implemented() {
+async fn block_deals_route_unconfigured_is_service_unavailable() {
     let state = AppState::default();
     let (status, body) = call(state, "/api/v1/market-data/block-deals").await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-    assert_eq!(body["error"]["code"], "not_implemented");
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["error"]["code"], "service_unavailable");
 }

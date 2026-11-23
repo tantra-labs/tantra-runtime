@@ -18,7 +18,7 @@ use tantra_runtime_api::{ErrorCode, ErrorDetail};
 
 use crate::caller::Caller;
 use crate::library_client::LibraryError;
-use crate::market::{ApiQuery, failure, success};
+use crate::market::{ApiQuery, error, failure, success};
 use crate::route_table::{RouteEntry, RouteTable};
 use crate::{ApiJson, AppState, RouteScope, experimental_analysis};
 
@@ -197,10 +197,7 @@ fn v2_only_table() -> RouteTable {
 }
 
 fn bad_request(msg: impl Into<String>) -> Response {
-    failure(
-        StatusCode::BAD_REQUEST,
-        ErrorDetail::new(ErrorCode::ValidationInvalidRequest, msg),
-    )
+    error(ErrorDetail::new(ErrorCode::ValidationInvalidRequest, msg))
 }
 
 fn invalid(msg: impl Into<String>) -> Response {

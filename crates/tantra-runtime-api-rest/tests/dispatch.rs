@@ -75,7 +75,7 @@ async fn errors_keep_their_status_and_envelope() {
     assert_eq!(body["error"]["code"], "not_found");
     let (status, body) = call("PUT", "/health", None).await;
     assert_eq!(status, 405);
-    assert_eq!(body["error"]["code"], "not_implemented");
+    assert_eq!(body["error"]["code"], "unsupported");
 }
 
 #[tokio::test]

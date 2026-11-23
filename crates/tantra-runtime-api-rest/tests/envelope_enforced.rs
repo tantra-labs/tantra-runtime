@@ -12,48 +12,8 @@ use tantra_runtime_api_rest::{
 use tower::util::ServiceExt;
 
 /// `(method, path, actual_status, code)` where the handler's status disagrees with its code.
-// tracked: tantra-runtime/docs/gaps/0015-error-code-status-mismatches.md
-const KNOWN_STATUS_DEVIATIONS: &[(&str, &str, u16, &str)] = &[
-    ("GET", "/profile", 503, "not_implemented"),
-    ("GET", "/profile/layouts", 503, "not_implemented"),
-    ("GET", "/profile/modules", 503, "not_implemented"),
-    ("GET", "/portfolio", 503, "not_implemented"),
-    ("GET", "/portfolio/accounts", 503, "not_implemented"),
-    ("GET", "/portfolio/positions", 503, "not_implemented"),
-    ("GET", "/portfolio/holdings", 503, "not_implemented"),
-    ("GET", "/portfolio/trades", 503, "not_implemented"),
-    ("GET", "/portfolio/chart", 503, "not_implemented"),
-    ("GET", "/portfolio/concentration", 503, "not_implemented"),
-    ("GET", "/portfolio/wac", 503, "not_implemented"),
-    ("GET", "/ledger", 503, "not_implemented"),
-    ("GET", "/tax/report", 503, "not_implemented"),
-    ("GET", "/fees", 503, "not_implemented"),
-    ("GET", "/positions", 503, "not_implemented"),
-    ("GET", "/positions/audit", 503, "not_implemented"),
-    ("GET", "/trades", 503, "not_implemented"),
-    ("GET", "/reports/ledger", 503, "not_implemented"),
-    ("GET", "/reports/tax", 503, "not_implemented"),
-    ("GET", "/reports/snapshots", 503, "not_implemented"),
-    ("GET", "/reports/audit", 503, "not_implemented"),
-    ("GET", "/reports/concentration", 503, "not_implemented"),
-    ("GET", "/reports/wac", 503, "not_implemented"),
-    ("GET", "/reports/fees", 503, "not_implemented"),
-    ("GET", "/reports/equity-curve", 503, "not_implemented"),
-    ("GET", "/reports/fills/:order_id", 503, "not_implemented"),
-    ("GET", "/backtests/:id/events", 503, "not_implemented"),
-    ("GET", "/orders/:id/fills", 503, "not_implemented"),
-    ("GET", "/trade-journal/accounts", 503, "not_implemented"),
-    ("GET", "/trade-journal/overview", 503, "not_implemented"),
-    ("GET", "/trade-journal/trades", 503, "not_implemented"),
-    (
-        "GET",
-        "/trade-journal/calendar",
-        400,
-        "validation_invalid_request",
-    ),
-    ("GET", "/trade-journal/notes", 503, "not_implemented"),
-    ("GET", "/trade-journal/compare", 503, "not_implemented"),
-];
+// Gap 0015 closed: every error status now follows ErrorCode::http_status().
+const KNOWN_STATUS_DEVIATIONS: &[(&str, &str, u16, &str)] = &[];
 
 async fn call(router: axum::Router, req: Request<Body>) -> (StatusCode, Value) {
     let res = router.oneshot(req).await.unwrap();
