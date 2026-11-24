@@ -515,6 +515,16 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
 }
 
 impl PreparedServer {
+    /// The prepared server's router, for in-process embedding without a socket (the
+    /// `tantra.client` `Client.inproc` transport in `tantra-ffi`, root design 0006 §6.8).
+    ///
+    /// Bar ingest is not started and the run service is not drained on drop: call
+    /// [`AppState::shutdown_runs`] on the returned state when the embedder closes.
+    pub fn into_router(self) -> (axum::Router, AppState) {
+        let router = crate::api_router_with_config(self.state.clone(), &self.api_config);
+        (router, self.state)
+    }
+
     /// Binds the configured address inside an active Tokio runtime, invokes `on_bound` with the
     /// bound [`SocketAddr`] and optional security warning, serves until `shutdown` resolves, and
     /// drains both the bar pump and run service cleanly.
