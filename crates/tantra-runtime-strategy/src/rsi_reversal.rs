@@ -1,6 +1,6 @@
 //! RSI mean-reversion strategy.
 
-use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use tantra_core::{Bar, InstrumentId, Quantity};
 use tantra_market_indicators::{Indicator, Rsi};
 
@@ -36,8 +36,8 @@ enum Side {
 pub struct RsiReversal {
     instrument_id: InstrumentId,
     rsi: Rsi,
-    oversold: f64,
-    overbought: f64,
+    oversold: Decimal,
+    overbought: Decimal,
     quantity: Quantity,
     side: Side,
 }
@@ -47,7 +47,8 @@ impl RsiReversal {
     ///
     /// # Panics
     ///
-    /// Panics if `period` is zero or thresholds are out of order.
+    /// Panics if `period` is zero, either threshold is non-finite, or
+    /// thresholds are out of order.
     pub fn new(
         instrument_id: InstrumentId,
         period: usize,
@@ -57,6 +58,9 @@ impl RsiReversal {
     ) -> Self {
         assert!(period > 0, "RSI period must be positive");
         assert!(oversold < overbought, "oversold must be below overbought");
+        let oversold = Decimal::try_from(oversold).expect("oversold threshold must be finite");
+        let overbought =
+            Decimal::try_from(overbought).expect("overbought threshold must be finite");
         Self {
             instrument_id,
             rsi: Rsi::new(period),
@@ -79,8 +83,7 @@ impl Strategy for RsiReversal {
     }
 
     fn on_bar(&mut self, ctx: &mut dyn StrategyContext, bar: &Bar) -> Result<()> {
-        let close = bar.close.0.to_f64().unwrap_or(0.0);
-        let Some(v) = self.rsi.update(close) else {
+        let Some(v) = self.rsi.update(bar.close.0) else {
             return Ok(());
         };
 

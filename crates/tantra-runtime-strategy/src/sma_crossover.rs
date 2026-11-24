@@ -1,6 +1,5 @@
 //! SMA crossover strategy.
 
-use rust_decimal::prelude::ToPrimitive;
 use tantra_core::{Bar, InstrumentId, Quantity};
 use tantra_market_indicators::{Indicator, Sma};
 
@@ -75,7 +74,7 @@ impl Strategy for SmaCrossover {
     }
 
     fn on_bar(&mut self, ctx: &mut dyn StrategyContext, bar: &Bar) -> Result<()> {
-        let close = bar.close.0.to_f64().unwrap_or(0.0);
+        let close = bar.close.0;
         let f = self.fast.update(close);
         let s = self.slow.update(close);
 

@@ -25,7 +25,6 @@ use crate::market_feed::wire::{BarAggregation, BarSpecification, PriceType, Unix
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use tantra_agent_chat_tools::ports::error::PortError;
 use tantra_agent_chat_tools::ports::market::{
     BlockDeal, CorporateAction, DeliveryBar, InstitutionalFlow, InstrumentSearchResult,
@@ -331,10 +330,6 @@ impl MarketReader for FeedMarketReader {
                 timestamp: b.ts_event().to_datetime(),
             })
             .collect();
-        let closes: Vec<f64> = core_bars
-            .iter()
-            .map(|b| b.close.value().to_f64().unwrap_or(0.0))
-            .collect();
 
         let mut values = HashMap::new();
         for name in names {
@@ -361,29 +356,29 @@ impl MarketReader for FeedMarketReader {
             let value = match kind {
                 IndicatorKind::Sma => {
                     let mut ind = Sma::new(params[0]);
-                    for c in &closes {
-                        let _ = ind.update(*c);
+                    for b in &core_bars {
+                        let _ = ind.update(b.close.value());
                     }
                     ind.value()
                 }
                 IndicatorKind::Ema => {
                     let mut ind = Ema::new(params[0]);
-                    for c in &closes {
-                        let _ = ind.update(*c);
+                    for b in &core_bars {
+                        let _ = ind.update(b.close.value());
                     }
                     ind.value()
                 }
                 IndicatorKind::Rsi => {
                     let mut ind = Rsi::new(params[0]);
-                    for c in &closes {
-                        let _ = ind.update(*c);
+                    for b in &core_bars {
+                        let _ = ind.update(b.close.value());
                     }
                     ind.value()
                 }
                 IndicatorKind::Roc => {
                     let mut ind = Roc::new(params[0]);
-                    for c in &closes {
-                        let _ = ind.update(*c);
+                    for b in &core_bars {
+                        let _ = ind.update(b.close.value());
                     }
                     ind.value()
                 }
@@ -392,8 +387,7 @@ impl MarketReader for FeedMarketReader {
                     for b in &core_bars {
                         let _ = ind.update(b.close.value());
                     }
-                    // presentation boundary: chat payload is f64 for all indicators (tantra-market gap 0009)
-                    ind.value().and_then(|v| v.to_f64())
+                    ind.value()
                 }
                 IndicatorKind::Macd => {
                     let mut ind = Macd::new(
@@ -401,15 +395,15 @@ impl MarketReader for FeedMarketReader {
                         params.get(1).copied().unwrap_or(26),
                         params.get(2).copied().unwrap_or(9),
                     );
-                    for c in &closes {
-                        let _ = ind.update(*c);
+                    for b in &core_bars {
+                        let _ = ind.update(b.close.value());
                     }
                     ind.value().map(|v| v.macd)
                 }
                 IndicatorKind::Bb => {
-                    let mut ind = BollingerBands::new(params[0], 2.0);
-                    for c in &closes {
-                        let _ = ind.update(*c);
+                    let mut ind = BollingerBands::new(params[0], Decimal::TWO);
+                    for b in &core_bars {
+                        let _ = ind.update(b.close.value());
                     }
                     ind.value().map(|v| v.middle)
                 }
@@ -418,8 +412,7 @@ impl MarketReader for FeedMarketReader {
                     for b in &core_bars {
                         let _ = ind.update(b);
                     }
-                    // presentation boundary: chat payload is f64 for all indicators (tantra-market gap 0009)
-                    ind.value().and_then(|v| v.to_f64())
+                    ind.value()
                 }
                 IndicatorKind::Adx => {
                     let mut ind = Adx::new(params[0]);
@@ -451,7 +444,7 @@ impl MarketReader for FeedMarketReader {
                 }
             };
             if let Some(v) = value {
-                values.insert(name.clone(), to_decimal(v));
+                values.insert(name.clone(), v);
             }
         }
         if values.is_empty() {
@@ -1062,7 +1055,7 @@ impl FeedSnapshotSource {
 /// above its 20-SMA and that SMA is rising, `trending_bear` below a falling SMA, otherwise
 /// `range_bound`. Needs at least 30 closes so the SMA-trend comparison has depth; a shorter
 /// series classifies `None`.
-fn classify_regime(closes: &[f64]) -> Option<String> {
+fn classify_regime(closes: &[Decimal]) -> Option<String> {
     if closes.len() < 30 {
         return None;
     }
@@ -1121,7 +1114,8 @@ impl SnapshotSource for FeedSnapshotSource {
                 let request = BarRequest::new(instrument.clone(), spec, None, None)
                     .map_err(feed_port_error)?;
                 let wire_bars = bars.read_bars(&request).await.map_err(feed_port_error)?;
-                let closes: Vec<f64> = wire_bars.iter().map(|b| b.close()).collect();
+                let closes: Vec<Decimal> =
+                    wire_bars.iter().map(|b| to_decimal(b.close())).collect();
                 classify_regime(&closes)
             }
             _ => None,
