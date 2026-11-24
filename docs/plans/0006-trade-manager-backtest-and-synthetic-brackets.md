@@ -17,7 +17,7 @@ Roadmap: [root plan 0008](../../../docs/plans/0008-trade-signal-generator.md).
   - Line 865–871 maps only Indian `Exchange` variants for tax calculation (needs multi-market support before US `qullamaggie` runs).
 - `crates/tantra-runtime-strategy/src/intent.rs`: doc says trailing unsupported, yet `tests/golden.rs` references `trailing_stop_amount_sell` (stale).
 - `crates/tantra-runtime-actors/src/sizing.rs`: `PositionSizingActor`, `SimplePositionSizer`.
-- Upstream: [`tantra-core` plan 0005](../../../tantra-core/docs/plans/0005-trade-planner-and-manager.md), [`tantra-market` plan 0002](../../../tantra-market/docs/plans/0002-chart-pattern-analyzer.md), [`tantra-risk` gap 0005](../../../tantra-risk/docs/gaps/0005-stop-protection-risk-validation.md), [`tantra-exec` gap 0003](../../../tantra-exec/docs/gaps/0003-bracket-order-slt-sl-execution.md), [`tantra-ledger` gap 0012](../../../tantra-ledger/docs/gaps/0012-bracket-order-oms-lifecycle.md). Sibling: plan [0007](0007-group-screener-alerts.md).
+- Upstream: [`tantra-core` plan 0005](../../../tantra-core/docs/plans/README.md#implemented-plans), [`tantra-market` plan 0002](../../../tantra-market/docs/plans/0002-chart-pattern-analyzer.md), [`tantra-risk` gap 0005](../../../tantra-risk/docs/gaps/0005-stop-protection-risk-validation.md), [`tantra-exec` gap 0003](../../../tantra-exec/docs/gaps/0003-bracket-order-slt-sl-execution.md), [`tantra-ledger` gap 0012](../../../tantra-ledger/docs/gaps/0012-bracket-order-oms-lifecycle.md). Sibling: plan [0007](0007-group-screener-alerts.md).
 
 ## 2. Component Specifications & Phases
 
