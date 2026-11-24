@@ -208,11 +208,11 @@ async fn a_full_channel_is_429_with_a_reason_and_accepts_nothing() {
     // The consumer is stalled: nothing was drained, so the next batch finds no room.
     let (s, v) = post_bars(&st, vec![bar(3_000, 100.0)]).await;
     assert_eq!(s, StatusCode::TOO_MANY_REQUESTS, "{v}");
-    assert_eq!(v["error"]["code"], json!("timeout"));
+    assert_eq!(v["error"]["code"], json!("rate_limited"));
     assert_eq!(reason(&v), "bar_ingest_full");
     assert_eq!(
         v["error"]["retryable"],
-        json!(ErrorCode::Timeout.retryable())
+        json!(ErrorCode::RateLimited.retryable())
     );
 
     // Draining makes room; the rejected batch left nothing behind.

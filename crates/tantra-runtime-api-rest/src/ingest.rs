@@ -64,9 +64,8 @@ pub(crate) async fn post_bars(
     let permits = match sender.try_reserve_many(bars.len()) {
         Ok(permits) => permits,
         Err(TrySendError::Full(())) => {
-            return failure(
-                StatusCode::TOO_MANY_REQUESTS,
-                ErrorDetail::new(ErrorCode::Timeout, "bar ingest queue is full; retry")
+            return error(
+                ErrorDetail::new(ErrorCode::RateLimited, "bar ingest queue is full; retry")
                     .with_context(json!({
                         "reason": "bar_ingest_full",
                         "capacity": sender.max_capacity(),
