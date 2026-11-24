@@ -47,7 +47,7 @@ pub fn round_price() -> Price {
 
 /// Instrument `symbol` on the NSE exchange.
 pub fn instrument(symbol: &str) -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, symbol)
+    InstrumentId::try_new(Exchange::Nse, symbol).expect("valid test symbol")
 }
 
 /// A placeholder instrument (`X` on NSE) for tests where the instrument does
@@ -59,7 +59,7 @@ pub fn any_instrument() -> InstrumentId {
 /// A flat bar: open, high, low and close all equal `close`, volume 1, and the
 /// timestamp at `ts` nanoseconds since the Unix epoch.
 pub fn flat_bar(symbol: &str, close: f64, ts: u64) -> Bar {
-    let price = Price::new(exact_decimal(close));
+    let price = Price::try_new(exact_decimal(close)).expect("valid test price");
     Bar {
         instrument: instrument(symbol),
         open: price,

@@ -19,7 +19,7 @@ fn sample_alert(id: &str, workspace: &str) -> PriceAlert {
         id: id.to_string(),
         workspace_id: workspace.to_string(),
         instrument_id: "NSE:RELIANCE".to_string(),
-        price: Price::new(Decimal::new(250050, 2)),
+        price: Price::try_new(Decimal::new(250050, 2)).unwrap(),
         status: AlertStatus::Active,
         created_at: "2026-11-11".to_string(),
         triggered_at: None,

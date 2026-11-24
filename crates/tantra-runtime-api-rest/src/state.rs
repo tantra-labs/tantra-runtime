@@ -771,13 +771,20 @@ fn to_feed_spec(timeframe: tantra_core::Timeframe) -> crate::market_feed::wire::
 fn feed_bar_to_core(bar: crate::market_feed::wire::Bar) -> tantra_core::Bar {
     tantra_core::Bar {
         instrument: bar.bar_type().instrument_id().clone(),
-        open: tantra_core::Price::new(Decimal::from_f64_retain(bar.open()).unwrap_or_default()),
-        high: tantra_core::Price::new(Decimal::from_f64_retain(bar.high()).unwrap_or_default()),
-        low: tantra_core::Price::new(Decimal::from_f64_retain(bar.low()).unwrap_or_default()),
-        close: tantra_core::Price::new(Decimal::from_f64_retain(bar.close()).unwrap_or_default()),
-        volume: tantra_core::Quantity::new(
+        open: tantra_core::Price::try_new(Decimal::from_f64_retain(bar.open()).unwrap_or_default())
+            .unwrap_or(tantra_core::Price::ZERO),
+        high: tantra_core::Price::try_new(Decimal::from_f64_retain(bar.high()).unwrap_or_default())
+            .unwrap_or(tantra_core::Price::ZERO),
+        low: tantra_core::Price::try_new(Decimal::from_f64_retain(bar.low()).unwrap_or_default())
+            .unwrap_or(tantra_core::Price::ZERO),
+        close: tantra_core::Price::try_new(
+            Decimal::from_f64_retain(bar.close()).unwrap_or_default(),
+        )
+        .unwrap_or(tantra_core::Price::ZERO),
+        volume: tantra_core::Quantity::try_new(
             Decimal::from_f64_retain(bar.volume()).unwrap_or_default(),
-        ),
+        )
+        .unwrap_or(tantra_core::Quantity::ZERO),
         timestamp: bar.ts_event().to_datetime(),
     }
 }
@@ -786,18 +793,22 @@ fn feed_bar_to_core(bar: crate::market_feed::wire::Bar) -> tantra_core::Bar {
 fn feed_quote_to_core(quote: crate::market_feed::wire::QuoteTick) -> tantra_core::Tick {
     tantra_core::Tick::Quote {
         instrument: quote.instrument_id().clone(),
-        bid: tantra_core::Price::new(
+        bid: tantra_core::Price::try_new(
             Decimal::from_f64_retain(quote.bid_price()).unwrap_or_default(),
-        ),
-        ask: tantra_core::Price::new(
+        )
+        .unwrap_or(tantra_core::Price::ZERO),
+        ask: tantra_core::Price::try_new(
             Decimal::from_f64_retain(quote.ask_price()).unwrap_or_default(),
-        ),
-        bid_qty: tantra_core::Quantity::new(
+        )
+        .unwrap_or(tantra_core::Price::ZERO),
+        bid_qty: tantra_core::Quantity::try_new(
             Decimal::from_f64_retain(quote.bid_size()).unwrap_or_default(),
-        ),
-        ask_qty: tantra_core::Quantity::new(
+        )
+        .unwrap_or(tantra_core::Quantity::ZERO),
+        ask_qty: tantra_core::Quantity::try_new(
             Decimal::from_f64_retain(quote.ask_size()).unwrap_or_default(),
-        ),
+        )
+        .unwrap_or(tantra_core::Quantity::ZERO),
         last_price: None,
         exchange_ts: quote.ts_event().to_datetime(),
         receive_ts: quote.ts_init().to_datetime(),
@@ -809,10 +820,14 @@ fn feed_quote_to_core(quote: crate::market_feed::wire::QuoteTick) -> tantra_core
 fn feed_trade_to_core(trade: crate::market_feed::wire::TradeTick) -> tantra_core::Tick {
     tantra_core::Tick::Ltp {
         instrument: trade.instrument_id().clone(),
-        price: tantra_core::Price::new(Decimal::from_f64_retain(trade.price()).unwrap_or_default()),
-        volume: tantra_core::Quantity::new(
+        price: tantra_core::Price::try_new(
+            Decimal::from_f64_retain(trade.price()).unwrap_or_default(),
+        )
+        .unwrap_or(tantra_core::Price::ZERO),
+        volume: tantra_core::Quantity::try_new(
             Decimal::from_f64_retain(trade.size()).unwrap_or_default(),
-        ),
+        )
+        .unwrap_or(tantra_core::Quantity::ZERO),
         exchange_ts: trade.ts_event().to_datetime(),
         receive_ts: trade.ts_init().to_datetime(),
     }

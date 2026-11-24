@@ -140,7 +140,7 @@ impl StrategyIr {
     /// use tantra_runtime_strategy::BarAggregation;
     /// use tantra_runtime_strategy::{StrategyIr, StrategyManifest, Subscriptions, TimeframeSpec, Universe};
     ///
-    /// let tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    /// let tcs = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     /// let manifest = StrategyManifest::new(
     ///     "sma",
     ///     "sha256:abc",

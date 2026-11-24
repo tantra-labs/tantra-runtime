@@ -323,7 +323,7 @@ impl<S: Strategy> StrategyRunner<S> {
     /// any), and calls [`Strategy::on_fill`].
     pub fn on_fill(&mut self, fill: &FillReport) -> Result<()> {
         if let Some(open) = self.open_orders.get_mut(fill.order_id.as_str()) {
-            open.remaining = (open.remaining - fill.quantity.0).max(Decimal::ZERO);
+            open.remaining = (open.remaining - fill.quantity.value()).max(Decimal::ZERO);
             if open.remaining.is_zero() {
                 self.open_orders.remove(fill.order_id.as_str());
             }
@@ -367,7 +367,8 @@ impl<S: Strategy> StrategyRunner<S> {
             order_id,
             instrument_id: open.instrument_id,
             side: open.side,
-            quantity: Quantity::new(open.remaining),
+            quantity: Quantity::try_new(open.remaining.max(Decimal::ZERO))
+                .expect("non-negative remaining"),
             reason,
         });
         Ok(())
@@ -442,7 +443,7 @@ impl<S: Strategy> StrategyRunner<S> {
                 OpenOrder {
                     instrument_id: intent.instrument_id.clone(),
                     side: intent.side,
-                    remaining: intent.quantity.0,
+                    remaining: intent.quantity.value(),
                 },
             );
             self.outbox.push(request.clone());

@@ -33,7 +33,7 @@ fn ts(hour: u32) -> UnixNanos {
 }
 
 fn reliance() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "reliance")
+    InstrumentId::try_new(Exchange::Nse, "reliance").unwrap()
 }
 
 /// Fake feed implementing all three read ports over a fixed, in-memory fixture — a standard
@@ -66,7 +66,7 @@ impl InstrumentMaster for FakeFeed {
             .filter(|i| {
                 i.kind() == InstrumentKind::Option
                     && i.underlying()
-                        .is_some_and(|u| u.eq_ignore_ascii_case(&underlying.symbol))
+                        .is_some_and(|u| u.eq_ignore_ascii_case(underlying.symbol()))
             })
             .cloned()
             .collect();
@@ -243,17 +243,18 @@ async fn search_instruments_matches_symbol_case_insensitively() {
 #[tokio::test]
 async fn price_band_reads_from_risk_engine() {
     let instrument = reliance();
-    let band = PriceBand::new(
-        Price::new(Decimal::from(2000)),
-        Price::new(Decimal::from(3000)),
-        Price::new(Decimal::from(2500)),
-    );
+    let band = PriceBand::try_new(
+        Price::try_new(Decimal::from(2000)).unwrap(),
+        Price::try_new(Decimal::from(3000)).unwrap(),
+        Price::try_new(Decimal::from(2500)).unwrap(),
+    )
+    .unwrap();
     let mut engine = RiskEngine::default();
     engine.set_price_band(instrument.clone(), band);
     let reader = reader_over(FakeFeed::default(), engine);
 
     let result = reader.price_band(&instrument).await.unwrap();
-    assert_eq!(result.lower.value(), Decimal::from(2000));
+    assert_eq!(result.lower().value(), Decimal::from(2000));
 }
 
 #[tokio::test]
@@ -311,7 +312,7 @@ async fn snapshot_source_reports_no_universe_when_catalog_empty() {
 
 fn option_instrument(symbol: &str, expiry: &str, strike: f64, ot: OptionType) -> Instrument {
     Instrument::new(
-        InstrumentId::new(Exchange::Nfo, symbol),
+        InstrumentId::try_new(Exchange::Nfo, symbol).unwrap(),
         InstrumentKind::Option,
         Currency::Inr,
         25.0,
@@ -337,7 +338,7 @@ async fn oi_buildup_reads_real_store_and_bars() {
     let snapshot = |date: chrono::NaiveDate, oi: i64| OpenInterestSnapshot {
         instrument: reliance(),
         as_of: date,
-        open_interest: Quantity::new(Decimal::from(oi)),
+        open_interest: Quantity::try_new(Decimal::from(oi)).unwrap(),
     };
     write_oi_file(dir.path(), day2, &[snapshot(day2, 100)]).unwrap();
     write_oi_file(dir.path(), day1, &[snapshot(day1, 200)]).unwrap();
@@ -382,7 +383,7 @@ async fn oi_buildup_reads_real_store_and_bars() {
     // The parquet store persists OI at scale 4, so 250 round-trips as 250.0000.
     assert_eq!(
         result.open_interest,
-        Quantity::new(Decimal::new(2_500_000, 4))
+        Quantity::try_new(Decimal::new(2_500_000, 4)).unwrap()
     );
     // (250 - 100) / 100 * 100; computed identically to the adapter so scale matches.
     let first_oi = Decimal::new(1_000_000, 4);
@@ -446,8 +447,8 @@ async fn oi_walls_is_explicitly_unavailable_with_gap_citation() {
 
 #[tokio::test]
 async fn options_chain_serves_catalog_contracts_with_quotes_and_filters() {
-    let inst = InstrumentId::new(Exchange::Nfo, "NIFTY");
-    let contract_id = |symbol: &str| InstrumentId::new(Exchange::Nfo, symbol);
+    let inst = InstrumentId::try_new(Exchange::Nfo, "NIFTY").unwrap();
+    let contract_id = |symbol: &str| InstrumentId::try_new(Exchange::Nfo, symbol).unwrap();
     let quote = QuoteTick::new(
         contract_id("NIFTY26NOV24000CE"),
         235.0,
@@ -486,7 +487,7 @@ async fn options_chain_serves_catalog_contracts_with_quotes_and_filters() {
     let symbols: Vec<String> = chain
         .contracts
         .iter()
-        .map(|c| c.instrument.symbol.clone())
+        .map(|c| c.instrument.symbol().to_string())
         .collect();
     assert_eq!(
         symbols,
@@ -544,7 +545,11 @@ async fn options_chain_is_explicitly_unavailable_when_the_master_cannot_enumerat
         Arc::new(Mutex::new(RiskEngine::default())),
     );
     let err = reader
-        .options_chain(&InstrumentId::new(Exchange::Nfo, "NIFTY"), None, None)
+        .options_chain(
+            &InstrumentId::try_new(Exchange::Nfo, "NIFTY").unwrap(),
+            None,
+            None,
+        )
         .await
         .unwrap_err();
     assert_eq!(err.kind, PortErrorKind::Unavailable);
@@ -576,10 +581,19 @@ async fn market_depth_reads_wired_ladder_and_computes_imbalance() {
         DepthSnapshot {
             as_of: ts(9),
             bids: vec![
-                (Price::new(dec!(100.0)), Quantity::new(dec!(500))),
-                (Price::new(dec!(99.9)), Quantity::new(dec!(500))),
+                (
+                    Price::try_new(dec!(100.0)).unwrap(),
+                    Quantity::try_new(dec!(500)).unwrap(),
+                ),
+                (
+                    Price::try_new(dec!(99.9)).unwrap(),
+                    Quantity::try_new(dec!(500)).unwrap(),
+                ),
             ],
-            asks: vec![(Price::new(dec!(100.1)), Quantity::new(dec!(300)))],
+            asks: vec![(
+                Price::try_new(dec!(100.1)).unwrap(),
+                Quantity::try_new(dec!(300)).unwrap(),
+            )],
         },
     );
 
@@ -594,8 +608,11 @@ async fn market_depth_reads_wired_ladder_and_computes_imbalance() {
     let depth = reader.market_depth(&instrument, Some(1)).await.unwrap();
     assert_eq!(depth.bids.len(), 1, "the levels cap is applied");
     assert_eq!(depth.asks.len(), 1);
-    assert_eq!(depth.bids[0].price, Price::new(dec!(100.0)));
-    assert_eq!(depth.bids[0].quantity, Quantity::new(dec!(500)));
+    assert_eq!(depth.bids[0].price, Price::try_new(dec!(100.0)).unwrap());
+    assert_eq!(
+        depth.bids[0].quantity,
+        Quantity::try_new(dec!(500)).unwrap()
+    );
     // bid_total 500 vs ask_total 300 → (500 − 300) / (500 + 300) × 100 = 25.
     assert_eq!(depth.liquidity_imbalance_pct, dec!(25));
 }
@@ -645,8 +662,8 @@ async fn quote_prefers_live_trade_print_when_wired() {
     .with_trade_reader(store.clone());
 
     let quote = reader.quote(&instrument).await.unwrap();
-    assert_eq!(quote.last_price, Price::new(dec!(100.5)));
-    assert_eq!(quote.volume, Quantity::new(dec!(10.0)));
+    assert_eq!(quote.last_price, Price::try_new(dec!(100.5)).unwrap());
+    assert_eq!(quote.volume, Quantity::try_new(dec!(10.0)).unwrap());
 }
 
 #[tokio::test]
@@ -654,7 +671,7 @@ async fn search_instruments_uses_display_name() {
     let named = Instrument::new(reliance(), InstrumentKind::Equity, Currency::Inr, 1.0, 0.05)
         .with_display_name("RELIANCE INDUSTRIES");
     let unnamed = Instrument::new(
-        InstrumentId::new(Exchange::Nse, "TATAMOTORS"),
+        InstrumentId::try_new(Exchange::Nse, "TATAMOTORS").unwrap(),
         InstrumentKind::Equity,
         Currency::Inr,
         1.0,
@@ -718,11 +735,12 @@ async fn indicators_computes_sma_and_rsi() {
 #[tokio::test]
 async fn snapshot_source_reports_risk_metrics_and_regime() {
     let instrument = reliance();
-    let band = PriceBand::new(
-        Price::new(Decimal::from(2000)),
-        Price::new(Decimal::from(3000)),
-        Price::new(Decimal::from(2500)),
-    );
+    let band = PriceBand::try_new(
+        Price::try_new(Decimal::from(2000)).unwrap(),
+        Price::try_new(Decimal::from(3000)).unwrap(),
+        Price::try_new(Decimal::from(2500)).unwrap(),
+    )
+    .unwrap();
     let mut engine = RiskEngine::default();
     engine.set_price_band(instrument.clone(), band);
 

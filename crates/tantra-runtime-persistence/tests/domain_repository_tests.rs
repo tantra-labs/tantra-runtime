@@ -24,7 +24,7 @@ async fn test_sqlx_order_repository_ddd() {
     let cid = ClientOrderId::new(uuid::Uuid::new_v4().to_string());
     let algo = AlgoId::new("algo_momentum");
     let acc = AccountId::new("ACC_123");
-    let instrument = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let instrument = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
 
     let record = OrderRecord {
         client_order_id: cid.clone(),
@@ -33,9 +33,9 @@ async fn test_sqlx_order_repository_ddd() {
         account_id: acc.clone(),
         instrument: instrument.clone(),
         side: OrderSide::Buy,
-        order_type: OrderType::Limit(Price(dec!(2500.00))),
+        order_type: OrderType::Limit(Price::try_new(dec!(2500.00)).unwrap()),
         time_in_force: TimeInForce::Day,
-        price: Some(Price(dec!(2500.00))),
+        price: Some(Price::try_new(dec!(2500.00)).unwrap()),
         quantity: Quantity::from_u64(10),
         filled_quantity: Quantity::ZERO,
         avg_fill_price: None,
@@ -66,14 +66,14 @@ async fn test_sqlx_position_repository_ddd() {
 
     let mut store = SqlxPositionStore::new(&db);
     let acc = AccountId::new("ACC_123");
-    let instrument = InstrumentId::new(Exchange::Nse, "TCS");
+    let instrument = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
 
     let lot = TaxLot {
         lot_id: "LOT_1".to_string(),
         account_id: acc.clone(),
         instrument: instrument.clone(),
         side: PositionSide::Long,
-        entry_price: Price(dec!(3500.00)),
+        entry_price: Price::try_new(dec!(3500.00)).unwrap(),
         quantity: Quantity::from_u64(20),
         remaining_quantity: Quantity::from_u64(20),
         entry_date: Utc::now().date_naive(),
@@ -94,7 +94,7 @@ async fn test_sqlx_position_repository_ddd() {
         account_id: Some(acc.to_string()),
         instrument: instrument.clone(),
         side: OrderSide::Sell,
-        price: Price(dec!(3600.00)),
+        price: Price::try_new(dec!(3600.00)).unwrap(),
         quantity: Quantity::from_u64(10),
         algo_id: "algo_hft".to_string(),
         fee: Money::inr(dec!(15.00)),

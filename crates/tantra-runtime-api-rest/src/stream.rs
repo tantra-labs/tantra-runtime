@@ -468,7 +468,7 @@ impl Conn {
             ..
         } = tick
         {
-            let level = |l: &tantra_core::DepthLevel| json!({"price": l.price.0.to_string(), "quantity": l.quantity.0.to_string()});
+            let level = |l: &tantra_core::DepthLevel| json!({"price": l.price.value().to_string(), "quantity": l.quantity.value().to_string()});
             let data = json!({
                 "symbol": symbols[0],
                 "bids": bids.iter().map(level).collect::<Vec<_>>(),
@@ -557,7 +557,7 @@ struct QuoteView {
 }
 
 fn exchange_name(instrument: &tantra_core::InstrumentId) -> Option<String> {
-    serde_json::to_value(instrument.exchange)
+    serde_json::to_value(instrument.exchange())
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))
 }
@@ -571,10 +571,10 @@ fn quote_of(tick: &Tick) -> QuoteView {
             exchange_ts,
             ..
         } => QuoteView {
-            symbol: instrument.symbol.clone(),
+            symbol: instrument.symbol().to_string(),
             exchange: exchange_name(instrument),
-            price: price.0,
-            volume: Some(volume.0),
+            price: price.value(),
+            volume: Some(volume.value()),
             ts_ms: exchange_ts.timestamp_millis(),
             kind: "ltp",
         },
@@ -588,12 +588,12 @@ fn quote_of(tick: &Tick) -> QuoteView {
             exchange_ts,
             ..
         } => QuoteView {
-            symbol: instrument.symbol.clone(),
+            symbol: instrument.symbol().to_string(),
             exchange: exchange_name(instrument),
             price: last_price
-                .map(|p| p.0)
-                .unwrap_or((bid.0 + ask.0) / Decimal::TWO),
-            volume: Some(bid_qty.0 + ask_qty.0),
+                .map(|p| p.value())
+                .unwrap_or((bid.value() + ask.value()) / Decimal::TWO),
+            volume: Some(bid_qty.value() + ask_qty.value()),
             ts_ms: exchange_ts.timestamp_millis(),
             kind: "quote",
         },
@@ -604,11 +604,11 @@ fn quote_of(tick: &Tick) -> QuoteView {
             exchange_ts,
             ..
         } => QuoteView {
-            symbol: instrument.symbol.clone(),
+            symbol: instrument.symbol().to_string(),
             exchange: exchange_name(instrument),
             price: last_price
-                .map(|p| p.0)
-                .or_else(|| bids.first().map(|b| b.price.0))
+                .map(|p| p.value())
+                .or_else(|| bids.first().map(|b| b.price.value()))
                 .unwrap_or(Decimal::ZERO),
             volume: None,
             ts_ms: exchange_ts.timestamp_millis(),

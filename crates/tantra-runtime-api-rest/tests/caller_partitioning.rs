@@ -39,9 +39,9 @@ fn token_toml(entries: &[(&str, &str, &str)]) -> String {
 }
 
 fn bar(ts: u64, px: f64) -> tantra_core::Bar {
-    let price = tantra_core::Price::new(Decimal::from_f64_retain(px).unwrap());
+    let price = tantra_core::Price::try_new(Decimal::from_f64_retain(px).unwrap()).unwrap();
     tantra_core::Bar {
-        instrument: InstrumentId::new(Exchange::Nse, "X"),
+        instrument: InstrumentId::try_new(Exchange::Nse, "X").unwrap(),
         open: price,
         high: price,
         low: price,
@@ -64,7 +64,7 @@ fn build_state_and_config() -> (AppState, ApiConfig, tempfile::TempDir) {
     .unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    let id = InstrumentId::new(Exchange::Nse, "X");
+    let id = InstrumentId::try_new(Exchange::Nse, "X").unwrap();
     let spec = BarSpecification::new(1, BarAggregation::Minute, PriceType::Last);
     let mut builder = ColumnarSliceBuilder::new(id.clone(), spec);
     builder

@@ -38,7 +38,8 @@ fn synthetic_daily_slice(
     days: usize,
 ) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
     let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
-    let mut builder = ColumnarSliceBuilder::new(InstrumentId::new(exchange, symbol), spec);
+    let mut builder =
+        ColumnarSliceBuilder::new(InstrumentId::try_new(exchange, symbol).unwrap(), spec);
     let mut cur = start;
     let mut count = 0usize;
     let mut price = 2400.0_f64;
@@ -89,7 +90,8 @@ fn synthetic_5m_slice(
     days: usize,
 ) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
     let spec = BarSpecification::new(5, BarAggregation::Minute, PriceType::Last);
-    let mut builder = ColumnarSliceBuilder::new(InstrumentId::new(exchange, symbol), spec);
+    let mut builder =
+        ColumnarSliceBuilder::new(InstrumentId::try_new(exchange, symbol).unwrap(), spec);
     let mut cur = start;
     let mut count = 0usize;
     let ist_offset = chrono::FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
@@ -165,21 +167,21 @@ fn build_state(with_live_chain: bool, start: NaiveDate) -> AppState {
 
     let mut instruments = vec![
         Instrument::new(
-            InstrumentId::new(Exchange::Nse, "RELIANCE"),
+            InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap(),
             InstrumentKind::Equity,
             Currency::Inr,
             250.0,
             0.05,
         ),
         Instrument::new(
-            InstrumentId::new(Exchange::Nse, "NIFTYBEES"),
+            InstrumentId::try_new(Exchange::Nse, "NIFTYBEES").unwrap(),
             InstrumentKind::Index,
             Currency::Inr,
             50.0,
             0.05,
         ),
         Instrument::new(
-            InstrumentId::new(Exchange::Mcx, "GOLD"),
+            InstrumentId::try_new(Exchange::Mcx, "GOLD").unwrap(),
             InstrumentKind::Future,
             Currency::Inr,
             100.0,
@@ -191,9 +193,11 @@ fn build_state(with_live_chain: bool, start: NaiveDate) -> AppState {
     if with_live_chain {
         for strike in [2200.0, 2300.0, 2400.0, 2500.0, 2600.0, 2700.0] {
             let ce_id =
-                InstrumentId::new(Exchange::Nse, format!("RELIANCE25DEC{}CE", strike as u64));
+                InstrumentId::try_new(Exchange::Nse, format!("RELIANCE25DEC{}CE", strike as u64))
+                    .unwrap();
             let pe_id =
-                InstrumentId::new(Exchange::Nse, format!("RELIANCE25DEC{}PE", strike as u64));
+                InstrumentId::try_new(Exchange::Nse, format!("RELIANCE25DEC{}PE", strike as u64))
+                    .unwrap();
             instruments.push(
                 Instrument::new(ce_id, InstrumentKind::Option, Currency::Inr, 250.0, 0.05)
                     .with_derivative(
@@ -227,9 +231,11 @@ fn build_state(with_live_chain: bool, start: NaiveDate) -> AppState {
         let now_ns = UnixNanos::from_datetime(Utc::now());
         for strike in [2200.0, 2300.0, 2400.0, 2500.0, 2600.0, 2700.0] {
             let ce_id =
-                InstrumentId::new(Exchange::Nse, format!("RELIANCE25DEC{}CE", strike as u64));
+                InstrumentId::try_new(Exchange::Nse, format!("RELIANCE25DEC{}CE", strike as u64))
+                    .unwrap();
             let pe_id =
-                InstrumentId::new(Exchange::Nse, format!("RELIANCE25DEC{}PE", strike as u64));
+                InstrumentId::try_new(Exchange::Nse, format!("RELIANCE25DEC{}PE", strike as u64))
+                    .unwrap();
             let ce_prem = ((2600.0_f64 - strike).max(20.0) * 0.25).max(12.0);
             let pe_prem = ((strike - 2300.0_f64).max(20.0) * 0.25).max(12.0);
             live_quotes.put_quote(QuoteTick::new(

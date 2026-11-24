@@ -29,7 +29,8 @@ fn synthetic_daily_slice(
     days: usize,
 ) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
     let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
-    let mut builder = ColumnarSliceBuilder::new(InstrumentId::new(exchange, symbol), spec);
+    let mut builder =
+        ColumnarSliceBuilder::new(InstrumentId::try_new(exchange, symbol).unwrap(), spec);
     let mut cur = start;
     let mut count = 0usize;
     let mut price = 24000.0_f64;
@@ -77,7 +78,8 @@ fn synthetic_5m_slice(
     days: usize,
 ) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
     let spec = BarSpecification::new(5, BarAggregation::Minute, PriceType::Last);
-    let mut builder = ColumnarSliceBuilder::new(InstrumentId::new(exchange, symbol), spec);
+    let mut builder =
+        ColumnarSliceBuilder::new(InstrumentId::try_new(exchange, symbol).unwrap(), spec);
     let mut cur = start;
     let mut count = 0usize;
     let ist_offset = chrono::FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();

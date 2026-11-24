@@ -320,8 +320,8 @@ pub async fn get_tax_report(
                     ts_event: trade.timestamp,
                     date: sell_date.clone(),
                     instrument: trade.instrument.to_string(),
-                    symbol: trade.instrument.symbol.clone(),
-                    exchange: trade.instrument.exchange.to_string(),
+                    symbol: trade.instrument.symbol().to_string(),
+                    exchange: trade.instrument.exchange().to_string(),
                     side: OrderSide::Sell,
                     quantity: buy_qty,
                     buy_price,
@@ -600,8 +600,8 @@ pub async fn get_concentration_risk(
 
                 entries.push(ConcentrationEntry {
                     instrument: position.instrument.to_string(),
-                    symbol: position.instrument.symbol.clone(),
-                    exchange: position.instrument.exchange.to_string(),
+                    symbol: position.instrument.symbol().to_string(),
+                    exchange: position.instrument.exchange().to_string(),
                     market_value,
                     pct_of_portfolio: Decimal::ZERO, // Will calculate after total
                     quantity,

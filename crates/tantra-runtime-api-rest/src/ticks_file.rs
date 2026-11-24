@@ -63,8 +63,8 @@ fn instrument(symbol: String, exchange: String) -> Result<serde_json::Value> {
     let exchange: Exchange = exchange
         .parse()
         .map_err(|_| anyhow::anyhow!("unknown exchange {exchange:?}; expected NSE, BSE or MCX"))?;
-    Ok(serde_json::to_value(InstrumentId::new(exchange, symbol))
-        .expect("an instrument id serializes"))
+    let id = InstrumentId::try_new(exchange, symbol).map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(serde_json::to_value(id).expect("an instrument id serializes"))
 }
 
 fn nanos(n: u64) -> serde_json::Value {
@@ -204,7 +204,7 @@ pub fn load_parquet_bars_summary(
     exchange: Option<&str>,
 ) -> Result<ParquetBarsSummary> {
     let instrument = resolve_instrument(symbol, exchange)?;
-    let qualified_instrument = format!("{}:{}", instrument.exchange, instrument.symbol);
+    let qualified_instrument = format!("{}:{}", instrument.exchange(), instrument.symbol());
 
     let bars = if source.to_ascii_lowercase().ends_with(".parquet") {
         ParquetBarSource::new(source, instrument)

@@ -26,7 +26,7 @@ pub const MAX_SMA_PERIOD: usize = 10_000;
 /// use tantra_core::{Exchange, InstrumentId, Quantity};
 ///
 /// let strategy = SmaCrossover::new(
-///     InstrumentId::new(Exchange::Nse, "NIFTY50"),
+///     InstrumentId::try_new(Exchange::Nse, "NIFTY50").unwrap(),
 ///     5, 20, Quantity::from_u64(75),
 /// );
 /// assert_eq!(strategy.name(), "sma_crossover");
@@ -74,7 +74,7 @@ impl Strategy for SmaCrossover {
     }
 
     fn on_bar(&mut self, ctx: &mut dyn StrategyContext, bar: &Bar) -> Result<()> {
-        let close = bar.close.0;
+        let close = bar.close.value();
         let f = self.fast.update(close);
         let s = self.slow.update(close);
 

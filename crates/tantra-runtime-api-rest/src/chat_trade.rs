@@ -53,13 +53,19 @@ impl TradeIntentSink for FeedTradeIntentSink {
         let schedule = CronSchedule::new(NEVER_CRON)
             .map_err(|e| PortError::internal(format!("invalid never-cron: {e}")))?;
         let mut spec = JobSpec::new(
-            format!("trade-intent-{}-{}", intent.instrument.symbol, intent.side),
+            format!(
+                "trade-intent-{}-{}",
+                intent.instrument.symbol(),
+                intent.side
+            ),
             schedule,
         );
         // Unique name (the registry refuses duplicate names): stamp the minted job id in.
         spec.name = format!(
             "trade-intent-{}-{}-{}",
-            intent.instrument.symbol, intent.side, spec.id
+            intent.instrument.symbol(),
+            intent.side,
+            spec.id
         );
         spec.goal = format!(
             "{} {} {} {} of {} (algo {})",
@@ -70,7 +76,7 @@ impl TradeIntentSink for FeedTradeIntentSink {
             },
             intent.side,
             intent.order_type,
-            intent.quantity.0,
+            intent.quantity.value(),
             intent.instrument,
             intent.algo_id,
         );
@@ -86,10 +92,10 @@ impl TradeIntentSink for FeedTradeIntentSink {
         spec.metadata
             .insert("order_type".to_string(), intent.order_type.clone());
         spec.metadata
-            .insert("quantity".to_string(), intent.quantity.0.to_string());
+            .insert("quantity".to_string(), intent.quantity.value().to_string());
         if let Some(price) = intent.price {
             spec.metadata
-                .insert("price".to_string(), price.0.to_string());
+                .insert("price".to_string(), price.value().to_string());
         }
         if intent.paper_trading {
             spec.metadata

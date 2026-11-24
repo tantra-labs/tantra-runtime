@@ -224,7 +224,7 @@ fn write_holidays_cas(root: &Path) -> String {
 fn pinned_tag_produces_bit_identical_backtest_across_restatement() {
     let tmp = tempdir().unwrap();
     let root = tmp.path();
-    let inst = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let inst = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
 
     let alias_sha = write_zomato_eternal_aliases(root);
     let holiday_sha = write_holidays_cas(root);
@@ -510,19 +510,19 @@ fn multi_instrument_row_group_pruning_and_alias_continuity() {
     let loader = CatalogLoader::new(root);
 
     // 1. RowGroup pruning: loading RELIANCE opens 4 total RowGroups and reads ONLY 1!
-    let reliance = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let reliance = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
     let (rel_bars, stats) = loader
         .load_bars_with_stats(&reliance, "1d", None, None)
         .unwrap();
     assert_eq!(stats.row_groups_total, 4);
     assert_eq!(stats.row_groups_read, 1);
     assert_eq!(rel_bars.len(), 4);
-    assert_eq!(rel_bars[0].close.0, dec!(2500.0000));
+    assert_eq!(rel_bars[0].close.value(), dec!(2500.0000));
 
     // 2. Time-range pruning: querying ZOMATO window that falls outside all RG ts bounds reads 0 RowGroups!
     let (_empty_bars, ts_pruned_stats) = loader
         .load_bars_with_stats(
-            &InstrumentId::new(Exchange::Nse, "ETERNAL"),
+            &InstrumentId::try_new(Exchange::Nse, "ETERNAL").unwrap(),
             "1d",
             Some(utc(2025, 1, 1, 0, 0)),
             Some(utc(2025, 3, 1, 0, 0)),
@@ -532,7 +532,7 @@ fn multi_instrument_row_group_pruning_and_alias_continuity() {
     assert_eq!(ts_pruned_stats.row_groups_read, 0);
 
     // 3. Alias continuity: querying NSE:ETERNAL returns BOTH historical ZOMATO bars AND post-rename ETERNAL bars!
-    let eternal = InstrumentId::new(Exchange::Nse, "ETERNAL");
+    let eternal = InstrumentId::try_new(Exchange::Nse, "ETERNAL").unwrap();
     let (et_bars, et_stats) = loader
         .load_bars_with_stats(&eternal, "1d", None, None)
         .unwrap();
@@ -547,7 +547,7 @@ fn multi_instrument_row_group_pruning_and_alias_continuity() {
     let instruments = loader.list_instruments("1d").unwrap();
     assert!(instruments.contains(&reliance));
     assert!(instruments.contains(&eternal));
-    assert!(!instruments.contains(&InstrumentId::new(Exchange::Nse, "ZOMATO")));
+    assert!(!instruments.contains(&InstrumentId::try_new(Exchange::Nse, "ZOMATO").unwrap()));
 }
 
 #[test]
@@ -593,7 +593,7 @@ fn legacy_fallback_can_be_disabled() {
     writer.write(&batch).unwrap();
     writer.close().unwrap();
 
-    let tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    let tcs = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     assert_eq!(
         CatalogLoader::new(tmp.path())
             .load_bars(&tcs, "1D", None, None)

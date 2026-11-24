@@ -368,7 +368,7 @@ fn operator_journal_records_a_trading_state_change() {
 
 fn bar_body(ts: u64, close: f64) -> String {
     use tantra_core::{Exchange, InstrumentId, Price, Quantity};
-    let instrument = InstrumentId::new(Exchange::Nse, "TCS");
+    let instrument = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     let ts_dt = chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(ts as i64);
     let bar = tantra_core::Bar {
         instrument,

@@ -54,11 +54,11 @@ fn to_core_bar(bar: &crate::market_feed::wire::Bar) -> Bar {
     let to_decimal = |v: f64| Decimal::from_f64_retain(v).unwrap_or_default();
     Bar {
         instrument: bar.bar_type().instrument_id().clone(),
-        open: Price::new(to_decimal(bar.open())),
-        high: Price::new(to_decimal(bar.high())),
-        low: Price::new(to_decimal(bar.low())),
-        close: Price::new(to_decimal(bar.close())),
-        volume: Quantity::new(to_decimal(bar.volume())),
+        open: Price::try_new(to_decimal(bar.open())).unwrap_or(Price::ZERO),
+        high: Price::try_new(to_decimal(bar.high())).unwrap_or(Price::ZERO),
+        low: Price::try_new(to_decimal(bar.low())).unwrap_or(Price::ZERO),
+        close: Price::try_new(to_decimal(bar.close())).unwrap_or(Price::ZERO),
+        volume: Quantity::try_new(to_decimal(bar.volume())).unwrap_or(Quantity::ZERO),
         timestamp: bar.ts_event().to_datetime(),
     }
 }

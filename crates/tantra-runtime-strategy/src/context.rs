@@ -155,7 +155,7 @@ impl LedgerContext {
                 fill.fee.currency, self.currency
             )));
         }
-        let notional = (fill.price.0 * fill.quantity.0).min(Decimal::MAX);
+        let notional = (fill.price.value() * fill.quantity.value()).min(Decimal::MAX);
         let costs = fill.fee.amount;
 
         let delta = if fill.side == OrderSide::Buy {
@@ -166,15 +166,15 @@ impl LedgerContext {
         self.cash = Money::new(self.cash.amount + delta, self.cash.currency);
 
         let signed = if fill.side == OrderSide::Buy {
-            fill.quantity.0
+            fill.quantity.value()
         } else {
-            -fill.quantity.0
+            -fill.quantity.value()
         };
         *self
             .positions
             .entry(fill.instrument.clone())
             .or_insert(Decimal::ZERO) += signed;
-        self.reduce_pending(&fill.instrument, fill.side, fill.quantity.0);
+        self.reduce_pending(&fill.instrument, fill.side, fill.quantity.value());
         Ok(())
     }
 
@@ -187,7 +187,7 @@ impl LedgerContext {
         if intent.validate().is_err() {
             return;
         }
-        self.reduce_pending(&intent.instrument_id, intent.side, intent.quantity.0);
+        self.reduce_pending(&intent.instrument_id, intent.side, intent.quantity.value());
     }
 
     /// Releases `quantity` of the pending `side` quantity of `instrument_id`:
@@ -264,9 +264,9 @@ impl StrategyContext for LedgerContext {
                 .entry(intent.instrument_id.clone())
                 .or_default();
             if intent.side == OrderSide::Buy {
-                p.buy += intent.quantity.0;
+                p.buy += intent.quantity.value();
             } else {
-                p.sell += intent.quantity.0;
+                p.sell += intent.quantity.value();
             }
         }
         self.outbox.push(intent);

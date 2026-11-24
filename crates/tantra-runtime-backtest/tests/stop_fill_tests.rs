@@ -93,7 +93,7 @@ fn ts(day: NaiveDate, h: u32, m: u32) -> DateTime<Utc> {
 }
 
 fn instrument() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "INFY")
+    InstrumentId::try_new(Exchange::Nse, "INFY").unwrap()
 }
 
 /// Bar with high/low kept one rupee outside the open/close range so that
@@ -101,10 +101,10 @@ fn instrument() -> InstrumentId {
 fn bar_with(inst: &InstrumentId, open: &str, close: &str, ts_: DateTime<Utc>) -> Bar {
     let open_p = Price::from_rupees(open).unwrap();
     let close_p = Price::from_rupees(close).unwrap();
-    let (high_dec, low_dec) = if open_p.0 > close_p.0 {
-        (open_p.0 + dec!(1.00), close_p.0 - dec!(1.00))
+    let (high_dec, low_dec) = if open_p.value() > close_p.value() {
+        (open_p.value() + dec!(1.00), close_p.value() - dec!(1.00))
     } else {
-        (close_p.0 + dec!(1.00), open_p.0 - dec!(1.00))
+        (close_p.value() + dec!(1.00), open_p.value() - dec!(1.00))
     };
     Bar {
         instrument: inst.clone(),

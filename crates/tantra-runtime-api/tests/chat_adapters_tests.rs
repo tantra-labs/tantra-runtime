@@ -48,17 +48,17 @@ async fn test_ledger_portfolio_reader() {
     accounts.save_account(&acct_rec).unwrap();
 
     // 2. Setup positions and tax lots
-    let inst_rel = InstrumentId::new(Exchange::Nse, "RELIANCE");
-    let inst_tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    let inst_rel = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
+    let inst_tcs = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
 
     let lot = TaxLot {
         lot_id: "LOT-1".to_string(),
         account_id: account_id.clone(),
         instrument: inst_rel.clone(),
         side: PositionSide::Long,
-        entry_price: Price::new(dec!(2400.0)),
-        quantity: Quantity::new(dec!(50)),
-        remaining_quantity: Quantity::new(dec!(50)),
+        entry_price: Price::try_new(dec!(2400.0)).unwrap(),
+        quantity: Quantity::try_new(dec!(50)).unwrap(),
+        remaining_quantity: Quantity::try_new(dec!(50)).unwrap(),
         entry_date: now.date_naive(),
         created_at: now,
     };
@@ -76,12 +76,12 @@ async fn test_ledger_portfolio_reader() {
         account_id: account_id.clone(),
         instrument: inst_rel.clone(),
         side: OrderSide::Buy,
-        order_type: OrderType::Limit(Price::new(dec!(2400.0))),
+        order_type: OrderType::Limit(Price::try_new(dec!(2400.0)).unwrap()),
         time_in_force: TimeInForce::Day,
-        price: Some(Price::new(dec!(2400.0))),
-        quantity: Quantity::new(dec!(50)),
-        filled_quantity: Quantity::new(dec!(50)),
-        avg_fill_price: Some(Price::new(dec!(2400.0))),
+        price: Some(Price::try_new(dec!(2400.0)).unwrap()),
+        quantity: Quantity::try_new(dec!(50)).unwrap(),
+        filled_quantity: Quantity::try_new(dec!(50)).unwrap(),
+        avg_fill_price: Some(Price::try_new(dec!(2400.0)).unwrap()),
         status: OrderStatus::Filled,
         created_at: now,
         updated_at: now,
@@ -93,10 +93,10 @@ async fn test_ledger_portfolio_reader() {
         account_id: account_id.clone(),
         instrument: inst_tcs.clone(),
         side: OrderSide::Buy,
-        order_type: OrderType::Limit(Price::new(dec!(3500.0))),
+        order_type: OrderType::Limit(Price::try_new(dec!(3500.0)).unwrap()),
         time_in_force: TimeInForce::Day,
-        price: Some(Price::new(dec!(3500.0))),
-        quantity: Quantity::new(dec!(10)),
+        price: Some(Price::try_new(dec!(3500.0)).unwrap()),
+        quantity: Quantity::try_new(dec!(10)).unwrap(),
         filled_quantity: Quantity::from_u64(0),
         avg_fill_price: None,
         status: OrderStatus::New,
@@ -162,32 +162,32 @@ async fn test_ledger_portfolio_reader() {
 #[tokio::test]
 async fn test_runtime_market_reader() {
     let reader = RuntimeMarketReader::new();
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let now = Utc.with_ymd_and_hms(2026, 11, 6, 9, 15, 0).unwrap();
 
     // 1. Quote
     let quote = MarketQuote {
         instrument: inst.clone(),
-        last_price: Price::new(dec!(1850.50)),
-        bid: Some(Price::new(dec!(1850.00))),
-        ask: Some(Price::new(dec!(1851.00))),
-        volume: Quantity::new(dec!(100000)),
+        last_price: Price::try_new(dec!(1850.50)).unwrap(),
+        bid: Some(Price::try_new(dec!(1850.00)).unwrap()),
+        ask: Some(Price::try_new(dec!(1851.00)).unwrap()),
+        volume: Quantity::try_new(dec!(100000)).unwrap(),
         as_of: now,
     };
     reader.set_quote(quote.clone());
     let fetched = reader.quote(&inst).await.unwrap();
-    assert_eq!(fetched.last_price.0, dec!(1850.50));
+    assert_eq!(fetched.last_price.value(), dec!(1850.50));
 
     // 2. History & downsampling test (>500 bars capped at 500)
     let mut bars = Vec::new();
     for i in 0..600 {
         bars.push(MarketBar {
             timestamp: now + Duration::minutes(i),
-            open: Price::new(dec!(1800.0) + Decimal::from(i)),
-            high: Price::new(dec!(1810.0) + Decimal::from(i)),
-            low: Price::new(dec!(1790.0) + Decimal::from(i)),
-            close: Price::new(dec!(1805.0) + Decimal::from(i)),
-            volume: Quantity::new(dec!(1000)),
+            open: Price::try_new(dec!(1800.0) + Decimal::from(i)).unwrap(),
+            high: Price::try_new(dec!(1810.0) + Decimal::from(i)).unwrap(),
+            low: Price::try_new(dec!(1790.0) + Decimal::from(i)).unwrap(),
+            close: Price::try_new(dec!(1805.0) + Decimal::from(i)).unwrap(),
+            volume: Quantity::try_new(dec!(1000)).unwrap(),
         });
     }
     reader.set_history(inst.clone(), bars);
@@ -240,14 +240,15 @@ async fn test_runtime_market_reader() {
     // 6. Price band
     reader.set_price_band(
         inst.clone(),
-        PriceBand::new(
-            Price::new(dec!(1665.0)),
-            Price::new(dec!(2035.0)),
-            Price::new(dec!(1850.0)),
-        ),
+        PriceBand::try_new(
+            Price::try_new(dec!(1665.0)).unwrap(),
+            Price::try_new(dec!(2035.0)).unwrap(),
+            Price::try_new(dec!(1850.0)).unwrap(),
+        )
+        .unwrap(),
     );
     let band = reader.price_band(&inst).await.unwrap();
-    assert_eq!(band.upper.0, dec!(2035.0));
+    assert_eq!(band.upper().value(), dec!(2035.0));
 
     // 7. Block deals — explicitly unavailable until seeded, then filtered by instrument/date
     let err = reader.block_deals(None, None).await.unwrap_err();
@@ -259,18 +260,18 @@ async fn test_runtime_market_reader() {
         client_name: "MORGAN STANLEY ASIA SINGAPORE PTE".to_string(),
         side: "buy".to_string(),
         category: "block".to_string(),
-        quantity: Quantity::new(dec!(500000)),
-        price: Price::new(dec!(1850.0)),
+        quantity: Quantity::try_new(dec!(500000)).unwrap(),
+        price: Price::try_new(dec!(1850.0)).unwrap(),
         trade_date: now,
     };
     let deal_tcs = BlockDeal {
-        instrument: InstrumentId::new(Exchange::Nse, "TCS"),
+        instrument: InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
         exchange: "BSE".to_string(),
         client_name: "GRIMALD EUROPE NC AV".to_string(),
         side: "sell".to_string(),
         category: "bulk".to_string(),
-        quantity: Quantity::new(dec!(25000)),
-        price: Price::new(dec!(3500.0)),
+        quantity: Quantity::try_new(dec!(25000)).unwrap(),
+        price: Price::try_new(dec!(3500.0)).unwrap(),
         trade_date: now + Duration::days(1),
     };
     reader.set_block_deals(vec![deal_rel.clone(), deal_tcs.clone()]);
@@ -310,23 +311,23 @@ async fn test_runtime_market_reader() {
         as_of: now,
         contracts: vec![
             OptionContract {
-                instrument: InstrumentId::new(Exchange::Nfo, "INFY26NOV1850CE"),
+                instrument: InstrumentId::try_new(Exchange::Nfo, "INFY26NOV1850CE").unwrap(),
                 option_type: "CE".to_string(),
-                strike: Price::new(dec!(1850.0)),
+                strike: Price::try_new(dec!(1850.0)).unwrap(),
                 expiry,
-                lot_size: Quantity::new(dec!(400)),
-                last_price: Some(Price::new(dec!(42.5))),
-                bid: Some(Price::new(dec!(42.0))),
-                ask: Some(Price::new(dec!(43.0))),
-                open_interest: Some(Quantity::new(dec!(320000))),
+                lot_size: Quantity::try_new(dec!(400)).unwrap(),
+                last_price: Some(Price::try_new(dec!(42.5)).unwrap()),
+                bid: Some(Price::try_new(dec!(42.0)).unwrap()),
+                ask: Some(Price::try_new(dec!(43.0)).unwrap()),
+                open_interest: Some(Quantity::try_new(dec!(320000)).unwrap()),
             },
             OptionContract {
-                instrument: InstrumentId::new(Exchange::Nfo, "INFY26NOV1900CE"),
+                instrument: InstrumentId::try_new(Exchange::Nfo, "INFY26NOV1900CE").unwrap(),
                 option_type: "CE".to_string(),
-                strike: Price::new(dec!(1900.0)),
+                strike: Price::try_new(dec!(1900.0)).unwrap(),
                 expiry,
-                lot_size: Quantity::new(dec!(400)),
-                last_price: Some(Price::new(dec!(18.0))),
+                lot_size: Quantity::try_new(dec!(400)).unwrap(),
+                last_price: Some(Price::try_new(dec!(18.0)).unwrap()),
                 bid: None,
                 ask: None,
                 open_interest: None,
@@ -350,7 +351,11 @@ async fn test_runtime_market_reader() {
     assert_eq!(filtered_chain.contracts.len(), 2);
 
     let missing_chain = reader
-        .options_chain(&InstrumentId::new(Exchange::Nse, "TCS"), None, None)
+        .options_chain(
+            &InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
+            None,
+            None,
+        )
         .await
         .unwrap_err();
     assert_eq!(missing_chain.kind, PortErrorKind::NotFound);
@@ -373,13 +378,13 @@ async fn test_runtime_market_reader() {
         ratio_to: None,
     };
     let split = CorporateAction {
-        instrument: InstrumentId::new(Exchange::Nse, "TCS"),
+        instrument: InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
         action_type: "split".to_string(),
         ex_date: now + Duration::days(30),
         record_date: None,
         amount: None,
-        ratio_from: Some(Quantity::new(dec!(1))),
-        ratio_to: Some(Quantity::new(dec!(2))),
+        ratio_from: Some(Quantity::try_new(dec!(1)).unwrap()),
+        ratio_to: Some(Quantity::try_new(dec!(2)).unwrap()),
     };
     reader.set_corporate_actions(vec![dividend.clone(), split.clone()]);
 
@@ -411,22 +416,22 @@ async fn test_runtime_market_reader() {
         as_of: now,
         bids: vec![
             MarketDepthLevel {
-                price: Price::new(dec!(1849.0)),
-                quantity: Quantity::new(dec!(700)),
+                price: Price::try_new(dec!(1849.0)).unwrap(),
+                quantity: Quantity::try_new(dec!(700)).unwrap(),
             },
             MarketDepthLevel {
-                price: Price::new(dec!(1848.0)),
-                quantity: Quantity::new(dec!(500)),
+                price: Price::try_new(dec!(1848.0)).unwrap(),
+                quantity: Quantity::try_new(dec!(500)).unwrap(),
             },
         ],
         asks: vec![
             MarketDepthLevel {
-                price: Price::new(dec!(1851.0)),
-                quantity: Quantity::new(dec!(500)),
+                price: Price::try_new(dec!(1851.0)).unwrap(),
+                quantity: Quantity::try_new(dec!(500)).unwrap(),
             },
             MarketDepthLevel {
-                price: Price::new(dec!(1852.0)),
-                quantity: Quantity::new(dec!(300)),
+                price: Price::try_new(dec!(1852.0)).unwrap(),
+                quantity: Quantity::try_new(dec!(300)).unwrap(),
             },
         ],
         liquidity_imbalance_pct: dec!(20.0),
@@ -437,7 +442,7 @@ async fn test_runtime_market_reader() {
     assert_eq!(fetched_depth, depth);
 
     let missing_depth = reader
-        .market_depth(&InstrumentId::new(Exchange::Nse, "TCS"), None)
+        .market_depth(&InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(), None)
         .await
         .unwrap_err();
     assert_eq!(missing_depth.kind, PortErrorKind::NotFound);
@@ -469,15 +474,15 @@ async fn test_runtime_market_reader() {
     let delivery_day = DeliveryBar {
         instrument: inst.clone(),
         date: now,
-        traded_qty: Quantity::new(dec!(1200000)),
-        delivered_qty: Quantity::new(dec!(900000)),
+        traded_qty: Quantity::try_new(dec!(1200000)).unwrap(),
+        delivered_qty: Quantity::try_new(dec!(900000)).unwrap(),
         delivery_pct: dec!(75.0),
     };
     let other_day = DeliveryBar {
-        instrument: InstrumentId::new(Exchange::Nse, "TCS"),
+        instrument: InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
         date: now + Duration::days(3),
-        traded_qty: Quantity::new(dec!(500000)),
-        delivered_qty: Quantity::new(dec!(200000)),
+        traded_qty: Quantity::try_new(dec!(500000)).unwrap(),
+        delivered_qty: Quantity::try_new(dec!(200000)).unwrap(),
         delivery_pct: dec!(40.0),
     };
     reader.set_delivery_stats(vec![delivery_day.clone(), other_day.clone()]);
@@ -513,7 +518,7 @@ async fn test_runtime_market_reader() {
     let buildup = OiBuildupSnapshot {
         instrument: inst.clone(),
         as_of: now,
-        open_interest: Quantity::new(dec!(1250000)),
+        open_interest: Quantity::try_new(dec!(1250000)).unwrap(),
         oi_change_pct: Some(dec!(6.5)),
         price_change_pct: Some(dec!(2.1)),
         classification: "long_buildup".to_string(),
@@ -525,7 +530,7 @@ async fn test_runtime_market_reader() {
     assert_eq!(fetched_buildup.classification, "long_buildup");
 
     let missing_buildup = reader
-        .oi_buildup(&InstrumentId::new(Exchange::Nse, "TCS"), None)
+        .oi_buildup(&InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(), None)
         .await
         .unwrap_err();
     assert_eq!(missing_buildup.kind, PortErrorKind::NotFound);
@@ -569,12 +574,12 @@ async fn test_runtime_market_reader() {
 
     let oi_walls = OiWallsSnapshot {
         top_call_walls: vec![OiWall {
-            strike: Price::new(dec!(25000.0)),
+            strike: Price::try_new(dec!(25000.0)).unwrap(),
             oi: dec!(1250000.0),
             delta_oi_score: dec!(0.82),
         }],
         top_put_walls: vec![OiWall {
-            strike: Price::new(dec!(24800.0)),
+            strike: Price::try_new(dec!(24800.0)).unwrap(),
             oi: dec!(980000.0),
             delta_oi_score: dec!(0.64),
         }],
@@ -591,7 +596,7 @@ async fn test_runtime_market_reader() {
     assert_eq!(fetched_walls.top_call_walls.len(), 1);
     assert_eq!(
         fetched_walls.top_call_walls[0].strike,
-        Price::new(dec!(25000.0))
+        Price::try_new(dec!(25000.0)).unwrap()
     );
     assert_eq!(fetched_walls.local_pcr, dec!(0.78));
 }

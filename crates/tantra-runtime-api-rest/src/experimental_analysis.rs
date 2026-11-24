@@ -97,7 +97,15 @@ pub(crate) fn parse_study_instrument_id(raw: &str) -> Result<InstrumentId, Error
         let sym_str = sym_str.trim();
         if !ex_str.is_empty() && !sym_str.is_empty() {
             if let Ok(exchange) = Exchange::from_str(ex_str) {
-                return Ok(InstrumentId::new(exchange, sym_str));
+                return InstrumentId::try_new(exchange, sym_str).map_err(|_| {
+                    invalid_field(
+                        "instrument_id",
+                        "invalid_instrument_id",
+                        format!(
+                            "instrument_id {trimmed:?} must be EXCHANGE:SYMBOL or SYMBOL.EXCHANGE"
+                        ),
+                    )
+                });
             }
             return Err(invalid_field(
                 "instrument_id",
@@ -157,8 +165,8 @@ pub(crate) async fn resolve_study_instrument(
         Ok(Some(inst)) => Ok(inst),
         Ok(None) => match state.instruments.list_instruments().await {
             Ok(all) => match all.into_iter().find(|item| {
-                item.id().exchange == parsed_id.exchange
-                    && item.id().symbol.eq_ignore_ascii_case(&parsed_id.symbol)
+                item.id().exchange() == parsed_id.exchange()
+                    && item.id().symbol().eq_ignore_ascii_case(parsed_id.symbol())
             }) {
                 Some(found) => Ok(found),
                 None => Err(instrument_not_found(parsed_id)),
@@ -205,7 +213,7 @@ pub(crate) async fn load_daily_study_bars(
         let ca_reader = CorporateActionsProjectionReader::new(root);
         if let Ok(actions) = ca_reader.read() {
             let id_upper = canonical_id.to_string().to_ascii_uppercase();
-            let sym_upper = canonical_id.symbol.to_ascii_uppercase();
+            let sym_upper = canonical_id.symbol().to_ascii_uppercase();
             for act in actions {
                 let act_upper = act.instrument.to_ascii_uppercase();
                 let matches_inst = act_upper == id_upper
@@ -747,10 +755,10 @@ pub(crate) async fn get_catalog(
         let is_deriv = matches!(
             inst.kind(),
             tantra_core::InstrumentKind::Future | tantra_core::InstrumentKind::Option
-        ) || inst.id().exchange == Exchange::Nfo;
+        ) || inst.id().exchange() == Exchange::Nfo;
         if is_deriv {
             fno_contract_count += 1;
-            let sym = inst.id().symbol.to_ascii_uppercase();
+            let sym = inst.id().symbol().to_ascii_uppercase();
             fno_underlyings.insert(sym.clone());
             let base: String = sym
                 .chars()
@@ -780,8 +788,8 @@ pub(crate) async fn get_catalog(
         let id = inst.id();
         let entry = |asset_class: StudyAssetClass| CatalogInstrumentEntry {
             instrument_id: id.to_string(),
-            symbol: id.symbol.clone(),
-            exchange: id.exchange.to_string(),
+            symbol: id.symbol().to_string(),
+            exchange: id.exchange().to_string(),
             asset_class,
             instrument_kind: to_wire_kind(inst.kind()),
             currency: inst.currency().to_string(),
@@ -797,14 +805,14 @@ pub(crate) async fn get_catalog(
                 .push(entry(StudyAssetClass::Index));
             continue;
         }
-        if looks_like_commodity(id.exchange, &id.symbol) {
+        if looks_like_commodity(id.exchange(), id.symbol()) {
             buckets
                 .get_mut(&StudyAssetClass::Commodity)
                 .unwrap()
                 .push(entry(StudyAssetClass::Commodity));
             continue;
         }
-        if looks_like_forex(id.exchange, &id.symbol) {
+        if looks_like_forex(id.exchange(), id.symbol()) {
             buckets
                 .get_mut(&StudyAssetClass::Forex)
                 .unwrap()
@@ -821,13 +829,13 @@ pub(crate) async fn get_catalog(
                 .push(entry(StudyAssetClass::FnoStock));
             continue;
         }
-        if id.exchange == Exchange::Nse && looks_like_index_or_proxy(&id.symbol) {
+        if id.exchange() == Exchange::Nse && looks_like_index_or_proxy(id.symbol()) {
             buckets
                 .get_mut(&StudyAssetClass::Index)
                 .unwrap()
                 .push(entry(StudyAssetClass::Index));
         }
-        if looks_like_etf(&id.symbol) {
+        if looks_like_etf(id.symbol()) {
             let mut e = entry(StudyAssetClass::Etf);
             e.instrument_kind = InstrumentKind::Etf;
             buckets.get_mut(&StudyAssetClass::Etf).unwrap().push(e);
@@ -838,7 +846,7 @@ pub(crate) async fn get_catalog(
             .get_mut(&StudyAssetClass::Equity)
             .unwrap()
             .push(entry(StudyAssetClass::Equity));
-        if looks_like_known_fno_underlying(&id.symbol, &fno_underlyings) {
+        if looks_like_known_fno_underlying(id.symbol(), &fno_underlyings) {
             buckets
                 .get_mut(&StudyAssetClass::FnoStock)
                 .unwrap()
@@ -1099,7 +1107,7 @@ pub(crate) async fn post_returns(
     };
 
     let cfg = ExperimentalStudyConfig {
-        symbol: canonical_id.symbol.clone(),
+        symbol: canonical_id.symbol().to_string(),
         asset_class: to_domain_asset_class(req.asset_class),
         schedule: to_domain_schedule(req.period),
         sub_cycle: to_domain_sub_cycle(req.sub_cycle),
@@ -1211,8 +1219,8 @@ pub(crate) async fn post_returns(
 
     let resp = ExperimentalReturnsResponse {
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol.clone(),
-        exchange: canonical_id.exchange.to_string(),
+        symbol: canonical_id.symbol().to_string(),
+        exchange: canonical_id.exchange().to_string(),
         currency: instrument.currency().to_string(),
         asset_class: req.asset_class,
         period: req.period,
@@ -1610,7 +1618,7 @@ pub(crate) async fn post_intraday(
 
     let (periods, _) = studies::slice_periods(
         &daily_bars,
-        &canonical_id.symbol,
+        canonical_id.symbol(),
         domain_asset,
         domain_schedule,
         DomainSubCycle::Current,
@@ -1638,8 +1646,8 @@ pub(crate) async fn post_intraday(
 
     let resp = ExperimentalIntradayResponse {
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol.clone(),
-        exchange: canonical_id.exchange.to_string(),
+        symbol: canonical_id.symbol().to_string(),
+        exchange: canonical_id.exchange().to_string(),
         asset_class: req.asset_class,
         period: req.period,
         start_date: req.start_date,
@@ -1935,7 +1943,7 @@ fn map_from_domain_event_kind(k: studies::StudyEventKind) -> StudyEventKind {
 fn instrument_text_matches(candidate: &str, canonical_id: &InstrumentId) -> bool {
     let cand_upper = candidate.trim().to_ascii_uppercase();
     let id_upper = canonical_id.to_string().to_ascii_uppercase();
-    let sym_upper = canonical_id.symbol.to_ascii_uppercase();
+    let sym_upper = canonical_id.symbol().to_ascii_uppercase();
     cand_upper == id_upper
         || cand_upper == sym_upper
         || cand_upper.ends_with(&format!(":{sym_upper}"))
@@ -2047,7 +2055,7 @@ pub(crate) async fn post_options_overlay(
 
     let (periods, _) = studies::slice_periods(
         &daily_bars,
-        &canonical_id.symbol,
+        canonical_id.symbol(),
         domain_asset,
         domain_schedule,
         DomainSubCycle::Current,
@@ -2108,8 +2116,8 @@ pub(crate) async fn post_options_overlay(
 
     success(ExperimentalOptionsOverlayResponse {
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol.clone(),
-        exchange: canonical_id.exchange.to_string(),
+        symbol: canonical_id.symbol().to_string(),
+        exchange: canonical_id.exchange().to_string(),
         asset_class: req.asset_class,
         period: req.period,
         start_date: req.start_date,
@@ -2261,7 +2269,7 @@ pub(crate) async fn post_forecast(
 
     let (mut periods, _) = studies::slice_periods(
         &daily_bars,
-        &canonical_id.symbol,
+        canonical_id.symbol(),
         domain_asset,
         domain_schedule,
         DomainSubCycle::Current,
@@ -2295,8 +2303,8 @@ pub(crate) async fn post_forecast(
 
     success(ExperimentalForecastResponse {
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol.clone(),
-        exchange: canonical_id.exchange.to_string(),
+        symbol: canonical_id.symbol().to_string(),
+        exchange: canonical_id.exchange().to_string(),
         asset_class: req.asset_class,
         period: req.period,
         start_date: req.start_date,
@@ -2403,7 +2411,7 @@ pub(crate) async fn post_events(
     }
 
     let mut events: Vec<studies::StudyEventInput> = Vec::new();
-    let sym_label = canonical_id.symbol.clone();
+    let sym_label = canonical_id.symbol().to_string();
 
     if let Some(root) = state.lakehouse_root() {
         match req.mode {
@@ -2579,8 +2587,8 @@ pub(crate) async fn post_events(
 
     success(ExperimentalEventStudyResponse {
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol.clone(),
-        exchange: canonical_id.exchange.to_string(),
+        symbol: canonical_id.symbol().to_string(),
+        exchange: canonical_id.exchange().to_string(),
         mode: req.mode,
         available: report.available,
         benchmark_adjusted: report.benchmark_adjusted,
@@ -2683,11 +2691,11 @@ pub(crate) async fn post_outlier_news(
             StudyAssetClass::Commodity => "crude oil opec gold fed macro".to_string(),
             StudyAssetClass::Forex => "rbi fed currency dollar usd inr macro".to_string(),
             StudyAssetClass::Index => {
-                format!("{} market economy finance macro", canonical_id.symbol)
+                format!("{} market economy finance macro", canonical_id.symbol())
             }
-            StudyAssetClass::Etf => format!("{} etf flows macro index", canonical_id.symbol),
+            StudyAssetClass::Etf => format!("{} etf flows macro index", canonical_id.symbol()),
             StudyAssetClass::FnoStock | StudyAssetClass::Equity => {
-                format!("{} earnings macro corporate event", canonical_id.symbol)
+                format!("{} earnings macro corporate event", canonical_id.symbol())
             }
         });
 
@@ -2814,7 +2822,8 @@ pub(crate) async fn post_outlier_news(
                     published_at: format!("{}T00:00:00Z", act.ex_date),
                     title: format!(
                         "Corporate Action: {} ({})",
-                        act.action_type, canonical_id.symbol
+                        act.action_type,
+                        canonical_id.symbol()
                     ),
                     source: "Corporate Actions Registry".to_string(),
                     url: None,
@@ -2964,8 +2973,8 @@ impl StudyReader for FeedStudyReader {
                 .map_err(|e| PortError::internal(format!("{e:?}")))?
                 .into_iter()
                 .find(|item| {
-                    item.id().exchange == instrument.exchange
-                        && item.id().symbol.eq_ignore_ascii_case(&instrument.symbol)
+                    item.id().exchange() == instrument.exchange()
+                        && item.id().symbol().eq_ignore_ascii_case(instrument.symbol())
                 })
                 .ok_or_else(|| {
                     PortError::not_found(format!("instrument {instrument} not found"))
@@ -3062,7 +3071,7 @@ impl StudyReader for FeedStudyReader {
         };
         let calendar = RuntimeNseCalendar(cal_inner);
         let domain_asset =
-            parse_chat_asset_class(asset_class, canonical_id.exchange, &canonical_id.symbol);
+            parse_chat_asset_class(asset_class, canonical_id.exchange(), canonical_id.symbol());
         let domain_schedule = parse_chat_schedule(period, domain_asset);
         let domain_calc = parse_chat_calc(calc_type);
 
@@ -3070,7 +3079,7 @@ impl StudyReader for FeedStudyReader {
             &study_bars,
             &calendar,
             &ExperimentalStudyConfig {
-                symbol: canonical_id.symbol.clone(),
+                symbol: canonical_id.symbol().to_string(),
                 asset_class: domain_asset,
                 schedule: domain_schedule,
                 sub_cycle: DomainSubCycle::Current,

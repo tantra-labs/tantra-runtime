@@ -32,7 +32,7 @@ fn at(secs: i64) -> DateTime<Utc> {
 }
 
 fn nifty() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "NIFTY")
+    InstrumentId::try_new(Exchange::Nse, "NIFTY").unwrap()
 }
 
 fn price(s: &str) -> Price {

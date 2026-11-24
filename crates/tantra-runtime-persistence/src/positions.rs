@@ -215,8 +215,8 @@ impl PositionStore {
         if qty <= Decimal::ZERO {
             return Err(PositionStoreError::InvalidQuantity(qty.to_string()));
         }
-        let exchange = instrument.exchange.to_string();
-        let symbol = instrument.symbol.clone();
+        let exchange = instrument.exchange().to_string();
+        let symbol = instrument.symbol().to_string();
         let inst = instrument.to_string();
         with_executor!(&self.db, |ex| {
             let mut tx = ex.begin().await?;
@@ -410,8 +410,8 @@ impl PositionStore {
         client_id: &str,
         instrument: &InstrumentId,
     ) -> Result<Option<PersistedPosition>, PositionStoreError> {
-        let exchange = instrument.exchange.to_string();
-        let symbol = instrument.symbol.clone();
+        let exchange = instrument.exchange().to_string();
+        let symbol = instrument.symbol().to_string();
         let row = with_executor!(&self.db, |ex| {
             sqlx::query(&format!(
                 "{SELECT_POSITIONS} WHERE client_id = $1 AND exchange = $2 AND symbol = $3"
@@ -434,8 +434,8 @@ impl PositionStore {
         client_id: &str,
         instrument: &InstrumentId,
     ) -> Result<Vec<PersistedPositionLot>, PositionStoreError> {
-        let exchange = instrument.exchange.to_string();
-        let symbol = instrument.symbol.clone();
+        let exchange = instrument.exchange().to_string();
+        let symbol = instrument.symbol().to_string();
         with_executor!(&self.db, |ex| {
             sqlx::query(&format!(
                 "{SELECT_LOTS} WHERE client_id = $1 AND exchange = $2 AND symbol = $3 \

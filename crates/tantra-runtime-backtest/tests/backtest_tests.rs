@@ -55,7 +55,7 @@ impl Strategy for MockNseStrategy {
 
 #[test]
 fn test_historical_day_backtest_with_indian_cost_and_settlement() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let buy_price = Price::from_rupees("1500.00").unwrap();
     let sell_price = Price::from_rupees("1550.00").unwrap();
 
@@ -75,11 +75,12 @@ fn test_historical_day_backtest_with_indian_cost_and_settlement() {
     risk_engine.register_algo("algo-nse-equity");
 
     // Scrip-wise price band: 10% around 1500 (1350 to 1650) with reference price 1500
-    let band = PriceBand::new(
+    let band = PriceBand::try_new(
         Price::from_rupees("1350.00").unwrap(),
         Price::from_rupees("1650.00").unwrap(),
         Price::from_rupees("1500.00").unwrap(),
-    );
+    )
+    .unwrap();
     risk_engine.set_price_band(inst.clone(), band);
 
     let config = BacktestConfig {
@@ -195,7 +196,7 @@ impl Strategy for PromptReplayStrategy {
 
 #[test]
 fn test_deterministic_llm_prompt_replay_backtest() {
-    let inst = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let inst = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
     let algo_id = "SEBI_AI_REPLAY_01";
 
     // 1. Create recorded LLM decision trail with SHA256 checksums
@@ -236,11 +237,12 @@ fn test_deterministic_llm_prompt_replay_backtest() {
     };
     let mut risk_engine = RiskEngine::new(limits, OtrConfig::default());
     risk_engine.register_algo(algo_id);
-    let band = PriceBand::new(
+    let band = PriceBand::try_new(
         Price::from_rupees("2000.00").unwrap(),
         Price::from_rupees("3000.00").unwrap(),
         Price::from_rupees("2500.00").unwrap(),
-    );
+    )
+    .unwrap();
     risk_engine.set_price_band(inst.clone(), band);
 
     let config = BacktestConfig {
@@ -296,7 +298,7 @@ fn test_deterministic_llm_prompt_replay_backtest() {
 /// engine isn't quietly applying some other formula or rounding rule.
 #[test]
 fn test_backtest_fees_match_kokoro_tax_calculator() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let buy_price = Price::from_rupees("1500.00").unwrap();
     let sell_price = Price::from_rupees("1550.00").unwrap();
 
@@ -314,11 +316,12 @@ fn test_backtest_fees_match_kokoro_tax_calculator() {
     };
     let mut risk_engine = RiskEngine::new(limits, OtrConfig::default());
     risk_engine.register_algo("algo-nse-equity");
-    let band = PriceBand::new(
+    let band = PriceBand::try_new(
         Price::from_rupees("1350.00").unwrap(),
         Price::from_rupees("1650.00").unwrap(),
         Price::from_rupees("1500.00").unwrap(),
-    );
+    )
+    .unwrap();
     risk_engine.set_price_band(inst.clone(), band);
 
     let config = BacktestConfig {
@@ -413,7 +416,7 @@ fn test_decimal_qty_to_u64_saturates_non_positive_to_zero() {
 /// event, but must have settled by Monday's.
 #[test]
 fn test_t1_settlement_uses_clearing_calendar() {
-    let inst = InstrumentId::new(Exchange::Nse, "TCS");
+    let inst = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     // Thresholds set so the strategy buys unconditionally on the very
     // first trade it sees, and never sells.
     let strategy = MockNseStrategy {
@@ -430,11 +433,12 @@ fn test_t1_settlement_uses_clearing_calendar() {
     };
     let mut risk_engine = RiskEngine::new(limits, OtrConfig::default());
     risk_engine.register_algo("algo-nse-equity");
-    let band = PriceBand::new(
+    let band = PriceBand::try_new(
         Price::from_rupees("900.00").unwrap(),
         Price::from_rupees("1100.00").unwrap(),
         Price::from_rupees("1000.00").unwrap(),
-    );
+    )
+    .unwrap();
     risk_engine.set_price_band(inst.clone(), band);
 
     let config = BacktestConfig {

@@ -141,11 +141,11 @@ impl InstrumentsQuery {
     pub fn matches(&self, id: &InstrumentId) -> bool {
         self.exchange
             .as_deref()
-            .is_none_or(|exchange| id.exchange.to_string() == exchange)
+            .is_none_or(|exchange| id.exchange().to_string() == exchange)
             && self
                 .symbol
                 .as_deref()
-                .is_none_or(|symbol| id.symbol == symbol)
+                .is_none_or(|symbol| id.symbol() == symbol)
     }
 }
 
@@ -174,7 +174,13 @@ pub fn parse_instrument_id(text: &str) -> Result<InstrumentId, ErrorDetail> {
             format!("instrument id {text:?} names unknown exchange {exchange:?} (NSE, BSE or MCX)"),
         )
     })?;
-    Ok(InstrumentId::new(exchange, symbol))
+    InstrumentId::try_new(exchange, symbol).map_err(|_| {
+        invalid(
+            "id",
+            "invalid_instrument_id",
+            format!("instrument id {text:?} has invalid symbol"),
+        )
+    })
 }
 
 /// Maps an [`Instrument`] to its wire object.

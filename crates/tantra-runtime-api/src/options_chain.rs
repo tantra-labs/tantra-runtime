@@ -231,7 +231,14 @@ pub fn resolve_underlying_symbol(raw: &str) -> Result<(InstrumentId, String), Er
         other => other.to_string(),
     };
 
-    Ok((InstrumentId::new(exchange, canonical_symbol), fno_root))
+    let id = InstrumentId::try_new(exchange, canonical_symbol).map_err(|_| {
+        invalid(
+            "symbol",
+            "invalid_symbol",
+            format!("invalid underlying symbol {raw:?}"),
+        )
+    })?;
+    Ok((id, fno_root))
 }
 
 impl OptionsChainQuery {

@@ -130,5 +130,5 @@ pub(crate) fn parse_instrument(s: &str) -> Option<tantra_core::InstrumentId> {
         return None;
     }
     let exchange = tantra_core::Exchange::from_str(exchange).ok()?;
-    Some(tantra_core::InstrumentId::new(exchange, symbol))
+    tantra_core::InstrumentId::try_new(exchange, symbol).ok()
 }

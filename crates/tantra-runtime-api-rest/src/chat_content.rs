@@ -78,7 +78,7 @@ fn parse_instrument(s: &str) -> Option<InstrumentId> {
         return None;
     }
     let exchange = exchange.parse::<Exchange>().ok()?;
-    Some(InstrumentId::new(exchange, symbol))
+    InstrumentId::try_new(exchange, symbol).ok()
 }
 
 /// Maps one lakehouse filings projection row onto the chat tool catalog's record.

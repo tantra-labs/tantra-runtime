@@ -88,8 +88,8 @@ fn risk_engine_for(algo_id: &str) -> RiskEngine {
 
 #[test]
 fn test_square_off_closes_all_open_mis_positions_at_1520_ist() {
-    let inst1 = InstrumentId::new(Exchange::Nse, "INFY");
-    let inst2 = InstrumentId::new(Exchange::Nse, "TCS");
+    let inst1 = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
+    let inst2 = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     let day = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
     let strategy = MultiOnceBuyer::new(vec![
@@ -128,9 +128,9 @@ fn test_square_off_closes_all_open_mis_positions_at_1520_ist() {
     let mut net_position: HashMap<InstrumentId, Decimal> = HashMap::new();
     for fill in &result.fills {
         let signed = if fill.side == OrderSide::Buy {
-            fill.quantity.0
+            fill.quantity.value()
         } else {
-            -fill.quantity.0
+            -fill.quantity.value()
         };
         *net_position
             .entry(fill.instrument.clone())
@@ -150,7 +150,7 @@ fn test_square_off_closes_all_open_mis_positions_at_1520_ist() {
 
 #[test]
 fn test_process_trade_updates_square_off_eligibility() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let day = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
     let strategy = MultiOnceBuyer::new(vec![(inst.clone(), Quantity::from_u64(10))]);
@@ -189,7 +189,7 @@ fn test_process_trade_updates_square_off_eligibility() {
 
 #[test]
 fn test_no_square_off_for_delivery_positions() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let day = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
     let strategy = MultiOnceBuyer::new(vec![(inst.clone(), Quantity::from_u64(10))]);

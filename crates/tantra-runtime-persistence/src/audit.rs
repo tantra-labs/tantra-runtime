@@ -159,7 +159,7 @@ impl SqliteAuditLedger {
         let now = Utc::now();
         let ts_ms = now.timestamp_millis();
         let ts_utc = now.to_rfc3339();
-        let price_str = req.order_type.limit_price().map(|p| p.0.to_string());
+        let price_str = req.order_type.limit_price().map(|p| p.value().to_string());
         let order_type_str = format!("{:?}", req.order_type);
         let side_str = format!("{:?}", req.side);
 
@@ -187,7 +187,7 @@ impl SqliteAuditLedger {
         .bind(req.instrument.to_string())
         .bind(side_str)
         .bind(order_type_str)
-        .bind(req.quantity.0.to_string())
+        .bind(req.quantity.value().to_string())
         .bind(price_str)
         .bind(req.tag.as_deref())
         .fetch_one(&self.pool)
@@ -206,7 +206,7 @@ impl SqliteAuditLedger {
         let now = Utc::now();
         let ts_ms = now.timestamp_millis();
         let ts_utc = now.to_rfc3339();
-        let price_str = req.order_type.limit_price().map(|p| p.0.to_string());
+        let price_str = req.order_type.limit_price().map(|p| p.value().to_string());
         let order_type_str = format!("{:?}", req.order_type);
         let side_str = format!("{:?}", req.side);
 
@@ -234,7 +234,7 @@ impl SqliteAuditLedger {
         .bind(req.instrument.to_string())
         .bind(side_str)
         .bind(order_type_str)
-        .bind(req.quantity.0.to_string())
+        .bind(req.quantity.value().to_string())
         .bind(price_str)
         .bind(refusal_reason)
         .bind(eval_duration_us as i64)
@@ -251,14 +251,14 @@ impl SqliteAuditLedger {
     ) -> Result<i64, AuditError> {
         let ts_ms = event.ts.timestamp_millis();
         let ts_utc = event.ts.to_rfc3339();
-        let price_str = event.requested_price.map(|p| p.0.to_string());
+        let price_str = event.requested_price.map(|p| p.value().to_string());
         let side_str = "NONE".to_string();
         let order_type_str = "breach".to_string();
 
         let metadata = serde_json::json!({
             "refusal_reason": event.refusal_reason,
             "rule_code": event.rule_code,
-            "requested_qty": event.requested_qty.map(|q| q.0.to_string()),
+            "requested_qty": event.requested_qty.map(|q| q.value().to_string()),
             "requested_price": price_str,
         });
 
@@ -287,7 +287,7 @@ impl SqliteAuditLedger {
         .bind(
             event
                 .requested_qty
-                .map(|q| q.0.to_string())
+                .map(|q| q.value().to_string())
                 .unwrap_or_default(),
         )
         .bind(price_str)
@@ -309,7 +309,7 @@ impl SqliteAuditLedger {
     ) -> Result<i64, AuditError> {
         let ts_ms = ack.timestamp.timestamp_millis();
         let ts_utc = ack.timestamp.to_rfc3339();
-        let price_str = req.order_type.limit_price().map(|p| p.0.to_string());
+        let price_str = req.order_type.limit_price().map(|p| p.value().to_string());
         let order_type_str = format!("{:?}", req.order_type);
         let side_str = format!("{:?}", req.side);
         let status_str = format!("{:?}", ack.status).to_lowercase();
@@ -340,7 +340,7 @@ impl SqliteAuditLedger {
         .bind(req.instrument.to_string())
         .bind(side_str)
         .bind(order_type_str)
-        .bind(req.quantity.0.to_string())
+        .bind(req.quantity.value().to_string())
         .bind(price_str)
         .bind(status_str)
         .bind(dispatch_duration_us as i64)
@@ -412,7 +412,7 @@ impl SqliteAuditLedger {
         let now = Utc::now();
         let ts_ms = now.timestamp_millis();
         let ts_utc = now.to_rfc3339();
-        let price_str = new_price.map(|p| p.0.to_string());
+        let price_str = new_price.map(|p| p.value().to_string());
 
         let row = sqlx::query(
             r#"
@@ -436,7 +436,7 @@ impl SqliteAuditLedger {
         .bind(correlation_id.to_string())
         .bind(order_id)
         .bind(instrument)
-        .bind(new_qty.0.to_string())
+        .bind(new_qty.value().to_string())
         .bind(price_str)
         .bind(latency_us as i64)
         .fetch_one(&self.pool)
@@ -475,8 +475,8 @@ impl SqliteAuditLedger {
         .bind(&fill.order_id)
         .bind(fill.instrument.to_string())
         .bind(side_str)
-        .bind(fill.quantity.0.to_string())
-        .bind(fill.price.0.to_string())
+        .bind(fill.quantity.value().to_string())
+        .bind(fill.price.value().to_string())
         .bind(format!("{{\"fill_id\": \"{}\"}}", fill.fill_id))
         .fetch_one(&self.pool)
         .await?;

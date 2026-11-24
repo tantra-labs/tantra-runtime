@@ -32,7 +32,7 @@ fn l2() -> ExecutionConfig {
 
 /// Writes a store directory holding one quote per fixture bar, then reopens it.
 fn parquet_store(root: &Path) -> ParquetTickStore {
-    let tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    let tcs = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     let quotes: Vec<QuoteTick> = (0..80u64)
         .map(|i| {
             let t = UnixNanos::from_u64(BARS_FROM_NS + i * DAY_NS);

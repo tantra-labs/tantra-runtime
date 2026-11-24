@@ -51,24 +51,25 @@ fn default_lot_size(fno_root: &str) -> Decimal {
 
 fn build_underlying_candidates(canonical: &InstrumentId, fno_root: &str) -> Vec<InstrumentId> {
     let mut cands = vec![canonical.clone()];
-    let sym = canonical.symbol.as_str();
+    let sym = canonical.symbol();
     if !sym.ends_with("-EQ") && !sym.ends_with("-INDEX") && !sym.ends_with("-FUT") {
-        cands.push(InstrumentId::new(canonical.exchange, format!("{sym}-EQ")));
-        cands.push(InstrumentId::new(
-            canonical.exchange,
-            format!("{sym}-INDEX"),
-        ));
+        if let Ok(id) = InstrumentId::try_new(canonical.exchange(), format!("{sym}-EQ")) {
+            cands.push(id);
+        }
+        if let Ok(id) = InstrumentId::try_new(canonical.exchange(), format!("{sym}-INDEX")) {
+            cands.push(id);
+        }
     }
-    if canonical.symbol != fno_root {
-        cands.push(InstrumentId::new(canonical.exchange, fno_root));
-        cands.push(InstrumentId::new(
-            canonical.exchange,
-            format!("{fno_root}-EQ"),
-        ));
-        cands.push(InstrumentId::new(
-            canonical.exchange,
-            format!("{fno_root}-INDEX"),
-        ));
+    if canonical.symbol() != fno_root {
+        if let Ok(id) = InstrumentId::try_new(canonical.exchange(), fno_root) {
+            cands.push(id);
+        }
+        if let Ok(id) = InstrumentId::try_new(canonical.exchange(), format!("{fno_root}-EQ")) {
+            cands.push(id);
+        }
+        if let Ok(id) = InstrumentId::try_new(canonical.exchange(), format!("{fno_root}-INDEX")) {
+            cands.push(id);
+        }
     }
     cands
 }
@@ -87,15 +88,15 @@ async fn resolve_underlying_instrument(
     let all = state.instruments.list_instruments().await?;
     Ok(all.into_iter().find(|inst| {
         inst.kind() != tantra_core::InstrumentKind::Option
-            && (inst.id().symbol.eq_ignore_ascii_case(&canonical.symbol)
-                || inst.id().symbol.eq_ignore_ascii_case(fno_root)
+            && (inst.id().symbol().eq_ignore_ascii_case(canonical.symbol())
+                || inst.id().symbol().eq_ignore_ascii_case(fno_root)
                 || inst
                     .id()
-                    .symbol
+                    .symbol()
                     .eq_ignore_ascii_case(&format!("{fno_root}-EQ"))
                 || inst
                     .id()
-                    .symbol
+                    .symbol()
                     .eq_ignore_ascii_case(&format!("{fno_root}-INDEX")))
     }))
 }
@@ -203,8 +204,8 @@ fn bs_greeks_for_leg(
     let fallback_vol = (fallback_iv_pct / Decimal::from(100)).max(Decimal::new(4, 2));
 
     let base_params = PriceParams {
-        spot: Price::new(spot),
-        strike: Price::new(strike),
+        spot: Price::try_new(spot).unwrap_or(Price::ZERO),
+        strike: Price::try_new(strike).unwrap_or(Price::ZERO),
         time_to_expiry,
         risk_free_rate: RISK_FREE_RATE,
         dividend_yield: Decimal::ZERO,
@@ -456,12 +457,14 @@ pub(crate) async fn get_options_chain(
         chain_reader = chain_reader.with_oi_store(oi_store.clone());
     }
 
-    let mut probe_ids = vec![
-        canonical_id.clone(),
-        InstrumentId::new(Exchange::Nfo, &resolved.fno_root),
-    ];
-    if canonical_id.symbol != resolved.fno_root {
-        probe_ids.push(InstrumentId::new(canonical_id.exchange, &resolved.fno_root));
+    let mut probe_ids = vec![canonical_id.clone()];
+    if let Ok(id) = InstrumentId::try_new(Exchange::Nfo, &resolved.fno_root) {
+        probe_ids.push(id);
+    }
+    if canonical_id.symbol() != resolved.fno_root {
+        if let Ok(id) = InstrumentId::try_new(canonical_id.exchange(), &resolved.fno_root) {
+            probe_ids.push(id);
+        }
     }
 
     let mut contracts: Vec<ChainContract> = Vec::new();

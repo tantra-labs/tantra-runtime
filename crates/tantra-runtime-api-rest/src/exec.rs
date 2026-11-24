@@ -373,13 +373,18 @@ impl ExecGateway {
         let core_type = match order_type {
             OrderType::Market => CoreOrderType::Market,
             // The local `Limit` carries no embedded price (the row tracks it separately).
-            OrderType::Limit => {
-                CoreOrderType::Limit(order.price().map(Price::new).unwrap_or(Price::ZERO))
+            OrderType::Limit => CoreOrderType::Limit(
+                order
+                    .price()
+                    .and_then(|p| Price::try_new(p).ok())
+                    .unwrap_or(Price::ZERO),
+            ),
+            OrderType::StopMarket { trigger } => {
+                CoreOrderType::StopLoss(Price::try_new(trigger).unwrap_or(Price::ZERO))
             }
-            OrderType::StopMarket { trigger } => CoreOrderType::StopLoss(Price::new(trigger)),
             OrderType::StopLimit { trigger, limit } => CoreOrderType::StopLimit {
-                trigger: Price::new(trigger),
-                limit: Price::new(limit),
+                trigger: Price::try_new(trigger).unwrap_or(Price::ZERO),
+                limit: Price::try_new(limit).unwrap_or(Price::ZERO),
             },
         };
         let mut request = OrderRequest::with_id(
@@ -387,7 +392,7 @@ impl ExecGateway {
             instrument,
             side,
             core_type,
-            Quantity::new(quantity),
+            Quantity::try_new(quantity).unwrap_or(Quantity::ZERO),
             REST_ALGO_ID,
         );
         // The canonical TIF is `Day | Ioc | Gtc`; the row's own `Day`/`Gtc` both read as a Day
@@ -466,8 +471,8 @@ impl ExecGateway {
             self.publish(serde_json::json!({
                 "type": "DepthChanged",
                 "instrument": instrument,
-                "bid": bid.map(|price| price.0.to_string()),
-                "ask": ask.map(|price| price.0.to_string()),
+                "bid": bid.map(|price| price.value().to_string()),
+                "ask": ask.map(|price| price.value().to_string()),
                 "timestamp": timestamp.to_rfc3339(),
             }));
         }
@@ -569,7 +574,7 @@ impl ExecGateway {
                 instrument,
                 side,
                 CoreOrderType::Market,
-                Quantity::new(qty.abs()),
+                Quantity::try_new(qty.abs()).unwrap_or(Quantity::ZERO),
                 REST_ALGO_ID,
             );
             let result = self
@@ -617,7 +622,7 @@ impl ExecGateway {
             };
             let ledger_id = ledger_id.to_string();
             let entry = cum.entry(ledger_id.clone()).or_default();
-            *entry += fill.quantity.0;
+            *entry += fill.quantity.value();
             let cumulative = *entry;
             let state = exchange.order(&fill.order_id).map(|w| w.state);
             let status = match state {
@@ -626,8 +631,8 @@ impl ExecGateway {
             };
             ledger.apply_fill(
                 &ledger_id,
-                fill.quantity.0,
-                fill.price.0,
+                fill.quantity.value(),
+                fill.price.value(),
                 cumulative,
                 fill.timestamp,
                 status,
@@ -658,7 +663,7 @@ impl ExecGateway {
             "positions": exchange
                 .positions()
                 .iter()
-                .map(|(id, qty)| (id.symbol.clone(), serde_json::Value::String(qty.to_string())))
+                .map(|(id, qty)| (id.symbol().to_string(), serde_json::Value::String(qty.to_string())))
                 .collect::<serde_json::Map<String, serde_json::Value>>(),
             "timestamp": snapshot_ts.to_rfc3339(),
         }));
@@ -722,7 +727,7 @@ fn exchange_event_to_json(event: &ExchangeEvent) -> serde_json::Value {
             "broker_order_id": broker_order_id,
             "instrument": instrument,
             "side": live_side(*side),
-            "quantity": quantity.0.to_string(),
+            "quantity": quantity.value().to_string(),
             "timestamp": timestamp.to_rfc3339(),
         }),
         ExchangeEvent::Fill { fill } => serde_json::json!({

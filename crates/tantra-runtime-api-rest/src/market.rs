@@ -101,12 +101,13 @@ async fn with_session_summary(
     use crate::market_feed::ports::TradeReader;
     match live.read_trade_snapshot(id).await {
         Ok(Some(snapshot)) => {
-            api.last_price = Some(Price::new(
-                Decimal::from_f64_retain(snapshot.last.price()).unwrap_or_default(),
-            ));
-            api.volume = Some(Quantity::new(
+            api.last_price =
+                Price::try_new(Decimal::from_f64_retain(snapshot.last.price()).unwrap_or_default())
+                    .ok();
+            api.volume = Quantity::try_new(
                 Decimal::from_f64_retain(snapshot.day_volume).unwrap_or_default(),
-            ));
+            )
+            .ok();
         }
         // No live print for this instrument yet: the summary fields stay `None`.
         Ok(None) => {}
@@ -115,9 +116,8 @@ async fn with_session_summary(
         Err(e) => tracing::debug!(instrument = %id, "session summary unavailable: {e}"),
     }
     if let Ok(Some(fallback)) = live.read_fallback(id).await {
-        api.prev_close = Some(Price::new(
-            Decimal::from_f64_retain(fallback.bid_price()).unwrap_or_default(),
-        ));
+        api.prev_close =
+            Price::try_new(Decimal::from_f64_retain(fallback.bid_price()).unwrap_or_default()).ok();
     }
     api
 }
@@ -128,13 +128,20 @@ async fn with_session_summary(
 fn to_core_bar(bar: crate::market_feed::wire::Bar) -> tantra_core::Bar {
     tantra_core::Bar {
         instrument: bar.bar_type().instrument_id().clone(),
-        open: tantra_core::Price::new(Decimal::from_f64_retain(bar.open()).unwrap_or_default()),
-        high: tantra_core::Price::new(Decimal::from_f64_retain(bar.high()).unwrap_or_default()),
-        low: tantra_core::Price::new(Decimal::from_f64_retain(bar.low()).unwrap_or_default()),
-        close: tantra_core::Price::new(Decimal::from_f64_retain(bar.close()).unwrap_or_default()),
-        volume: tantra_core::Quantity::new(
+        open: tantra_core::Price::try_new(Decimal::from_f64_retain(bar.open()).unwrap_or_default())
+            .unwrap_or(tantra_core::Price::ZERO),
+        high: tantra_core::Price::try_new(Decimal::from_f64_retain(bar.high()).unwrap_or_default())
+            .unwrap_or(tantra_core::Price::ZERO),
+        low: tantra_core::Price::try_new(Decimal::from_f64_retain(bar.low()).unwrap_or_default())
+            .unwrap_or(tantra_core::Price::ZERO),
+        close: tantra_core::Price::try_new(
+            Decimal::from_f64_retain(bar.close()).unwrap_or_default(),
+        )
+        .unwrap_or(tantra_core::Price::ZERO),
+        volume: tantra_core::Quantity::try_new(
             Decimal::from_f64_retain(bar.volume()).unwrap_or_default(),
-        ),
+        )
+        .unwrap_or(tantra_core::Quantity::ZERO),
         timestamp: bar.ts_event().to_datetime(),
     }
 }
@@ -352,7 +359,7 @@ pub(crate) async fn get_quotes(
     for symbol in &resolved.symbols {
         let before = wanted.len();
         wanted.extend(known.iter().map(|instrument| instrument.id()).filter(|id| {
-            id.symbol == *symbol && resolved.venue.as_ref().is_none_or(|v| id.exchange == *v)
+            id.symbol() == *symbol && resolved.venue.as_ref().is_none_or(|v| id.exchange() == *v)
         }));
         if wanted.len() == before {
             return failure(
@@ -684,7 +691,7 @@ fn parse_projection_instrument(s: &str) -> Option<InstrumentId> {
         return None;
     }
     let exchange = exchange.parse::<Exchange>().ok()?;
-    Some(InstrumentId::new(exchange, symbol))
+    InstrumentId::try_new(exchange, symbol).ok()
 }
 
 /// `GET /block-deals` — block/bulk deal disclosures read through the
@@ -733,8 +740,8 @@ pub(crate) async fn get_block_deals(
                         client_name: p.client_name,
                         side: p.side.to_lowercase(),
                         category: p.category,
-                        quantity: Quantity::new(p.quantity),
-                        price: Price::new(p.price),
+                        quantity: Quantity::try_new(p.quantity).ok()?,
+                        price: Price::try_new(p.price).ok()?,
                         trade_date: Utc.from_utc_datetime(
                             &p.trade_date
                                 .and_hms_opt(0, 0, 0)

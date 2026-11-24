@@ -58,7 +58,7 @@ async fn test_observability_tracing_and_prometheus_export() {
 
     let algo_id = "algo-obs-999";
     let client_id = "client-vip-1";
-    let inst = InstrumentId::new(Exchange::Nse, "TCS");
+    let inst = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     let req = OrderRequest::new(
         inst.clone(),
         OrderSide::Buy,
@@ -171,14 +171,15 @@ async fn test_actor_runtime_with_observability_and_audit() {
 
     // Risk Engine
     let mut risk_engine = RiskEngine::new(RiskLimits::default(), OtrConfig::default());
-    let inst = InstrumentId::new(Exchange::Nse, "TCS");
+    let inst = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     risk_engine.set_price_band(
         inst.clone(),
-        PriceBand::new(
+        PriceBand::try_new(
             Price::from_rupees("3500.00").unwrap(),
             Price::from_rupees("4000.00").unwrap(),
             Price::from_rupees("3750.00").unwrap(),
-        ),
+        )
+        .unwrap(),
     );
     // Register the algo_id so the risk engine accepts orders from it
     risk_engine.register_algo("algo-obs-runtime");

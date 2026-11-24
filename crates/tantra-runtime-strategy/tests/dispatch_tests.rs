@@ -32,21 +32,21 @@ fn fixed_now() -> DateTime<Utc> {
 /// A deterministic replay sequence of intents (same set as the paper/live
 /// parity test above).
 fn replay_sequence(nse: Exchange) -> Vec<OrderIntent> {
-    let infy = InstrumentId::new(nse, "INFY");
-    let reliance = InstrumentId::new(nse, "RELIANCE");
-    let tcs = InstrumentId::new(nse, "TCS");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
+    let reliance = InstrumentId::try_new(nse, "RELIANCE").unwrap();
+    let tcs = InstrumentId::try_new(nse, "TCS").unwrap();
     vec![
         OrderIntent::market_buy(infy.clone(), Quantity::from_u64(20)),
         OrderIntent::limit_buy(
             reliance.clone(),
             Quantity::from_u64(10),
-            Price(Decimal::from(2480)),
+            Price::try_new(Decimal::from(2480)).unwrap(),
         ),
         OrderIntent::market_sell(infy.clone(), Quantity::from_u64(5)),
         OrderIntent::limit_sell(
             reliance.clone(),
             Quantity::from_u64(5),
-            Price(Decimal::from(2520)),
+            Price::try_new(Decimal::from(2520)).unwrap(),
         ),
         OrderIntent::market_buy(tcs.clone(), Quantity::from_u64(15)),
     ]
@@ -63,9 +63,18 @@ fn replay_fills_serialized(nse: Exchange) -> Result<Vec<String>, String> {
 
     // Market orders in the replay sequence need preload prices; identical
     // prices are part of the replay input (identical dataset precondition).
-    paper_view.set_market_price(InstrumentId::new(nse, "INFY"), Decimal::from(1500));
-    paper_view.set_market_price(InstrumentId::new(nse, "RELIANCE"), Decimal::from(2500));
-    paper_view.set_market_price(InstrumentId::new(nse, "TCS"), Decimal::from(3500));
+    paper_view.set_market_price(
+        InstrumentId::try_new(nse, "INFY").unwrap(),
+        Decimal::from(1500),
+    );
+    paper_view.set_market_price(
+        InstrumentId::try_new(nse, "RELIANCE").unwrap(),
+        Decimal::from(2500),
+    );
+    paper_view.set_market_price(
+        InstrumentId::try_new(nse, "TCS").unwrap(),
+        Decimal::from(3500),
+    );
 
     for (i, intent) in replay_sequence(nse).iter().enumerate() {
         // Deterministic client order ID: 128-bit space derived from a fixed
@@ -93,7 +102,7 @@ fn test_sebi_risk_gate_latency_slo() {
     // Increase OTR enforcement threshold for pure latency benchmark of evaluation hot path
     risk_engine.otr_config.min_orders_before_enforcement = 100_000;
 
-    let instrument = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let instrument = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
     let intent = OrderIntent::market_buy(instrument, Quantity::from_u64(10));
     let order = intent
         .to_order_request_with_algo(algo_id)
@@ -154,9 +163,9 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
     let angelone_view = angelone.clone();
 
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
-    let reliance = InstrumentId::new(nse, "RELIANCE");
-    let tcs = InstrumentId::new(nse, "TCS");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
+    let reliance = InstrumentId::try_new(nse, "RELIANCE").unwrap();
+    let tcs = InstrumentId::try_new(nse, "TCS").unwrap();
 
     // Preload market prices in all three adapters identically
     paper.set_market_price(infy.clone(), Decimal::from(1500));
@@ -185,13 +194,13 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
         OrderIntent::limit_buy(
             reliance.clone(),
             Quantity::from_u64(10),
-            Price(Decimal::from(2480)),
+            Price::try_new(Decimal::from(2480)).unwrap(),
         ),
         OrderIntent::market_sell(infy.clone(), Quantity::from_u64(5)),
         OrderIntent::limit_sell(
             reliance.clone(),
             Quantity::from_u64(5),
-            Price(Decimal::from(2520)),
+            Price::try_new(Decimal::from(2520)).unwrap(),
         ),
         OrderIntent::market_buy(tcs.clone(), Quantity::from_u64(15)),
     ];
@@ -255,10 +264,15 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
         let (side, price, qty) = expected_fills[i];
         assert_eq!(pf.side, side, "Fill #{i} side mismatch (paper)");
         assert_eq!(
-            pf.price.0, price,
+            pf.price.value(),
+            price,
             "Fill #{i} must execute at the reference price (paper)"
         );
-        assert_eq!(pf.quantity.0, qty, "Fill #{i} quantity mismatch (paper)");
+        assert_eq!(
+            pf.quantity.value(),
+            qty,
+            "Fill #{i} quantity mismatch (paper)"
+        );
         assert_eq!(
             pf.instrument, zf.instrument,
             "Fill #{i} instrument mismatch (paper vs zerodha)"
@@ -396,8 +410,12 @@ fn test_order_cancellation_and_otr_recording() {
     let algo_id = dispatcher.algo_id().to_string();
 
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
-    let intent = OrderIntent::limit_buy(infy, Quantity::from_u64(10), Price(Decimal::from(1500)));
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
+    let intent = OrderIntent::limit_buy(
+        infy,
+        Quantity::from_u64(10),
+        Price::try_new(Decimal::from(1500)).unwrap(),
+    );
 
     let now = Utc::now();
     let order_id = dispatcher
@@ -433,7 +451,7 @@ fn test_risk_refusal_halts_and_protects_broker() {
 
     let mut dispatcher = Dispatcher::new(risk_engine, Box::new(paper));
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
 
     let err = dispatcher
@@ -459,7 +477,7 @@ fn test_invalid_intent_rejected_before_risk_and_broker() {
 
     // Zero quantity intent breaks invariant
     let invalid_intent = OrderIntent {
-        instrument_id: InstrumentId::new(Exchange::Nse, "INFY"),
+        instrument_id: InstrumentId::try_new(Exchange::Nse, "INFY").unwrap(),
         side: tantra_core::OrderSide::Buy,
         quantity: Quantity::ZERO,
         order_type: tantra_core::OrderType::Market,
@@ -482,7 +500,7 @@ fn test_fill_timestamp_follows_dispatch_clock() {
     let paper_view = paper.clone();
     let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(paper));
 
-    let infy = InstrumentId::new(Exchange::Nse, "INFY");
+    let infy = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     paper_view.set_market_price(infy.clone(), Decimal::from(1500));
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
 

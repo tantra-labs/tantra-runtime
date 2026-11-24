@@ -1188,7 +1188,7 @@ pub(crate) async fn post_evaluate(
 
     // Re-synthesize hedge with true resolved instrument lot_size, tick_size, live spot & capital
     let domain_hedge = hedge_policy.synthesize(&HedgeSynthesisInput {
-        symbol: canonical_id.symbol.clone(),
+        symbol: canonical_id.symbol().to_string(),
         asset_class: domain_asset,
         spot: spot_price,
         atr,
@@ -1261,8 +1261,8 @@ pub(crate) async fn post_evaluate(
         session_id,
         run_seq,
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol.clone(),
-        exchange: canonical_id.exchange.to_string(),
+        symbol: canonical_id.symbol().to_string(),
+        exchange: canonical_id.exchange().to_string(),
         asset_class: req.asset_class,
         timeframe: req.timeframe,
         start_date: actual_start,
@@ -1500,7 +1500,7 @@ pub(crate) async fn post_sweep(
     // Re-synthesize candidate hedges with real resolved lot_size / tick_size / capital
     let synthesize_for_candidate = |cand: &SweepCandidateResult| -> HedgeRecommendationDto {
         let h = hedge_policy.synthesize(&HedgeSynthesisInput {
-            symbol: canonical_id.symbol.clone(),
+            symbol: canonical_id.symbol().to_string(),
             asset_class: domain_asset,
             spot: spot_price,
             atr,
@@ -1542,7 +1542,7 @@ pub(crate) async fn post_sweep(
 
     let baseline_hedge = map_hedge_dto(
         &hedge_policy.synthesize(&HedgeSynthesisInput {
-            symbol: canonical_id.symbol.clone(),
+            symbol: canonical_id.symbol().to_string(),
             asset_class: domain_asset,
             spot: spot_price,
             atr,
@@ -1618,7 +1618,7 @@ pub(crate) async fn post_sweep(
         session_id,
         run_seq,
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol,
+        symbol: canonical_id.symbol().to_string(),
         strategy_id: winner_pipeline.canonical_strategy_id.to_string(),
         timeframe: req.base.timeframe,
         trial_count: sweep_report.trial_count,
@@ -1794,7 +1794,7 @@ pub(crate) async fn post_recommend_hedge(
 
     let synthesize_for = |horizon: LoopExpiryHorizon| -> HedgeRecommendationDto {
         let h = hedge_policy.synthesize(&HedgeSynthesisInput {
-            symbol: canonical_id.symbol.clone(),
+            symbol: canonical_id.symbol().to_string(),
             asset_class: domain_asset,
             spot: spot_price,
             atr,
@@ -1827,8 +1827,8 @@ pub(crate) async fn post_recommend_hedge(
 
     success(ExpiryHedgeResponse {
         instrument_id: canonical_id.to_string(),
-        symbol: canonical_id.symbol,
-        exchange: canonical_id.exchange.to_string(),
+        symbol: canonical_id.symbol().to_string(),
+        exchange: canonical_id.exchange().to_string(),
         spot_price,
         atr,
         direction: resolved_dir.map(from_domain_dir),
@@ -1892,8 +1892,8 @@ impl RuntimeStrategyRunner {
             }
             if let Ok(all) = self.instruments.list_instruments().await {
                 if let Some(found) = all.into_iter().find(|item| {
-                    item.id().exchange == parsed.exchange
-                        && item.id().symbol.eq_ignore_ascii_case(&parsed.symbol)
+                    item.id().exchange() == parsed.exchange()
+                        && item.id().symbol().eq_ignore_ascii_case(parsed.symbol())
                 }) {
                     return Ok(found);
                 }
@@ -1909,7 +1909,7 @@ impl RuntimeStrategyRunner {
         let upper = trimmed.to_ascii_uppercase();
         all.into_iter()
             .find(|item| {
-                item.id().symbol.eq_ignore_ascii_case(&upper)
+                item.id().symbol().eq_ignore_ascii_case(&upper)
                     || item.id().to_string().eq_ignore_ascii_case(&upper)
             })
             .ok_or_else(|| format!("instrument {raw_symbol:?} not found in market catalog"))
@@ -2031,7 +2031,7 @@ impl RuntimeStrategyRunner {
     }
 
     fn infer_asset_class(inst: &Instrument) -> DomainAssetClass {
-        match inst.id().exchange {
+        match inst.id().exchange() {
             Exchange::Mcx => DomainAssetClass::Commodity,
             Exchange::Cds => DomainAssetClass::Forex,
             _ => match inst.kind() {
@@ -2430,7 +2430,7 @@ impl StrategyRunner for RuntimeStrategyRunner {
         let notional = (qty * entry_price).round_dp(2);
         let margin_util = ((notional / base_capital) * Decimal::from(100)).round_dp(2);
 
-        let stat_bps = estimate_statutory_roundtrip_bps(&canonical_id.symbol, asset_class);
+        let stat_bps = estimate_statutory_roundtrip_bps(canonical_id.symbol(), asset_class);
         let total_charges = (notional * stat_bps / Decimal::from(10_000)).round_dp(2);
         let gross_reward = per_unit_risk * Decimal::from(2) * qty;
         let net_rr = if risk_amt > Decimal::ZERO {
@@ -2442,7 +2442,7 @@ impl StrategyRunner for RuntimeStrategyRunner {
         };
 
         let hedge = hedge_policy.synthesize(&HedgeSynthesisInput {
-            symbol: canonical_id.symbol.clone(),
+            symbol: canonical_id.symbol().to_string(),
             asset_class,
             spot,
             atr,

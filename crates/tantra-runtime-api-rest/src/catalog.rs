@@ -144,7 +144,12 @@ pub fn load_catalog(root: &Path) -> Result<(CatalogBars, DatasetReader), Catalog
                 .parse::<Exchange>()
                 .map_err(|_| CatalogLoadError::Timeframe(exchange_name.clone()))?;
             for symbol_dir in sorted_dirs(&exchange_dir)? {
-                let id = InstrumentId::new(exchange, file_name(&symbol_dir));
+                let id = InstrumentId::try_new(exchange, file_name(&symbol_dir)).map_err(|e| {
+                    CatalogLoadError::Io {
+                        path: symbol_dir.clone(),
+                        source: std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),
+                    }
+                })?;
                 let slice = read_symbol(&symbol_dir, id, spec)?;
                 if !slice.is_empty() {
                     slices.push(slice);
@@ -201,11 +206,11 @@ pub fn load_lakehouse_v3(
 
             for bar in bars {
                 ts_buf.push(UnixNanos::from_datetime(bar.timestamp));
-                open_buf.push(bar.open.0.to_f64().unwrap_or_default());
-                high_buf.push(bar.high.0.to_f64().unwrap_or_default());
-                low_buf.push(bar.low.0.to_f64().unwrap_or_default());
-                close_buf.push(bar.close.0.to_f64().unwrap_or_default());
-                vol_buf.push(bar.volume.0.to_f64().unwrap_or_default());
+                open_buf.push(bar.open.value().to_f64().unwrap_or_default());
+                high_buf.push(bar.high.value().to_f64().unwrap_or_default());
+                low_buf.push(bar.low.value().to_f64().unwrap_or_default());
+                close_buf.push(bar.close.value().to_f64().unwrap_or_default());
+                vol_buf.push(bar.volume.value().to_f64().unwrap_or_default());
             }
             builder.push_rows(
                 &ts_buf, &open_buf, &high_buf, &low_buf, &close_buf, &vol_buf,

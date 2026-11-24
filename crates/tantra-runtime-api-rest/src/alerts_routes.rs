@@ -126,7 +126,7 @@ pub(crate) async fn create_alert(
         Err(r) => return *r,
     };
     let price = match Decimal::from_str(req.price.trim()) {
-        Ok(d) if d > Decimal::ZERO => Price::new(d),
+        Ok(d) if d > Decimal::ZERO => Price::try_new(d).expect("positive decimal price"),
         _ => return invalid("price must be a positive decimal string", "price"),
     };
     let status = match req.status.as_deref() {

@@ -34,7 +34,7 @@ fn slice(
 ) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
     let spec = BarSpecification::new(1, BarAggregation::Minute, PriceType::Last);
     let mut builder = ColumnarSliceBuilder::new(
-        InstrumentId::new(Exchange::from_str(exchange).unwrap(), symbol),
+        InstrumentId::try_new(Exchange::from_str(exchange).unwrap(), symbol).unwrap(),
         spec,
     );
     for i in 0..count {
@@ -473,7 +473,7 @@ async fn a_live_trade_populates_last_price_and_volume_with_the_summary_fields() 
     // and the day volume accumulates across them (the T7.7 plumbing the chat
     // `quote` tool also reads).
     live.put_trade(TradeTick::new(
-        InstrumentId::new(Exchange::from_str("NSE").unwrap(), "TCS"),
+        InstrumentId::try_new(Exchange::from_str("NSE").unwrap(), "TCS").unwrap(),
         104.5,
         500.0,
         AggressorSide::Buyer,
@@ -482,7 +482,7 @@ async fn a_live_trade_populates_last_price_and_volume_with_the_summary_fields() 
         UnixNanos::from_u64(T0 + 4 * MINUTE),
     ));
     live.put_trade(TradeTick::new(
-        InstrumentId::new(Exchange::from_str("NSE").unwrap(), "TCS"),
+        InstrumentId::try_new(Exchange::from_str("NSE").unwrap(), "TCS").unwrap(),
         104.75,
         250.0,
         AggressorSide::Seller,

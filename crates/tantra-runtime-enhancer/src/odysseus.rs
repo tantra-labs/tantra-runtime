@@ -202,7 +202,10 @@ impl OdysseusEvaluator {
                     _ => 0.1,
                 };
 
-                let notional = (ctx.mid_price.0 * ctx.bid_depth.0).to_f64().unwrap_or(0.0) * size;
+                let notional = (ctx.mid_price.value() * ctx.bid_depth.value())
+                    .to_f64()
+                    .unwrap_or(0.0)
+                    * size;
 
                 match side {
                     OrderSide::Buy => {
@@ -338,12 +341,12 @@ impl OdysseusEvaluator {
     /// Get the signal value for a named signal from the L2 context.
     fn signal_value(&self, signal: &str, ctx: &EvalContext) -> f64 {
         match signal {
-            "mid_price" => ctx.mid_price.0.to_f64().unwrap_or(0.0),
-            "spread" => ctx.spread.0.to_f64().unwrap_or(0.0),
-            "bid_depth" => ctx.bid_depth.0.to_f64().unwrap_or(0.0),
-            "ask_depth" => ctx.ask_depth.0.to_f64().unwrap_or(0.0),
-            "bid_depth_5" => ctx.bid_depth_5.0.to_f64().unwrap_or(0.0),
-            "ask_depth_5" => ctx.ask_depth_5.0.to_f64().unwrap_or(0.0),
+            "mid_price" => ctx.mid_price.value().to_f64().unwrap_or(0.0),
+            "spread" => ctx.spread.value().to_f64().unwrap_or(0.0),
+            "bid_depth" => ctx.bid_depth.value().to_f64().unwrap_or(0.0),
+            "ask_depth" => ctx.ask_depth.value().to_f64().unwrap_or(0.0),
+            "bid_depth_5" => ctx.bid_depth_5.value().to_f64().unwrap_or(0.0),
+            "ask_depth_5" => ctx.ask_depth_5.value().to_f64().unwrap_or(0.0),
             "imbalance" => ctx.imbalance,
             _ => 0.0,
         }

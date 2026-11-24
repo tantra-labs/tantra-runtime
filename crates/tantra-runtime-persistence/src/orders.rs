@@ -201,10 +201,10 @@ pub(crate) fn parse_side(s: &str) -> Option<OrderSide> {
 pub(crate) fn order_type_encode(ot: OrderType) -> String {
     match ot {
         OrderType::Market => "market".to_string(),
-        OrderType::Limit(p) => format!("limit:{}", p.0),
-        OrderType::StopLoss(p) => format!("stoploss:{}", p.0),
+        OrderType::Limit(p) => format!("limit:{}", p.value()),
+        OrderType::StopLoss(p) => format!("stoploss:{}", p.value()),
         OrderType::StopLimit { trigger, limit } => {
-            format!("stoplimit:{}:{}", trigger.0, limit.0)
+            format!("stoplimit:{}:{}", trigger.value(), limit.value())
         }
     }
 }
@@ -214,13 +214,15 @@ pub(crate) fn order_type_decode(s: &str) -> Option<OrderType> {
     let (tag, rest) = s.split_once(':').unwrap_or((s, ""));
     match tag {
         "market" => Some(OrderType::Market),
-        "limit" => Some(OrderType::Limit(Price(rest.parse().ok()?))),
-        "stoploss" => Some(OrderType::StopLoss(Price(rest.parse().ok()?))),
+        "limit" => Some(OrderType::Limit(Price::try_new(rest.parse().ok()?).ok()?)),
+        "stoploss" => Some(OrderType::StopLoss(
+            Price::try_new(rest.parse().ok()?).ok()?,
+        )),
         "stoplimit" => {
             let (trigger, limit) = rest.split_once(':')?;
             Some(OrderType::StopLimit {
-                trigger: Price(trigger.parse().ok()?),
-                limit: Price(limit.parse().ok()?),
+                trigger: Price::try_new(trigger.parse().ok()?).ok()?,
+                limit: Price::try_new(limit.parse().ok()?).ok()?,
             })
         }
         _ => None,
@@ -301,7 +303,7 @@ impl OrderStore {
         let side = side_str(req.side).to_string();
         let order_type = order_type_encode(req.order_type);
         let tif = tif_str(req.tif).to_string();
-        let quantity = req.quantity.0.to_string();
+        let quantity = req.quantity.value().to_string();
         let algo_id = req.algo_id.clone();
         let client_id = req.client_id_str().to_string();
         with_executor!(&self.db, |ex| {

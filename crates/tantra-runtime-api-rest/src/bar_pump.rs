@@ -33,11 +33,11 @@ fn to_feed_bar(bar: &Bar) -> crate::market_feed::wire::Bar {
     let ts = crate::market_feed::wire::UnixNanos::from_datetime(bar.timestamp);
     crate::market_feed::wire::Bar::new(
         crate::market_feed::wire::BarType::new(bar.instrument.clone(), spec),
-        bar.open.0.to_f64().unwrap_or_default(),
-        bar.high.0.to_f64().unwrap_or_default(),
-        bar.low.0.to_f64().unwrap_or_default(),
-        bar.close.0.to_f64().unwrap_or_default(),
-        bar.volume.0.to_f64().unwrap_or_default(),
+        bar.open.value().to_f64().unwrap_or_default(),
+        bar.high.value().to_f64().unwrap_or_default(),
+        bar.low.value().to_f64().unwrap_or_default(),
+        bar.close.value().to_f64().unwrap_or_default(),
+        bar.volume.value().to_f64().unwrap_or_default(),
         ts,
         ts,
     )

@@ -191,7 +191,7 @@ impl MetricsCollector {
     /// Record a newly generated candidate order from strategy.
     pub fn record_order_generation(&self, req: &OrderRequest) {
         self.order_ops_counter
-            .with_label_values(&[&req.algo_id, &req.instrument.symbol, "generation"])
+            .with_label_values(&[&req.algo_id, req.instrument.symbol(), "generation"])
             .inc();
     }
 
@@ -230,7 +230,7 @@ impl MetricsCollector {
 
         if success {
             self.order_ops_counter
-                .with_label_values(&[&req.algo_id, &req.instrument.symbol, "placement"])
+                .with_label_values(&[&req.algo_id, req.instrument.symbol(), "placement"])
                 .inc();
         }
     }
@@ -244,10 +244,10 @@ impl MetricsCollector {
 
     /// Record an execution fill report: updates notional turnover.
     pub fn record_fill(&self, fill: &FillReport) {
-        let notional = fill.price.0 * fill.quantity.0;
+        let notional = fill.price.value() * fill.quantity.value();
         if let Some(val) = notional.to_f64() {
             self.turnover_counter
-                .with_label_values(&[&fill.algo_id, &fill.instrument.symbol])
+                .with_label_values(&[&fill.algo_id, fill.instrument.symbol()])
                 .inc_by(val);
         }
     }

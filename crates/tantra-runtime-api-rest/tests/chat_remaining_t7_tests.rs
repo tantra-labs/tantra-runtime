@@ -28,7 +28,7 @@ use tempfile::tempdir;
 use tower::util::ServiceExt;
 
 fn iid() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "X")
+    InstrumentId::try_new(Exchange::Nse, "X").unwrap()
 }
 
 fn state() -> AppState {
@@ -44,7 +44,8 @@ fn state() -> AppState {
 }
 
 fn bar(ts: u64, open: f64) -> tantra_core::Bar {
-    let px = tantra_core::Price::new(rust_decimal::Decimal::from_f64_retain(open).unwrap());
+    let px =
+        tantra_core::Price::try_new(rust_decimal::Decimal::from_f64_retain(open).unwrap()).unwrap();
     tantra_core::Bar {
         instrument: iid(),
         open: px,
@@ -102,8 +103,8 @@ async fn order_flow_populates_the_shared_ledger_and_tax_reader() {
     assert_eq!(account.cash, tantra_core::Money::inr(dec!(-2525)));
     let positions = st.shared_ledger.open_lots(&acct);
     assert_eq!(positions.len(), 1);
-    assert_eq!(positions[0].quantity, Quantity::new(dec!(25)));
-    assert_eq!(positions[0].entry_price, Price::new(dec!(101)));
+    assert_eq!(positions[0].quantity, Quantity::try_new(dec!(25)).unwrap());
+    assert_eq!(positions[0].entry_price, Price::try_new(dec!(101)).unwrap());
 
     // The order row advanced to Filled alongside the REST ledger.
     let orders = st.shared_ledger.closed_lots(&acct); // (empty — no sells yet)
@@ -131,10 +132,10 @@ async fn order_flow_populates_the_shared_ledger_and_tax_reader() {
     let closed = tax.closed_lots(&acct, Default::default()).await.unwrap();
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].instrument, iid());
-    assert_eq!(closed[0].entry_price, Price::new(dec!(101)));
-    assert_eq!(closed[0].exit_price, Price::new(dec!(103)));
+    assert_eq!(closed[0].entry_price, Price::try_new(dec!(101)).unwrap());
+    assert_eq!(closed[0].exit_price, Price::try_new(dec!(103)).unwrap());
     assert_eq!(closed[0].realized_pnl, tantra_core::Money::inr(dec!(50)));
-    assert_eq!(closed[0].quantity, Quantity::new(dec!(25)));
+    assert_eq!(closed[0].quantity, Quantity::try_new(dec!(25)).unwrap());
 
     // Cash: -2525 (buy) + 2575 (sell) = 50.
     assert_eq!(
@@ -188,7 +189,7 @@ async fn trade_intent_sink_enqueues_into_the_jobs_registry() {
             instrument: iid(),
             side: "buy".to_string(),
             order_type: "market".to_string(),
-            quantity: Quantity::new(dec!(25)),
+            quantity: Quantity::try_new(dec!(25)).unwrap(),
             price: None,
             paper_trading: true,
             rationale: Some("test intent".to_string()),

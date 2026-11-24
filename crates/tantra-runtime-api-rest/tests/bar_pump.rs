@@ -15,7 +15,7 @@ use tantra_runtime_api_rest::{AppState, api_router_with};
 use tower::util::ServiceExt;
 
 fn iid() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "X")
+    InstrumentId::try_new(Exchange::Nse, "X").unwrap()
 }
 
 fn state() -> AppState {
@@ -31,7 +31,8 @@ fn state() -> AppState {
 }
 
 fn bar(ts: u64, open: f64) -> tantra_core::Bar {
-    let px = tantra_core::Price::new(rust_decimal::Decimal::from_f64_retain(open).unwrap());
+    let px =
+        tantra_core::Price::try_new(rust_decimal::Decimal::from_f64_retain(open).unwrap()).unwrap();
     tantra_core::Bar {
         instrument: iid(),
         open: px,

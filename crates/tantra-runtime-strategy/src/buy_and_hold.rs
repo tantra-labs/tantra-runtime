@@ -17,7 +17,7 @@ use crate::strategy::Strategy;
 /// use tantra_core::{Exchange, InstrumentId, Quantity};
 ///
 /// let strategy = BuyAndHold::new(
-///     InstrumentId::new(Exchange::Nse, "NIFTY50"),
+///     InstrumentId::try_new(Exchange::Nse, "NIFTY50").unwrap(),
 ///     Quantity::from_u64(75),
 /// );
 /// assert_eq!(strategy.name(), "buy_and_hold");

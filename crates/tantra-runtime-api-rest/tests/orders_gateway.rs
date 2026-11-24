@@ -31,7 +31,7 @@ use tower::util::ServiceExt;
 /// A flat bar on `X.NSE` at event time `ts`, close `open`, volume 1000 — a book the exchange
 /// can actually fill against (the `flat_bar` fixture's volume-1 book participates up to zero).
 fn bar(ts: u64, open: f64) -> tantra_core::Bar {
-    let px = tantra_core::Price::new(Decimal::from_f64_retain(open).unwrap());
+    let px = tantra_core::Price::try_new(Decimal::from_f64_retain(open).unwrap()).unwrap();
     tantra_core::Bar {
         instrument: any_instrument(),
         open: px,

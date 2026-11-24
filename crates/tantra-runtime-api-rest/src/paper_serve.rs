@@ -150,7 +150,8 @@ pub fn parse_tape(path: &Path) -> Result<Tape, ErrorDetail> {
         .into_iter()
         .map(|ti| {
             Ok(Instrument::new(
-                InstrumentId::new(parse_exchange(&ti.exchange)?, ti.symbol),
+                InstrumentId::try_new(parse_exchange(&ti.exchange)?, ti.symbol)
+                    .map_err(|e| err(e.to_string()))?,
                 parse_kind(&ti.kind)?,
                 parse_currency(&ti.currency)?,
                 ti.lot_size,
@@ -164,12 +165,14 @@ pub fn parse_tape(path: &Path) -> Result<Tape, ErrorDetail> {
         .into_iter()
         .map(|tb| {
             Ok(Bar {
-                instrument: InstrumentId::new(parse_exchange(&tb.exchange)?, tb.symbol),
-                open: Price::new(parse_decimal(&tb.open)?),
-                high: Price::new(parse_decimal(&tb.high)?),
-                low: Price::new(parse_decimal(&tb.low)?),
-                close: Price::new(parse_decimal(&tb.close)?),
-                volume: Quantity::new(parse_decimal(&tb.volume)?),
+                instrument: InstrumentId::try_new(parse_exchange(&tb.exchange)?, tb.symbol)
+                    .map_err(|e| err(e.to_string()))?,
+                open: Price::try_new(parse_decimal(&tb.open)?).map_err(|e| err(e.to_string()))?,
+                high: Price::try_new(parse_decimal(&tb.high)?).map_err(|e| err(e.to_string()))?,
+                low: Price::try_new(parse_decimal(&tb.low)?).map_err(|e| err(e.to_string()))?,
+                close: Price::try_new(parse_decimal(&tb.close)?).map_err(|e| err(e.to_string()))?,
+                volume: Quantity::try_new(parse_decimal(&tb.volume)?)
+                    .map_err(|e| err(e.to_string()))?,
                 timestamp: DateTime::parse_from_rfc3339(&tb.timestamp)
                     .map_err(|e| err(format!("bad bar timestamp {}: {e}", tb.timestamp)))?
                     .with_timezone(&Utc),

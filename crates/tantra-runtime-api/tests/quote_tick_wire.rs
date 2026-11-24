@@ -15,7 +15,7 @@ fn ts() -> DateTime<Utc> {
 }
 
 fn instrument() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "TCS")
+    InstrumentId::try_new(Exchange::Nse, "TCS").unwrap()
 }
 
 fn plain() -> QuoteTick {
@@ -33,11 +33,11 @@ fn plain() -> QuoteTick {
 /// A quote carrying every session-summary field.
 fn summarized() -> QuoteTick {
     plain().with_session_summary(
-        Some(Price::new(dec!(2450.25))),
-        Some(Price::new(dec!(2460.00))),
-        Some(Price::new(dec!(2440.00))),
-        Some(Price::new(dec!(2430.00))),
-        Some(Quantity::new(dec!(12500))),
+        Some(Price::try_new(dec!(2450.25)).unwrap()),
+        Some(Price::try_new(dec!(2460.00)).unwrap()),
+        Some(Price::try_new(dec!(2440.00)).unwrap()),
+        Some(Price::try_new(dec!(2430.00)).unwrap()),
+        Some(Quantity::try_new(dec!(12500)).unwrap()),
     )
 }
 
@@ -70,8 +70,11 @@ fn a_summarized_quote_round_trips_as_decimal_strings() {
     // Round trip: parsing the serialized form restores the exact quote.
     let back: QuoteTick = serde_json::from_value(value).unwrap();
     assert_eq!(back, summarized());
-    assert_eq!(back.last_price, Some(Price::new(dec!(2450.25))));
-    assert_eq!(back.volume, Some(Quantity::new(dec!(12500))));
+    assert_eq!(
+        back.last_price,
+        Some(Price::try_new(dec!(2450.25)).unwrap())
+    );
+    assert_eq!(back.volume, Some(Quantity::try_new(dec!(12500)).unwrap()));
 }
 
 #[test]
@@ -111,9 +114,15 @@ fn a_payload_with_the_summary_fields_parses_them() {
         "volume": "12500",
     });
     let back: QuoteTick = serde_json::from_value(wire).unwrap();
-    assert_eq!(back.last_price, Some(Price::new(dec!(2450.25))));
-    assert_eq!(back.day_high, Some(Price::new(dec!(2460.00))));
-    assert_eq!(back.day_low, Some(Price::new(dec!(2440.00))));
-    assert_eq!(back.prev_close, Some(Price::new(dec!(2430.00))));
-    assert_eq!(back.volume, Some(Quantity::new(dec!(12500))));
+    assert_eq!(
+        back.last_price,
+        Some(Price::try_new(dec!(2450.25)).unwrap())
+    );
+    assert_eq!(back.day_high, Some(Price::try_new(dec!(2460.00)).unwrap()));
+    assert_eq!(back.day_low, Some(Price::try_new(dec!(2440.00)).unwrap()));
+    assert_eq!(
+        back.prev_close,
+        Some(Price::try_new(dec!(2430.00)).unwrap())
+    );
+    assert_eq!(back.volume, Some(Quantity::try_new(dec!(12500)).unwrap()));
 }

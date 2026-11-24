@@ -504,7 +504,7 @@ pub(crate) fn metric_value(key: &str, bars: &[Bar]) -> Option<Decimal> {
             return None;
         }
         let window = &bars[bars.len() - period..];
-        let sum: Decimal = window.iter().map(|bar| bar.close.0).sum();
+        let sum: Decimal = window.iter().map(|bar| bar.close.value()).sum();
         // Exact decimal mean: the sum over the period, at the period's scale.
         return Some(sum / Decimal::from(period as u32));
     }
@@ -517,7 +517,7 @@ pub(crate) fn metric_value(key: &str, bars: &[Bar]) -> Option<Decimal> {
         let mut gains = Decimal::ZERO;
         let mut losses = Decimal::ZERO;
         for i in 1..=period {
-            let diff = window[i].close.0 - window[i - 1].close.0;
+            let diff = window[i].close.value() - window[i - 1].close.value();
             if diff > Decimal::ZERO {
                 gains += diff;
             } else {
@@ -535,11 +535,11 @@ pub(crate) fn metric_value(key: &str, bars: &[Bar]) -> Option<Decimal> {
     }
     let last = bars.last()?;
     match key {
-        "open" => Some(last.open.0),
-        "high" => Some(last.high.0),
-        "low" => Some(last.low.0),
-        "close" => Some(last.close.0),
-        "volume" => Some(last.volume.0),
+        "open" => Some(last.open.value()),
+        "high" => Some(last.high.value()),
+        "low" => Some(last.low.value()),
+        "close" => Some(last.close.value()),
+        "volume" => Some(last.volume.value()),
         _ => None,
     }
 }

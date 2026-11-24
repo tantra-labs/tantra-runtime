@@ -110,7 +110,7 @@ async fn l2_with_a_tick_source_completes() {
 }
 
 fn tcs_quotes() -> Vec<QuoteTick> {
-    let tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    let tcs = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     (0..80u64)
         .map(|i| {
             let t = UnixNanos::from_u64(BARS_FROM_NS + i * DAY_NS);

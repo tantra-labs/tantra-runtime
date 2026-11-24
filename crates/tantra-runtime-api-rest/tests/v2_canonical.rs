@@ -13,7 +13,7 @@ use tantra_runtime_api_rest::{ApiConfig, AppState, api_router_with, api_router_w
 use tower::util::ServiceExt;
 
 fn state() -> AppState {
-    let id = InstrumentId::new(Exchange::Nse, "X");
+    let id = InstrumentId::try_new(Exchange::Nse, "X").unwrap();
     let spec = BarSpecification::new(1, BarAggregation::Minute, PriceType::Last);
     let mut builder = ColumnarSliceBuilder::new(id.clone(), spec);
     builder

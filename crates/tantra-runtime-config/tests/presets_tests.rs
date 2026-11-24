@@ -28,7 +28,7 @@ fn price(s: &str) -> tantra_core::Price {
 }
 
 fn instrument() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "RELIANCE")
+    InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap()
 }
 
 fn budget() -> RiskBudget {

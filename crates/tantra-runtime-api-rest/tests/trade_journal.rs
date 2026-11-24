@@ -32,7 +32,8 @@ fn build_router() -> Router {
     let qty = tantra_core::Quantity::from_u64(10);
     let trade = ClosedTrade {
         trade_id: "T-1".to_string(),
-        instrument: tantra_core::InstrumentId::new(tantra_core::Exchange::Nse, "RELIANCE"),
+        instrument: tantra_core::InstrumentId::try_new(tantra_core::Exchange::Nse, "RELIANCE")
+            .unwrap(),
         side: tantra_core::PositionSide::Long,
         quantity: qty,
         entry_price: entry,

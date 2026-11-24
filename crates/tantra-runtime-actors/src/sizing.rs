@@ -100,10 +100,9 @@ impl PositionSizingActor {
                     reply_to,
                 } => {
                     let budget = evaluate_risk_budget(&self.portfolio, self.risk_pct);
-                    let entry_price = request
-                        .order_type
-                        .limit_price()
-                        .unwrap_or(Price(dec!(100.00)));
+                    let entry_price = request.order_type.limit_price().unwrap_or(
+                        Price::try_new(dec!(100.00)).expect("valid default entry price"),
+                    );
 
                     let side = match request.side {
                         tantra_core::OrderSide::Buy => PositionSide::Long,

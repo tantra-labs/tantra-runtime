@@ -19,7 +19,8 @@ const T0: u64 = 1_704_067_200_000_000_000;
 
 fn daily(symbol: &str, closes: &[f64]) -> tantra_runtime_api_rest::market_feed::ColumnarSlice {
     let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
-    let mut builder = ColumnarSliceBuilder::new(InstrumentId::new(Exchange::Nse, symbol), spec);
+    let mut builder =
+        ColumnarSliceBuilder::new(InstrumentId::try_new(Exchange::Nse, symbol).unwrap(), spec);
     for (i, &c) in closes.iter().enumerate() {
         builder
             .push(

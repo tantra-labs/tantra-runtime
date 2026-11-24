@@ -208,7 +208,9 @@ impl FeedMarketReader {
 /// derivation [`FeedMarketReader::quote`] uses).
 fn to_option_contract(contract: ChainContract) -> OptionContract {
     let last_price = match (contract.bid, contract.ask) {
-        (Some(bid), Some(ask)) => Some(Price::new((bid.value() + ask.value()) / Decimal::from(2))),
+        (Some(bid), Some(ask)) => {
+            Price::try_new((bid.value() + ask.value()) / Decimal::from(2)).ok()
+        }
         (Some(bid), None) => Some(bid),
         (None, Some(ask)) => Some(ask),
         (None, None) => contract.last_price,
@@ -249,18 +251,18 @@ impl MarketReader for FeedMarketReader {
         let (last_price, volume) = match &self.trades {
             Some(reader) => match reader.read_trade_snapshot(instrument).await {
                 Ok(Some(snapshot)) => (
-                    Price::new(to_decimal(snapshot.last.price())),
-                    Quantity::new(to_decimal(snapshot.day_volume)),
+                    Price::try_new(to_decimal(snapshot.last.price())).unwrap_or(Price::ZERO),
+                    Quantity::try_new(to_decimal(snapshot.day_volume)).unwrap_or(Quantity::ZERO),
                 ),
-                _ => (Price::new(mid), Quantity::new(Decimal::ZERO)),
+                _ => (Price::try_new(mid).unwrap_or(Price::ZERO), Quantity::ZERO),
             },
-            None => (Price::new(mid), Quantity::new(Decimal::ZERO)),
+            None => (Price::try_new(mid).unwrap_or(Price::ZERO), Quantity::ZERO),
         };
         Ok(MarketQuote {
             instrument: instrument.clone(),
             last_price,
-            bid: Some(Price::new(bid)),
-            ask: Some(Price::new(ask)),
+            bid: Price::try_new(bid).ok(),
+            ask: Price::try_new(ask).ok(),
             volume,
             as_of: tick.ts_event().to_datetime(),
         })
@@ -290,11 +292,11 @@ impl MarketReader for FeedMarketReader {
             .take(effective_limit)
             .map(|b| MarketBar {
                 timestamp: b.ts_event().to_datetime(),
-                open: Price::new(to_decimal(b.open())),
-                high: Price::new(to_decimal(b.high())),
-                low: Price::new(to_decimal(b.low())),
-                close: Price::new(to_decimal(b.close())),
-                volume: Quantity::new(to_decimal(b.volume())),
+                open: Price::try_new(to_decimal(b.open())).unwrap_or(Price::ZERO),
+                high: Price::try_new(to_decimal(b.high())).unwrap_or(Price::ZERO),
+                low: Price::try_new(to_decimal(b.low())).unwrap_or(Price::ZERO),
+                close: Price::try_new(to_decimal(b.close())).unwrap_or(Price::ZERO),
+                volume: Quantity::try_new(to_decimal(b.volume())).unwrap_or(Quantity::ZERO),
             })
             .collect();
 
@@ -322,11 +324,11 @@ impl MarketReader for FeedMarketReader {
             .iter()
             .map(|b| Bar {
                 instrument: instrument.clone(),
-                open: Price::new(to_decimal(b.open())),
-                high: Price::new(to_decimal(b.high())),
-                low: Price::new(to_decimal(b.low())),
-                close: Price::new(to_decimal(b.close())),
-                volume: Quantity::new(to_decimal(b.volume())),
+                open: Price::try_new(to_decimal(b.open())).unwrap_or(Price::ZERO),
+                high: Price::try_new(to_decimal(b.high())).unwrap_or(Price::ZERO),
+                low: Price::try_new(to_decimal(b.low())).unwrap_or(Price::ZERO),
+                close: Price::try_new(to_decimal(b.close())).unwrap_or(Price::ZERO),
+                volume: Quantity::try_new(to_decimal(b.volume())).unwrap_or(Quantity::ZERO),
                 timestamp: b.ts_event().to_datetime(),
             })
             .collect();
@@ -471,15 +473,15 @@ impl MarketReader for FeedMarketReader {
         let q = query.trim().to_lowercase();
         let hits = instruments
             .into_iter()
-            .filter(|inst| inst.id().symbol.to_lowercase().contains(&q))
+            .filter(|inst| inst.id().symbol().to_lowercase().contains(&q))
             .map(|inst| InstrumentSearchResult {
                 instrument: inst.id().clone(),
                 name: inst
                     .display_name()
                     .filter(|s| !s.is_empty())
                     .map(str::to_string)
-                    .unwrap_or_else(|| inst.id().symbol.clone()),
-                exchange: inst.id().exchange.as_str().to_string(),
+                    .unwrap_or_else(|| inst.id().symbol().to_string()),
+                exchange: inst.id().exchange().as_str().to_string(),
                 lot_size: Some(inst.lot_size().round() as u64),
             })
             .collect();
@@ -728,8 +730,10 @@ impl MarketReader for FeedMarketReader {
                         .and_hms_opt(0, 0, 0)
                         .expect("midnight is always a valid time of day"),
                 ),
-                traded_qty: Quantity::new(Decimal::from(r.traded_quantity)),
-                delivered_qty: Quantity::new(Decimal::from(r.deliverable_quantity)),
+                traded_qty: Quantity::try_new(Decimal::from(r.traded_quantity))
+                    .unwrap_or(Quantity::ZERO),
+                delivered_qty: Quantity::try_new(Decimal::from(r.deliverable_quantity))
+                    .unwrap_or(Quantity::ZERO),
                 delivery_pct: r.delivery_pct,
             })
             .collect();
@@ -893,7 +897,7 @@ pub(crate) fn parse_instrument(s: &str) -> Option<InstrumentId> {
         return None;
     }
     let exchange = exchange.parse::<Exchange>().ok()?;
-    Some(InstrumentId::new(exchange, symbol))
+    InstrumentId::try_new(exchange, symbol).ok()
 }
 
 /// The indicator families [`FeedMarketReader::indicators`] recognizes.
@@ -986,10 +990,10 @@ fn to_corporate_action(projection: CorporateActionProjection) -> Option<Corporat
         amount,
         ratio_from: projection
             .old_shares
-            .map(|old| Quantity::new(Decimal::from(old))),
+            .and_then(|old| Quantity::try_new(Decimal::from(old)).ok()),
         ratio_to: projection
             .new_shares
-            .map(|new| Quantity::new(Decimal::from(new))),
+            .and_then(|new| Quantity::try_new(Decimal::from(new)).ok()),
     })
 }
 
@@ -1003,8 +1007,8 @@ fn to_block_deal(projection: BlockDealProjection) -> Option<BlockDeal> {
         client_name: projection.client_name,
         side: projection.side.to_lowercase(), // "BUY"/"SELL" → "buy"/"sell"
         category: projection.category,
-        quantity: Quantity::new(projection.quantity),
-        price: Price::new(projection.price),
+        quantity: Quantity::try_new(projection.quantity).ok()?,
+        price: Price::try_new(projection.price).ok()?,
         trade_date: Utc.from_utc_datetime(
             &projection
                 .trade_date
@@ -1088,7 +1092,7 @@ impl SnapshotSource for FeedSnapshotSource {
             .map_err(feed_port_error)?;
         let universe: Vec<String> = instruments
             .into_iter()
-            .map(|i| i.id().symbol.clone())
+            .map(|i| i.id().symbol().to_string())
             .collect();
 
         let mut risk_metrics = HashMap::new();

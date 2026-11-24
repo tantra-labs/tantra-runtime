@@ -129,7 +129,7 @@ impl PortfolioActor {
             OrderSide::Buy => PortfolioPositionSide::Long,
             OrderSide::Sell => PortfolioPositionSide::Short,
         };
-        let qty = fill.quantity.0.try_into().unwrap_or(0);
+        let qty = fill.quantity.value().try_into().unwrap_or(0);
         let price = fill.price;
         let fill_date = fill.timestamp.date_naive();
 
@@ -192,7 +192,7 @@ impl PortfolioActor {
 
     /// Calculate Indian statutory fees for a fill.
     fn calculate_fees(&self, fill: &FillReport, is_delivery: bool) -> FeeBreakdown {
-        let notional = fill.price.0 * fill.quantity.0;
+        let notional = fill.price.value() * fill.quantity.value();
 
         // STT
         let stt_rate = if is_delivery {
@@ -282,8 +282,8 @@ impl PortfolioActor {
 
             for pos in &account.positions {
                 if let Some(mark) = self.marks.marks.get(&pos.instrument) {
-                    let market_value = mark.0 * pos.quantity.0;
-                    let cost_basis = pos.entry_price.0 * pos.quantity.0;
+                    let market_value = mark.value() * pos.quantity.value();
+                    let cost_basis = pos.entry_price.value() * pos.quantity.value();
                     let unrealized = market_value - cost_basis;
                     total_unrealized = Money {
                         amount: total_unrealized.amount + unrealized,

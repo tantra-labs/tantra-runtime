@@ -80,8 +80,8 @@ impl IpoReader for FeedIpoReader {
                     company_name: issue.company_name,
                     open_date: midnight_utc(open_date),
                     close_date: midnight_utc(issue.close_date.unwrap_or(open_date)),
-                    price_min: issue.price_band_low.map(Price::new),
-                    price_max: issue.price_band_high.map(Price::new),
+                    price_min: issue.price_band_low.and_then(|p| Price::try_new(p).ok()),
+                    price_max: issue.price_band_high.and_then(|p| Price::try_new(p).ok()),
                     lot_size: issue.lot_size.and_then(|lot| lot.to_u64()),
                     issue_size: issue
                         .issue_size_cr

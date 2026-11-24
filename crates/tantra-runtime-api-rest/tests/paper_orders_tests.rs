@@ -22,7 +22,7 @@ use tantra_runtime_api_rest::{AppState, api_router_with};
 use tower::util::ServiceExt;
 
 fn iid() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "X")
+    InstrumentId::try_new(Exchange::Nse, "X").unwrap()
 }
 
 /// One instrument `X.NSE` (INR equity, lot 25, tick 0.05) with one bar closing at 100. The
@@ -44,7 +44,7 @@ fn state() -> AppState {
 /// exchange seeds synthetic depth at `open` with that volume (a 1000-lot book participates up
 /// to a 500-lot cap per order).
 fn bar(ts: u64, open: f64) -> tantra_core::Bar {
-    let px = tantra_core::Price::new(Decimal::from_f64_retain(open).unwrap());
+    let px = tantra_core::Price::try_new(Decimal::from_f64_retain(open).unwrap()).unwrap();
     tantra_core::Bar {
         instrument: iid(),
         open: px,

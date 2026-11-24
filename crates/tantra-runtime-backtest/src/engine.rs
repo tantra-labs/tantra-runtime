@@ -130,14 +130,17 @@ fn apply_fill_with_add_support(
         && account.positions[idx].side == new_side
     {
         let pos = &mut account.positions[idx];
-        let old_qty = pos.quantity.0;
+        let old_qty = pos.quantity.value();
         let add_qty = Decimal::from(filled_qty);
         let new_qty = old_qty + add_qty;
         if new_qty > Decimal::ZERO {
-            pos.entry_price =
-                Price((pos.entry_price.0 * old_qty + fill_price.0 * add_qty) / new_qty);
+            pos.entry_price = Price::try_new(
+                ((pos.entry_price.value() * old_qty + fill_price.value() * add_qty) / new_qty)
+                    .max(Decimal::ZERO),
+            )
+            .expect("non-negative avg price");
         }
-        pos.quantity = Quantity::new(new_qty);
+        pos.quantity = Quantity::try_new(new_qty).expect("positive quantity");
         return Money::inr(Decimal::ZERO);
     }
 
@@ -560,10 +563,11 @@ impl<S: Strategy> BacktestEngine<S> {
                 if let Some(p) = t.last_price() {
                     self.latest_prices.insert(t.instrument().clone(), p);
                 } else if let Tick::Quote { bid, ask, .. } = t
-                    && bid.0 > Decimal::ZERO
-                    && ask.0 > Decimal::ZERO
+                    && bid.value() > Decimal::ZERO
+                    && ask.value() > Decimal::ZERO
                 {
-                    let mid = Price(((bid.0 + ask.0) / dec!(2)).round_dp(4));
+                    let mid = Price::try_new(((bid.value() + ask.value()) / dec!(2)).round_dp(4))
+                        .expect("non-negative mid");
                     self.latest_prices.insert(t.instrument().clone(), mid);
                 }
             }
@@ -634,7 +638,7 @@ impl<S: Strategy> BacktestEngine<S> {
                     None => order
                         .order_type
                         .limit_price()
-                        .unwrap_or(Price(dec!(100.00))),
+                        .unwrap_or(Price::try_new(dec!(100.00)).expect("valid fallback price")),
                 };
                 let side = match order.side {
                     OrderSide::Buy => tantra_core::PositionSide::Long,
@@ -719,12 +723,12 @@ impl<S: Strategy> BacktestEngine<S> {
                 OrderType::StopLoss(trigger) => {
                     let crossed = match order.side {
                         OrderSide::Sell => {
-                            current_price.0 <= trigger.0
-                                || bar_open.is_some_and(|o| o.0 <= trigger.0)
+                            current_price.value() <= trigger.value()
+                                || bar_open.is_some_and(|o| o.value() <= trigger.value())
                         }
                         OrderSide::Buy => {
-                            current_price.0 >= trigger.0
-                                || bar_open.is_some_and(|o| o.0 >= trigger.0)
+                            current_price.value() >= trigger.value()
+                                || bar_open.is_some_and(|o| o.value() >= trigger.value())
                         }
                     };
                     if !crossed {
@@ -732,11 +736,11 @@ impl<S: Strategy> BacktestEngine<S> {
                     } else {
                         match order.side {
                             OrderSide::Sell => match bar_open {
-                                Some(o) if o.0 < trigger.0 => o, // gapped down through the sell stop: fill at the open
+                                Some(o) if o.value() < trigger.value() => o, // gapped down through the sell stop: fill at the open
                                 _ => trigger,
                             },
                             OrderSide::Buy => match bar_open {
-                                Some(o) if o.0 > trigger.0 => o, // gapped up through the buy stop
+                                Some(o) if o.value() > trigger.value() => o, // gapped up through the buy stop
                                 _ => trigger,
                             },
                         }
@@ -745,25 +749,25 @@ impl<S: Strategy> BacktestEngine<S> {
                 OrderType::StopLimit { trigger, limit } => {
                     let crossed = match order.side {
                         OrderSide::Sell => {
-                            current_price.0 <= trigger.0
-                                || bar_open.is_some_and(|o| o.0 <= trigger.0)
+                            current_price.value() <= trigger.value()
+                                || bar_open.is_some_and(|o| o.value() <= trigger.value())
                         }
                         OrderSide::Buy => {
-                            current_price.0 >= trigger.0
-                                || bar_open.is_some_and(|o| o.0 >= trigger.0)
+                            current_price.value() >= trigger.value()
+                                || bar_open.is_some_and(|o| o.value() >= trigger.value())
                         }
                     };
                     if !crossed {
                         current_price
                     } else {
                         let realized = match (order.side, bar_open) {
-                            (OrderSide::Sell, Some(o)) if o.0 < trigger.0 => o, // gap-down realized price
-                            (OrderSide::Buy, Some(o)) if o.0 > trigger.0 => o, // gap-up realized price
+                            (OrderSide::Sell, Some(o)) if o.value() < trigger.value() => o, // gap-down realized price
+                            (OrderSide::Buy, Some(o)) if o.value() > trigger.value() => o, // gap-up realized price
                             _ => current_price,
                         };
                         let marketable = match order.side {
-                            OrderSide::Sell => realized.0 >= limit.0,
-                            OrderSide::Buy => realized.0 <= limit.0,
+                            OrderSide::Sell => realized.value() >= limit.value(),
+                            OrderSide::Buy => realized.value() <= limit.value(),
                         };
                         if !marketable {
                             return; // gapped through a stop-LIMIT: the limit is never marketable
@@ -773,7 +777,12 @@ impl<S: Strategy> BacktestEngine<S> {
                 }
                 _ => current_price,
             };
-            (order.quantity.0, fill_price, Decimal::ZERO, Decimal::ZERO)
+            (
+                order.quantity.value(),
+                fill_price,
+                Decimal::ZERO,
+                Decimal::ZERO,
+            )
         };
 
         if filled_qty <= Decimal::ZERO {
@@ -788,12 +797,18 @@ impl<S: Strategy> BacktestEngine<S> {
                 order.side,
                 filled_qty.to_i64().unwrap_or(0),
                 1_000,
-                fill_price.0,
+                fill_price.value(),
             );
-            let adj = (fill_price.0 * slip_pct).round_dp(4);
+            let adj = (fill_price.value() * slip_pct).round_dp(4);
             match order.side {
-                OrderSide::Buy => fill_price = Price(fill_price.0 + adj.abs()),
-                OrderSide::Sell => fill_price = Price((fill_price.0 - adj.abs()).max(dec!(0.01))),
+                OrderSide::Buy => {
+                    fill_price = Price::try_new(fill_price.value() + adj.abs())
+                        .expect("non-negative fill price")
+                }
+                OrderSide::Sell => {
+                    fill_price = Price::try_new((fill_price.value() - adj.abs()).max(dec!(0.01)))
+                        .expect("non-negative fill price")
+                }
             }
             order_impact += (adj.abs() * filled_qty).round_dp(4);
         }
@@ -855,7 +870,7 @@ impl<S: Strategy> BacktestEngine<S> {
                 // `exchange_orders`; skip defensively rather than guessing.
                 continue;
             };
-            self.account_exchange_fill(&order, fill.price, fill.quantity.0, fill.timestamp);
+            self.account_exchange_fill(&order, fill.price, fill.quantity.value(), fill.timestamp);
         }
     }
 
@@ -886,7 +901,7 @@ impl<S: Strategy> BacktestEngine<S> {
             .get(&order.instrument)
             .copied()
             .unwrap_or(fill_price);
-        let mut order_impact = (fill_price.0 - current_price.0).abs() * filled_qty;
+        let mut order_impact = (fill_price.value() - current_price.value()).abs() * filled_qty;
 
         // Spread-crossing & volume-participation slippage accounting, using
         // the exchange's post-match spread (it has no pre-match read).
@@ -900,8 +915,9 @@ impl<S: Strategy> BacktestEngine<S> {
                 model.compute_spread_crossing_penalty(bid_before, ask_before, fill_price);
             let filled_i64 = filled_qty.to_i64().unwrap_or(0);
             let pre_depth = filled_i64.max(1);
-            let slip_pct = model.compute_slippage(order.side, filled_i64, pre_depth, fill_price.0);
-            let slip_rupees = (fill_price.0 * slip_pct.abs() + spread_penalty) * filled_qty;
+            let slip_pct =
+                model.compute_slippage(order.side, filled_i64, pre_depth, fill_price.value());
+            let slip_rupees = (fill_price.value() * slip_pct.abs() + spread_penalty) * filled_qty;
             order_impact += slip_rupees.round_dp(4);
         }
 
@@ -925,7 +941,7 @@ impl<S: Strategy> BacktestEngine<S> {
         let instrument = &order.instrument;
         self.total_price_impact += order_impact;
 
-        let notional = fill_price.0 * filled_qty;
+        let notional = fill_price.value() * filled_qty;
         let is_first_sell = if order.side == OrderSide::Sell {
             self.scrips_sold_today.insert(instrument.clone())
         } else {
@@ -937,7 +953,7 @@ impl<S: Strategy> BacktestEngine<S> {
         // instrument's country jurisdiction (Phase 4.4 item 3) rather
         // than hardcoding NSE for every order.
         let tax_side = order.side;
-        let country = match order.instrument.exchange {
+        let country = match order.instrument.exchange() {
             tantra_core::Exchange::Nse
             | tantra_core::Exchange::Bse
             | tantra_core::Exchange::Mcx
@@ -949,7 +965,7 @@ impl<S: Strategy> BacktestEngine<S> {
             tax_side,
             self.product_type,
             tax_exchange,
-            fill_price.0,
+            fill_price.value(),
             filled_qty,
             is_first_sell,
         );
@@ -985,7 +1001,7 @@ impl<S: Strategy> BacktestEngine<S> {
             instrument: order.instrument.clone(),
             side: order.side,
             price: fill_price,
-            quantity: Quantity(filled_qty),
+            quantity: Quantity::try_new(filled_qty).expect("positive filled_qty"),
             algo_id: order.algo_id.clone(),
             timestamp,
             correlation_id: order.correlation_id,
@@ -1053,7 +1069,7 @@ impl<S: Strategy> BacktestEngine<S> {
             } else {
                 PositionSide::Short
             },
-            quantity: Quantity(filled_qty),
+            quantity: Quantity::try_new(filled_qty).expect("positive filled_qty"),
             price: fill_price,
             product: to_kokoro_product(self.product_type),
             timestamp,
@@ -1069,7 +1085,7 @@ impl<S: Strategy> BacktestEngine<S> {
                     // Block bought Demat shares as unsettled receivable until T+1
                     self.demat_holdings.block_for_settlement(
                         order.instrument.clone(),
-                        Quantity(filled_qty),
+                        Quantity::try_new(filled_qty).expect("positive filled_qty"),
                         instruction.settle_date,
                         fill_id,
                     );
@@ -1090,7 +1106,7 @@ impl<S: Strategy> BacktestEngine<S> {
                         self.pending_margin_holdbacks
                             .push((instruction.settle_date, holdback));
                     }
-                    if self.demat_holdings.free_holdings(&order.instrument).0 >= filled_qty {
+                    if self.demat_holdings.free_holdings(&order.instrument).value() >= filled_qty {
                         self.pending_instructions.push(instruction.clone());
                     }
                 }
@@ -1260,7 +1276,7 @@ impl<S: Strategy> BacktestEngine<S> {
                 instrument,
                 side,
                 OrderType::Market,
-                Quantity(quantity.abs()),
+                Quantity::try_new(quantity.abs()).expect("positive close qty"),
                 "mis_square_off",
             );
             // Bypasses the strategy's own RiskEngine gate: this is the
@@ -1317,17 +1333,17 @@ impl<S: Strategy> BacktestEngine<S> {
     fn current_equity(&self) -> Decimal {
         let mut equity = self.settled_cash;
         for pos in &self.account.positions {
-            if pos.quantity.0 == Decimal::ZERO {
+            if pos.quantity.value() == Decimal::ZERO {
                 continue;
             }
             let mark = self
                 .latest_prices
                 .get(&pos.instrument)
-                .map(|p| p.0)
+                .map(|p| p.value())
                 .unwrap_or(Decimal::ZERO);
             let signed_qty = match pos.side {
-                PositionSide::Long => pos.quantity.0,
-                PositionSide::Short => -pos.quantity.0,
+                PositionSide::Long => pos.quantity.value(),
+                PositionSide::Short => -pos.quantity.value(),
             };
             equity += mark * signed_qty;
         }

@@ -123,7 +123,7 @@ async fn filings_read_through_projection() {
     assert_eq!(filings.len(), 2);
     assert_eq!(
         filings[0].instrument,
-        InstrumentId::new(Exchange::Nse, "RELIANCE-EQ")
+        InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap()
     );
     assert_eq!(filings[0].filing_type, "quarterly_result");
     assert_eq!(filings[0].title, "Board meeting outcome");
@@ -133,7 +133,7 @@ async fn filings_read_through_projection() {
     );
     assert_eq!(
         filings[1].instrument,
-        InstrumentId::new(Exchange::Nse, "TCS-EQ")
+        InstrumentId::try_new(Exchange::Nse, "TCS-EQ").unwrap()
     );
     assert_eq!(filings[1].title, "FY26 annual report");
     assert_eq!(filings[1].source_url, None);
@@ -195,7 +195,7 @@ async fn corporate_actions_read_through_projection() {
     assert_eq!(actions.len(), 1);
     assert_eq!(
         actions[0].instrument,
-        InstrumentId::new(Exchange::Nse, "RELIANCE-EQ")
+        InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap()
     );
     assert_eq!(actions[0].action_type, "dividend");
     assert_eq!(
@@ -270,21 +270,28 @@ async fn block_deals_read_through_projection() {
     assert_eq!(deals.len(), 2);
     assert_eq!(
         deals[0].instrument,
-        InstrumentId::new(Exchange::Nse, "RELIANCE-EQ")
+        InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap()
     );
     assert_eq!(deals[0].side, "buy");
     assert_eq!(deals[0].category, "block");
     assert_eq!(
         deals[0].quantity,
-        tantra_core::Quantity::new(Decimal::try_from_i128_with_scale(2_500_000_000, 4).unwrap())
+        tantra_core::Quantity::try_new(
+            Decimal::try_from_i128_with_scale(2_500_000_000, 4).unwrap()
+        )
+        .unwrap()
     );
     assert_eq!(
         deals[0].price,
-        tantra_core::Price::new(Decimal::try_from_i128_with_scale(25_005_000, 4).unwrap())
+        tantra_core::Price::try_new(Decimal::try_from_i128_with_scale(25_005_000, 4).unwrap())
+            .unwrap()
     );
 
     let tcs = reader
-        .block_deals(Some(&InstrumentId::new(Exchange::Nse, "TCS-EQ")), None)
+        .block_deals(
+            Some(&InstrumentId::try_new(Exchange::Nse, "TCS-EQ").unwrap()),
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(tcs.len(), 1);
@@ -556,7 +563,7 @@ async fn delivery_stats_read_through_projection() {
 
     let bars = reader
         .delivery_stats(
-            &InstrumentId::new(Exchange::Nse, "RELIANCE-EQ"),
+            &InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap(),
             DateRange::new(None, None),
             None,
         )
@@ -565,10 +572,16 @@ async fn delivery_stats_read_through_projection() {
     assert_eq!(bars.len(), 1);
     assert_eq!(
         bars[0].instrument,
-        InstrumentId::new(Exchange::Nse, "RELIANCE-EQ")
+        InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap()
     );
-    assert_eq!(bars[0].traded_qty, Quantity::new(Decimal::from(250_000)));
-    assert_eq!(bars[0].delivered_qty, Quantity::new(Decimal::from(125_000)));
+    assert_eq!(
+        bars[0].traded_qty,
+        Quantity::try_new(Decimal::from(250_000)).unwrap()
+    );
+    assert_eq!(
+        bars[0].delivered_qty,
+        Quantity::try_new(Decimal::from(125_000)).unwrap()
+    );
     assert_eq!(
         bars[0].delivery_pct,
         Decimal::try_from_i128_with_scale(50_000_000, 4).unwrap()
@@ -679,7 +692,7 @@ async fn unwired_readers_still_answer_unavailable() {
 
     let err = reader
         .delivery_stats(
-            &InstrumentId::new(Exchange::Nse, "RELIANCE-EQ"),
+            &InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap(),
             DateRange::new(None, None),
             None,
         )
@@ -702,7 +715,7 @@ async fn unwired_readers_still_answer_unavailable() {
 #[tokio::test]
 async fn fundamentals_read_through_projection() {
     let dir = tempdir().unwrap();
-    let reliance = InstrumentId::new(Exchange::Nse, "RELIANCE-EQ");
+    let reliance = InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap();
     let epoch_days = |y: i32, m: u32, d: u32| -> i32 {
         (NaiveDate::from_ymd_opt(y, m, d).unwrap() - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
             .num_days() as i32
@@ -851,7 +864,7 @@ async fn fundamentals_read_through_projection() {
     );
 
     // A different instrument with no projections answers not-found, never a fabricated empty.
-    let tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    let tcs = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     assert_eq!(
         reader.fundamental_ratios(&tcs).await.unwrap_err().kind,
         PortErrorKind::NotFound
@@ -1115,7 +1128,7 @@ async fn ipos_read_through_projection() {
         issues[0].open_date,
         Utc.with_ymd_and_hms(2026, 11, 18, 0, 0, 0).unwrap()
     );
-    assert_eq!(issues[0].price_min, Some(Price::new(dec!(50))));
+    assert_eq!(issues[0].price_min, Some(Price::try_new(dec!(50)).unwrap()));
     assert_eq!(issues[0].lot_size, Some(2500));
     assert_eq!(
         issues[0].issue_size,

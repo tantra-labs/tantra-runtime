@@ -70,7 +70,7 @@ async fn test_concurrent_persistence_transactions_under_load() {
                 .expect("decision insert");
 
             // 3. Upsert order
-            let inst = InstrumentId::new(Exchange::Nse, format!("LOADSYM{}", i));
+            let inst = InstrumentId::try_new(Exchange::Nse, format!("LOADSYM{}", i)).unwrap();
             let req = OrderRequest::new(
                 inst.clone(),
                 OrderSide::Buy,

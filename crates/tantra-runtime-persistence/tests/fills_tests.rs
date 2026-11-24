@@ -25,7 +25,7 @@ fn ts(secs: i64) -> DateTime<Utc> {
 
 fn sample_request(algo_id: &str) -> OrderRequest {
     OrderRequest::new(
-        InstrumentId::new(Exchange::Nse, "RELIANCE"),
+        InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap(),
         OrderSide::Buy,
         OrderType::Limit(Price::from_rupees("2850.50").unwrap()),
         Quantity::from_u64(100),
@@ -45,7 +45,7 @@ fn fill_report(
         fill_id,
         "BRK-ORDER-1",
         client_order_id,
-        InstrumentId::new(Exchange::Nse, "RELIANCE"),
+        InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap(),
         OrderSide::Buy,
         Price::from_rupees(price).unwrap(),
         Quantity::from_u64(qty),
@@ -198,7 +198,7 @@ async fn completed_single_fill_promotes_market_order_to_filled() {
     let fills = FillStore::new(&db);
 
     let req = OrderRequest::new(
-        InstrumentId::new(Exchange::Nse, "TCS"),
+        InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
         OrderSide::Sell,
         OrderType::Market,
         Quantity::from_u64(10),
@@ -218,7 +218,7 @@ async fn completed_single_fill_promotes_market_order_to_filled() {
                 "T-100",
                 "BRK-2",
                 req.client_order_id,
-                InstrumentId::new(Exchange::Nse, "TCS"),
+                InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
                 OrderSide::Sell,
                 Price::from_rupees("3900.00").unwrap(),
                 Quantity::from_u64(10),

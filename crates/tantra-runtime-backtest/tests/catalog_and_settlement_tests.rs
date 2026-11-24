@@ -164,7 +164,7 @@ fn test_l2_depth_walking_vwap_and_limit_matching() {
 
 #[test]
 fn test_spread_crossing_penalty_and_adverse_fill_slippage_in_engine() {
-    let inst = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let inst = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
     let strategy = SingleMarketBuyer {
         instrument: inst.clone(),
         qty: Quantity::from_u64(60),
@@ -240,12 +240,12 @@ fn test_spread_crossing_penalty_and_adverse_fill_slippage_in_engine() {
         "L2 depth walk + spread crossing + adverse fill model must record positive price_impact"
     );
     // Adverse fill model + 2-level ask walk pushes fill price above 2500.00
-    assert!(result.fills[0].price.0 > dec!(2500.00));
+    assert!(result.fills[0].price.value() > dec!(2500.00));
 }
 
 #[test]
 fn test_iccl_t1_demat_settlement_margin_holdbacks_and_double_entry_ledger() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let strategy = BuyOnDay1SellOnDay2 {
         instrument: inst.clone(),
         qty: Quantity::from_u64(100),
@@ -340,7 +340,7 @@ fn test_iccl_t1_demat_settlement_margin_holdbacks_and_double_entry_ledger() {
 
 #[test]
 fn test_intraday_mis_statutory_cost_rates() {
-    let inst = InstrumentId::new(Exchange::Nse, "SBIN");
+    let inst = InstrumentId::try_new(Exchange::Nse, "SBIN").unwrap();
     let strategy = BuyOnDay1SellOnDay2 {
         instrument: inst.clone(),
         qty: Quantity::from_u64(100),
@@ -478,7 +478,7 @@ fn test_catalog_loader_synthetic_partitions_and_bar_reader() {
 
     let loader = CatalogLoader::new(tmp.path());
     assert_eq!(loader.list_timeframes().unwrap(), vec!["1D".to_string()]);
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     assert_eq!(loader.list_instruments("1d").unwrap(), vec![inst.clone()]);
 
     // Overlapping boundary row d2 is deduplicated => 3 unique bars
@@ -584,11 +584,11 @@ fn test_catalog_loader_lakehouse_v2_decimal128_schema() {
     writer.close().unwrap();
 
     let loader = CatalogLoader::new(tmp.path());
-    let inst = InstrumentId::new(Exchange::Nse, "TCS");
+    let inst = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     let bars = loader.load_bars(&inst, "1d", None, None).unwrap();
     assert_eq!(bars.len(), 1);
-    assert_eq!(bars[0].close, Price(dec!(3525.5000)));
-    assert_eq!(bars[0].volume, Quantity(dec!(5000.0000)));
+    assert_eq!(bars[0].close, Price::try_new(dec!(3525.5000)).unwrap());
+    assert_eq!(bars[0].volume, Quantity::try_new(dec!(5000.0000)).unwrap());
 }
 
 #[test]
@@ -603,7 +603,7 @@ fn test_real_tantra_data_catalog_ingestion_if_present() {
     let timeframes = loader.list_timeframes().unwrap();
     assert!(timeframes.iter().any(|tf| tf.eq_ignore_ascii_case("1D")));
 
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let bars_5m = loader.load_bars(&inst, "5M", None, None).unwrap();
     assert!(
         !bars_5m.is_empty(),

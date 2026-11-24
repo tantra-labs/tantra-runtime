@@ -28,7 +28,7 @@ enum Side {
 /// use tantra_core::{Exchange, InstrumentId, Quantity};
 ///
 /// let strategy = RsiReversal::new(
-///     InstrumentId::new(Exchange::Nse, "NIFTY50"),
+///     InstrumentId::try_new(Exchange::Nse, "NIFTY50").unwrap(),
 ///     14, 30.0, 70.0, Quantity::from_u64(75),
 /// );
 /// assert_eq!(strategy.name(), "rsi_reversal");
@@ -83,7 +83,7 @@ impl Strategy for RsiReversal {
     }
 
     fn on_bar(&mut self, ctx: &mut dyn StrategyContext, bar: &Bar) -> Result<()> {
-        let Some(v) = self.rsi.update(bar.close.0) else {
+        let Some(v) = self.rsi.update(bar.close.value()) else {
             return Ok(());
         };
 

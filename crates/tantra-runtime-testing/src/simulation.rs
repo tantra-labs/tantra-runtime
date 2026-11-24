@@ -15,7 +15,8 @@ pub fn simulated_fill(
 ) -> Fill {
     Fill {
         trade_id: format!("SIM-{}", timestamp.timestamp_nanos_opt().unwrap_or(0)),
-        instrument: InstrumentId::new(Exchange::Nse, instrument),
+        instrument: InstrumentId::try_new(Exchange::Nse, instrument)
+            .expect("valid test instrument"),
         side,
         price: Price::try_new(price).unwrap(),
         quantity: Quantity::try_new(quantity).unwrap(),

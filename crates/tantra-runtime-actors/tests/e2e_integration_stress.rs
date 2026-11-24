@@ -55,7 +55,7 @@ impl Strategy for IntegrationStrategy {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_e2e_full_pipeline_integration() {
-    let instrument = InstrumentId::new(Exchange::Nse, "TCS");
+    let instrument = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     let trigger_price = Price::from_rupees("3500.00").unwrap();
 
     let strategy = IntegrationStrategy {
@@ -154,7 +154,7 @@ async fn test_e2e_full_pipeline_integration() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_zero_data_loss_stress_50k_ticks() {
-    let instrument = InstrumentId::new(Exchange::Nse, "INFY");
+    let instrument = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let count = 50_000usize;
 
     // Direct MarketDataActor channel stress test for 50,000 ticks/sec zero data loss

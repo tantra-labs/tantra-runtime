@@ -91,9 +91,9 @@ async fn test_phase8_w3c_trace_context_propagation() {
         client_id: Some("client_default".to_string()),
         correlation_id: Some(Uuid::new_v4()),
         algo_id: "test_algo".to_string(),
-        instrument: InstrumentId::new(Exchange::Nse, "RELIANCE"),
+        instrument: InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap(),
         side: OrderSide::Buy,
-        order_type: OrderType::Limit(Price(dec!(2500.00))),
+        order_type: OrderType::Limit(Price::try_new(dec!(2500.00)).unwrap()),
         quantity: Quantity::from_u64(10),
         tif: TimeInForce::Day,
         tag: None,
@@ -130,9 +130,9 @@ async fn test_phase8_position_sizing_actor_chaining() {
         client_id: Some("client_default".to_string()),
         correlation_id: Some(Uuid::new_v4()),
         algo_id: "test_sizing_algo".to_string(),
-        instrument: InstrumentId::new(Exchange::Nse, "RELIANCE"),
+        instrument: InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap(),
         side: OrderSide::Buy,
-        order_type: OrderType::Limit(Price(dec!(2500.00))),
+        order_type: OrderType::Limit(Price::try_new(dec!(2500.00)).unwrap()),
         quantity: Quantity::from_u64(1), // initial small lot
         tif: TimeInForce::Day,
         tag: None,
@@ -157,7 +157,7 @@ async fn test_phase8_position_sizing_actor_chaining() {
             reply_to,
             now: _,
         } => {
-            assert_eq!(request.instrument.symbol, "RELIANCE");
+            assert_eq!(request.instrument.symbol(), "RELIANCE");
             assert!(request.quantity.value() >= Decimal::ONE);
             let _ = reply_to.send(Ok(OrderAck {
                 order_id: "ACK-SIZED-1".to_string(),
@@ -226,8 +226,8 @@ async fn test_phase8_python_strategy_actor_isolation_and_timeout() {
 
     // Send a tick to trigger Python execution
     let tick = Tick::Ltp {
-        instrument: InstrumentId::new(Exchange::Nse, "TCS"),
-        price: Price(dec!(3500.00)),
+        instrument: InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
+        price: Price::try_new(dec!(3500.00)).unwrap(),
         volume: Quantity::from_u64(100),
         exchange_ts: Utc::now(),
         receive_ts: Utc::now(),

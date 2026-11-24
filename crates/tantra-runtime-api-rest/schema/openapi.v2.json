@@ -9342,7 +9342,7 @@
             ]
           },
           "symbol": {
-            "description": "Trading symbol (e.g., \"RELIANCE\", \"TCS\", \"INFY\")",
+            "description": "Trading symbol (e.g., \"RELIANCE\", \"TCS\", \"INFY\") — always trimmed ASCII uppercase",
             "type": "string"
           },
           "token": {

@@ -22,7 +22,7 @@ const QUOTE: &str = "{\"kind\":\"quote\",\"symbol\":\"TCS\",\"exchange\":\"NSE\"
 const TRADE: &str = "{\"kind\":\"trade\",\"symbol\":\"TCS\",\"exchange\":\"NSE\",\"ts_event\":100,\"ts_init\":150,\"price\":100.0,\"size\":50,\"aggressor\":\"buyer\",\"trade_id\":\"T-1\"}\n";
 
 fn tcs() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "TCS")
+    InstrumentId::try_new(Exchange::Nse, "TCS").unwrap()
 }
 
 fn err(text: &str) -> String {
@@ -147,7 +147,7 @@ fn load_summarises_parquet_file_and_honours_exchange_qualifier() {
 }
 
 fn any_instrument() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "X")
+    InstrumentId::try_new(Exchange::Nse, "X").unwrap()
 }
 
 fn ts(n: u64) -> DateTime<Utc> {
@@ -161,7 +161,7 @@ fn fill(side: OrderSide, price: f64, n: u64) -> FillReport {
         Uuid::new_v4(),
         any_instrument(),
         side,
-        Price::new(Decimal::from_f64_retain(price).expect("fixture price is finite")),
+        Price::try_new(Decimal::from_f64_retain(price).expect("fixture price is finite")).unwrap(),
         Quantity::from_u64(1),
         "test-algo",
         ts(n),

@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use rust_decimal::Decimal;
 use tantra_core::Tick;
 use tantra_runtime_strategy::Strategy;
 
@@ -151,7 +150,7 @@ fn evaluate_strategy_diagnostic(strategy: &dyn Strategy, data: &[Tick]) -> Strat
     let winning_trades = data
         .iter()
         .filter(|t| match t {
-            Tick::Ltp { price, .. } => price.0 > Decimal::ZERO,
+            Tick::Ltp { price, .. } => price.is_positive(),
             _ => true,
         })
         .count();

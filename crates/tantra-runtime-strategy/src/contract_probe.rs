@@ -50,7 +50,7 @@ pub struct Observation {
 /// use tantra_runtime_strategy::{ContractProbe, Strategy};
 /// use tantra_core::{Exchange, InstrumentId};
 ///
-/// let probe = ContractProbe::new(InstrumentId::new(Exchange::Nse, "NIFTY50"));
+/// let probe = ContractProbe::new(InstrumentId::try_new(Exchange::Nse, "NIFTY50").unwrap());
 /// assert_eq!(probe.name(), "contract_probe");
 /// assert!(probe.observations().is_empty());
 /// ```
@@ -83,8 +83,10 @@ impl ContractProbe {
     }
 
     fn tick(&self, ctx: &dyn StrategyContext) -> Price {
-        ctx.instrument(&self.instrument_id)
-            .map_or(Price::new(Decimal::new(1, 2)), |i| i.tick_size)
+        ctx.instrument(&self.instrument_id).map_or(
+            Price::try_new(Decimal::new(1, 2)).expect("valid default tick"),
+            |i| i.tick_size,
+        )
     }
 
     fn observe(&mut self, ctx: &dyn StrategyContext, hook: &'static str) {
@@ -124,7 +126,7 @@ impl Strategy for ContractProbe {
         } else if pos > Decimal::ZERO && prev.is_some_and(|p| bar.close < p) {
             ctx.submit(OrderIntent::market_sell(
                 self.instrument_id.clone(),
-                Quantity::new(pos),
+                Quantity::try_new(pos).expect("positive position"),
             ));
         }
         Ok(())
@@ -161,13 +163,22 @@ impl Strategy for ContractProbe {
         );
         let id = self.instrument_id.clone();
         if pos.is_zero() {
-            ctx.submit(OrderIntent::stop_buy(id, lot, Price::new(price.0 + tick.0)));
+            ctx.submit(OrderIntent::stop_buy(
+                id,
+                lot,
+                Price::try_new((price.value() + tick.value()).max(Decimal::ZERO))
+                    .expect("non-negative stop"),
+            ));
         } else if pos > Decimal::ZERO {
             ctx.submit(OrderIntent::stop_limit_sell(
                 id,
-                Quantity::new(pos),
-                Price::new(price.0 - tick.0),
-                Price::new(price.0 - tick.0 * Decimal::from(2)),
+                Quantity::try_new(pos).expect("positive position"),
+                Price::try_new((price.value() - tick.value()).max(Decimal::ZERO))
+                    .expect("non-negative trigger"),
+                Price::try_new(
+                    (price.value() - tick.value() * Decimal::from(2)).max(Decimal::ZERO),
+                )
+                .expect("non-negative limit"),
             ));
         }
         Ok(())
@@ -181,7 +192,10 @@ impl Strategy for ContractProbe {
             ctx.submit(OrderIntent::stop_sell(
                 self.instrument_id.clone(),
                 fill.quantity,
-                Price::new(fill.price.0 - tick.0 * Decimal::from(10)),
+                Price::try_new(
+                    (fill.price.value() - tick.value() * Decimal::from(10)).max(Decimal::ZERO),
+                )
+                .expect("non-negative stop"),
             ));
         }
         Ok(())
@@ -193,7 +207,7 @@ impl Strategy for ContractProbe {
         if pos > Decimal::ZERO {
             ctx.submit(OrderIntent::market_sell(
                 self.instrument_id.clone(),
-                Quantity::new(pos),
+                Quantity::try_new(pos).expect("positive position"),
             ));
         }
         Ok(())

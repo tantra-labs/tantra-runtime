@@ -17,13 +17,14 @@ use tantra_runtime_api_rest::{ApiConfig, AppState, api_router_with, api_router_w
 use tower::util::ServiceExt;
 
 fn iid() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "X")
+    InstrumentId::try_new(Exchange::Nse, "X").unwrap()
 }
 
 /// A bar on `X.NSE` at event time `ts`; feeding it to the state fills working
 /// market orders at its open.
 fn bar(ts: u64, open: f64) -> tantra_core::Bar {
-    let px = tantra_core::Price::new(rust_decimal::Decimal::from_f64_retain(open).unwrap());
+    let px =
+        tantra_core::Price::try_new(rust_decimal::Decimal::from_f64_retain(open).unwrap()).unwrap();
     tantra_core::Bar {
         instrument: iid(),
         open: px,

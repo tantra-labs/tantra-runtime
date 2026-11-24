@@ -76,11 +76,11 @@ impl SlippageModel {
         reference_price: Price,
     ) -> Decimal {
         if let (Some(b), Some(a)) = (bid, ask)
-            && a.0 > b.0
+            && a.value() > b.value()
         {
-            return ((a.0 - b.0) / dec!(2)).round_dp(4);
+            return ((a.value() - b.value()) / dec!(2)).round_dp(4);
         }
-        (reference_price.0 * self.avg_spread_pct / dec!(2)).round_dp(4)
+        (reference_price.value() * self.avg_spread_pct / dec!(2)).round_dp(4)
     }
 
     /// Compute slippage for a market order quantity.
@@ -231,7 +231,7 @@ impl AdverseFillModel {
             .take(self.levels_per_round)
             .enumerate()
         {
-            if fill_quantity <= 0 || level_price.0 <= Decimal::ZERO {
+            if fill_quantity <= 0 || level_price.value() <= Decimal::ZERO {
                 break;
             }
             let rounds = round_idx + 1;
@@ -252,16 +252,22 @@ impl AdverseFillModel {
             match side {
                 OrderSide::Buy => {
                     worst_price_val *= Decimal::ONE + (round_slippage / Decimal::from(100));
-                    if worst_price.is_none_or(|p| worst_price_val > p.0) {
-                        worst_price = Some(Price(worst_price_val.round_dp(4)));
+                    if worst_price.is_none_or(|p| worst_price_val > p.value()) {
+                        worst_price = Some(
+                            Price::try_new(worst_price_val.round_dp(4).max(Decimal::ZERO))
+                                .expect("non-negative price"),
+                        );
                     }
                 }
                 OrderSide::Sell => {
                     let factor =
                         (Decimal::ONE - (round_slippage / Decimal::from(100))).max(dec!(0.01));
                     worst_price_val *= factor;
-                    if worst_price.is_none_or(|p| worst_price_val < p.0) {
-                        worst_price = Some(Price(worst_price_val.round_dp(4)));
+                    if worst_price.is_none_or(|p| worst_price_val < p.value()) {
+                        worst_price = Some(
+                            Price::try_new(worst_price_val.round_dp(4).max(Decimal::ZERO))
+                                .expect("non-negative price"),
+                        );
                     }
                 }
             }

@@ -86,7 +86,7 @@ impl OrderBookSide {
     /// Get total quantity at best price.
     pub fn best_quantity(&self) -> i64 {
         self.levels
-            .get(&self.best_price.unwrap_or(Price(Decimal::ZERO)))
+            .get(&self.best_price.unwrap_or(Price::ZERO))
             .copied()
             .unwrap_or(0)
     }
@@ -183,13 +183,13 @@ impl OrderBook {
         self.bids.clear();
         self.asks.clear();
         for level in bids {
-            let qty = level.quantity.0.to_i64().unwrap_or(0);
+            let qty = level.quantity.value().to_i64().unwrap_or(0);
             if qty > 0 {
                 self.bids.add_order(level.price, qty);
             }
         }
         for level in asks {
-            let qty = level.quantity.0.to_i64().unwrap_or(0);
+            let qty = level.quantity.value().to_i64().unwrap_or(0);
             if qty > 0 {
                 self.asks.add_order(level.price, qty);
             }
@@ -285,8 +285,8 @@ impl OrderBook {
         let (bid, ask) = self.get_spread();
         match (bid, ask) {
             (Some(b), Some(a)) => {
-                let mid = (b.0 + a.0) / Decimal::from(2);
-                Some(Price(mid))
+                let mid = (b.value() + a.value()) / Decimal::from(2);
+                Price::try_new(mid).ok()
             }
             _ => None,
         }
@@ -345,12 +345,12 @@ impl OrderBook {
             let take = std::cmp::min(remaining, available);
             filled += take;
             remaining -= take;
-            total_notional += ask_price.0 * Decimal::from(take);
+            total_notional += ask_price.value() * Decimal::from(take);
 
             // Track worst (highest) price paid
-            if worst_price.is_none() || ask_price.0 > worst_price_val {
+            if worst_price.is_none() || ask_price.value() > worst_price_val {
                 worst_price = Some(ask_price);
-                worst_price_val = ask_price.0;
+                worst_price_val = ask_price.value();
             }
 
             // Remove or reduce level
@@ -358,9 +358,14 @@ impl OrderBook {
         }
 
         let fill_price = if filled > 0 {
-            Price((total_notional / Decimal::from(filled)).round_dp(4))
+            Price::try_new(
+                (total_notional / Decimal::from(filled))
+                    .round_dp(4)
+                    .max(Decimal::ZERO),
+            )
+            .expect("non-negative price")
         } else {
-            Price(Decimal::ZERO)
+            Price::ZERO
         };
         (filled, fill_price, remaining, worst_price)
     }
@@ -379,21 +384,26 @@ impl OrderBook {
             let take = std::cmp::min(remaining, available);
             filled += take;
             remaining -= take;
-            total_notional += bid_price.0 * Decimal::from(take);
+            total_notional += bid_price.value() * Decimal::from(take);
 
             // Track worst (lowest) price received
-            if worst_price.is_none() || bid_price.0 < worst_price_val {
+            if worst_price.is_none() || bid_price.value() < worst_price_val {
                 worst_price = Some(bid_price);
-                worst_price_val = bid_price.0;
+                worst_price_val = bid_price.value();
             }
 
             self.bids.remove_order(bid_price, take);
         }
 
         let fill_price = if filled > 0 {
-            Price((total_notional / Decimal::from(filled)).round_dp(4))
+            Price::try_new(
+                (total_notional / Decimal::from(filled))
+                    .round_dp(4)
+                    .max(Decimal::ZERO),
+            )
+            .expect("non-negative price")
         } else {
-            Price(Decimal::ZERO)
+            Price::ZERO
         };
         (filled, fill_price, remaining, worst_price)
     }
@@ -407,21 +417,26 @@ impl OrderBook {
         while remaining > 0 && !self.asks.is_empty() {
             let ask_price = self.asks.best_price().unwrap();
 
-            if ask_price.0 > limit_price.0 {
+            if ask_price.value() > limit_price.value() {
                 break; // Above limit, cannot fill
             }
 
             let take = std::cmp::min(remaining, self.asks.best_quantity());
             filled += take;
             remaining -= take;
-            total_notional += ask_price.0 * Decimal::from(take);
+            total_notional += ask_price.value() * Decimal::from(take);
             self.asks.remove_order(ask_price, take);
         }
 
         let fill_price = if filled > 0 {
-            Price((total_notional / Decimal::from(filled)).round_dp(4))
+            Price::try_new(
+                (total_notional / Decimal::from(filled))
+                    .round_dp(4)
+                    .max(Decimal::ZERO),
+            )
+            .expect("non-negative price")
         } else {
-            Price(Decimal::ZERO)
+            Price::ZERO
         };
 
         (filled, fill_price, remaining)
@@ -436,21 +451,26 @@ impl OrderBook {
         while remaining > 0 && !self.bids.is_empty() {
             let bid_price = self.bids.best_price().unwrap();
 
-            if bid_price.0 < limit_price.0 {
+            if bid_price.value() < limit_price.value() {
                 break; // Below limit, cannot fill
             }
 
             let take = std::cmp::min(remaining, self.bids.best_quantity());
             filled += take;
             remaining -= take;
-            total_notional += bid_price.0 * Decimal::from(take);
+            total_notional += bid_price.value() * Decimal::from(take);
             self.bids.remove_order(bid_price, take);
         }
 
         let fill_price = if filled > 0 {
-            Price((total_notional / Decimal::from(filled)).round_dp(4))
+            Price::try_new(
+                (total_notional / Decimal::from(filled))
+                    .round_dp(4)
+                    .max(Decimal::ZERO),
+            )
+            .expect("non-negative price")
         } else {
-            Price(Decimal::ZERO)
+            Price::ZERO
         };
 
         (filled, fill_price, remaining)

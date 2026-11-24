@@ -13,7 +13,7 @@ async fn test_sqlite_sebi_audit_ledger_lifecycle() {
 
     let algo_id = "algo-sebi-test-01";
     let client_id = "client-retail-99";
-    let inst = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let inst = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
     let req = OrderRequest::new(
         inst.clone(),
         OrderSide::Buy,

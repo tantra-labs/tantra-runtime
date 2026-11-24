@@ -327,10 +327,10 @@ impl StepManifest {
         manifest.warmup_bars = warmup_bars;
         manifest.parameters = parameters;
         manifest.subscriptions = Subscriptions {
-            instruments: vec![tantra_core::InstrumentId::new(
-                tantra_core::Exchange::Nse,
-                "NIFTY50",
-            )],
+            instruments: vec![
+                tantra_core::InstrumentId::try_new(tantra_core::Exchange::Nse, "NIFTY50")
+                    .expect("valid default instrument"),
+            ],
             quotes: false,
             trades: false,
         };

@@ -49,7 +49,7 @@ impl Strategy for SimpleBreakoutStrategy {
 
 #[tokio::test]
 async fn test_actor_runtime_end_to_end_pipeline() {
-    let inst = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let inst = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
     let threshold = Price::from_rupees("2500.00").unwrap();
 
     let strategy = SimpleBreakoutStrategy {
@@ -129,7 +129,7 @@ async fn test_actor_runtime_end_to_end_pipeline() {
 
 #[tokio::test]
 async fn test_risk_actor_blocks_out_of_band_orders() {
-    let inst = InstrumentId::new(Exchange::Nse, "TCS");
+    let inst = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     let limits = RiskLimits::default();
     let risk_engine = RiskEngine::new(limits, OtrConfig::default());
     let broker = Arc::new(MockBrokerExecutor::reject_all());
@@ -207,7 +207,7 @@ async fn test_risk_actor_blocks_out_of_band_orders() {
 
 #[tokio::test]
 async fn test_market_data_backpressure_policies() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let (md_tx, md_rx) = mpsc::channel(64);
     let (strat_tx, _strat_rx) = mpsc::channel(64);
 
@@ -253,7 +253,7 @@ async fn test_market_data_backpressure_policies() {
 
 #[tokio::test]
 async fn test_supervisor_restart_strategies() {
-    let inst = InstrumentId::new(Exchange::Nse, "SBIN");
+    let inst = InstrumentId::try_new(Exchange::Nse, "SBIN").unwrap();
     let strategy = SimpleBreakoutStrategy {
         symbol: inst.clone(),
         threshold: Price::from_rupees("500.00").unwrap(),
@@ -300,7 +300,7 @@ async fn test_execution_actor_clean_shutdown_drain_loop() {
 
     let handle = tokio::spawn(async move { exec_actor.run().await });
 
-    let inst = InstrumentId::new(Exchange::Nse, "TATAMOTORS");
+    let inst = InstrumentId::try_new(Exchange::Nse, "TATAMOTORS").unwrap();
     let req = OrderRequest::new(
         inst,
         OrderSide::Buy,
@@ -352,7 +352,7 @@ async fn test_execution_actor_composes_exec_stack() {
         .expect("exec stack wraps the broker");
     let handle = tokio::spawn(async move { exec_actor.run().await });
 
-    let inst = InstrumentId::new(Exchange::Nse, "RELIANCE");
+    let inst = InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap();
 
     // 1. Valid order passes the risk gate and reaches the (accepting) broker.
     let req = OrderRequest::new(

@@ -173,7 +173,7 @@ impl RiskActor {
                         m.record_risk_evaluation(&request, eval_duration, true, None);
                         if let Some(otr) = self.risk_engine.otr_for_algo(&request.algo_id) {
                             if let Some(val) = otr.to_f64() {
-                                m.update_otr(&request.algo_id, &request.instrument.symbol, val);
+                                m.update_otr(&request.algo_id, request.instrument.symbol(), val);
                             }
                         }
                     }
@@ -231,7 +231,7 @@ impl RiskActor {
                         m.record_fill(&fill);
                         if let Some(otr) = self.risk_engine.otr_for_algo(&fill.algo_id) {
                             if let Some(val) = otr.to_f64() {
-                                m.update_otr(&fill.algo_id, &fill.instrument.symbol, val);
+                                m.update_otr(&fill.algo_id, fill.instrument.symbol(), val);
                             }
                         }
                     }

@@ -160,7 +160,7 @@ fn risk_engine_for(algo_id: &str, limits: RiskLimits) -> RiskEngine {
 
 #[test]
 fn test_engine_drives_strategy_runner_intents() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let strategy = ToyBarBuyer {
         instrument: inst.clone(),
         quantity: Quantity::from_u64(10),
@@ -192,7 +192,7 @@ fn test_engine_drives_strategy_runner_intents() {
 
 #[test]
 fn test_engine_respects_warmup_bars() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let day = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
     let bars = vec![
         MarketEvent::Bar(bar(&inst, "1500.00", ts(day, 9, 20))),
@@ -235,7 +235,7 @@ fn test_engine_respects_warmup_bars() {
 
 #[test]
 fn test_engine_surfaces_intent_rejections() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let strategy = OversizedLimitBuyer {
         instrument: inst.clone(),
         quantity: Quantity::from_u64(1_000),
@@ -271,7 +271,7 @@ fn test_engine_surfaces_intent_rejections() {
 
 #[test]
 fn test_backtest_result_exposes_fills() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let strategy = BuyThenSell {
         instrument: inst.clone(),
         quantity: Quantity::from_u64(10),

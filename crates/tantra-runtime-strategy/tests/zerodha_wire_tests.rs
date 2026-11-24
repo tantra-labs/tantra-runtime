@@ -106,7 +106,7 @@ fn test_zerodha_wire_submit_order_delegates_to_kite_transport() {
     assert_eq!(adapter.broker_name(), "zerodha");
 
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
 
     let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(adapter));
@@ -146,7 +146,7 @@ fn test_zerodha_wire_auth_error_maps_to_session_expired() {
         Decimal::from(1_000_000),
     );
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
 
     let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(adapter));
@@ -191,7 +191,7 @@ fn test_zerodha_wire_rate_limit_error_maps_to_rate_limited() {
         Decimal::from(1_000_000),
     );
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
 
     let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(adapter));
@@ -221,7 +221,7 @@ fn test_zerodha_wire_network_error_maps_to_network() {
         Decimal::from(1_000_000),
     );
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
 
     let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(adapter));
@@ -275,7 +275,7 @@ fn test_zerodha_wire_cancel_order_delegates_to_kite_transport() {
         Decimal::from(1_000_000),
     );
     let nse = Exchange::Nse;
-    let infy = InstrumentId::new(nse, "INFY");
+    let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
 
     let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(adapter));

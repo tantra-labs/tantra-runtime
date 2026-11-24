@@ -24,7 +24,7 @@ fn acct() -> AccountId {
 }
 
 fn inst() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "RELIANCE")
+    InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap()
 }
 
 fn account_record() -> AccountRecord {
@@ -48,8 +48,8 @@ fn order_record(id: &str) -> OrderRecord {
         order_type: OrderType::Market,
         time_in_force: TimeInForce::Day,
         price: None,
-        quantity: Quantity::new(dec!(25)),
-        filled_quantity: Quantity::new(dec!(0)),
+        quantity: Quantity::try_new(dec!(25)).unwrap(),
+        filled_quantity: Quantity::try_new(dec!(0)).unwrap(),
         avg_fill_price: None,
         status: OrderStatus::PendingNew,
         created_at: Utc::now(),
@@ -64,8 +64,8 @@ fn fill(order_id: &str, side: OrderSide, price: i64, qty: i64) -> FillReport {
         uuid::Uuid::new_v4(),
         inst(),
         side,
-        Price::new(Decimal::from(price)),
-        Quantity::new(Decimal::from(qty)),
+        Price::try_new(Decimal::from(price)).unwrap(),
+        Quantity::try_new(Decimal::from(qty)).unwrap(),
         "rest-api",
         Utc::now(),
         "rest-api",
@@ -110,8 +110,8 @@ fn buy_fill_opens_a_position_and_debits_cash() {
     let pos = positions.get_positions(&acct()).unwrap();
     assert_eq!(pos.len(), 1);
     assert_eq!(pos[0].side, PositionSide::Long);
-    assert_eq!(pos[0].quantity, Quantity::new(dec!(25)));
-    assert_eq!(pos[0].avg_price, Price::new(dec!(101)));
+    assert_eq!(pos[0].quantity, Quantity::try_new(dec!(25)).unwrap());
+    assert_eq!(pos[0].avg_price, Price::try_new(dec!(101)).unwrap());
     assert_eq!(pos[0].lots.len(), 1);
 
     assert_eq!(
@@ -134,10 +134,13 @@ fn sell_fill_matches_fifo_and_accumulates_closed_lots() {
     let closed = ledger.closed_lots(&acct());
     assert_eq!(closed.len(), 1);
     // FIFO: the oldest lot (entry 100) matched first, realized (120 - 100) × 10 = 200.
-    assert_eq!(closed[0].entry_price, Price::new(dec!(100)));
-    assert_eq!(closed[0].exit_price, Price::new(dec!(120)));
+    assert_eq!(closed[0].entry_price, Price::try_new(dec!(100)).unwrap());
+    assert_eq!(closed[0].exit_price, Price::try_new(dec!(120)).unwrap());
     assert_eq!(closed[0].realized_pnl, Money::inr(dec!(200)));
-    assert_eq!(closed[0].matched_quantity, Quantity::new(dec!(10)));
+    assert_eq!(
+        closed[0].matched_quantity,
+        Quantity::try_new(dec!(10)).unwrap()
+    );
 
     // Cash: 100000 - 25×100 - 25×110 + 10×120 = 100000 - 2500 - 2750 + 1200 = 95950.
     assert_eq!(
@@ -148,7 +151,7 @@ fn sell_fill_matches_fifo_and_accumulates_closed_lots() {
     // The remaining open lots: 15 of the first lot + 25 of the second.
     let positions: Arc<dyn PositionRepository> = Arc::new(ledger.clone());
     let pos = positions.get_positions(&acct()).unwrap();
-    assert_eq!(pos[0].quantity, Quantity::new(dec!(40)));
+    assert_eq!(pos[0].quantity, Quantity::try_new(dec!(40)).unwrap());
 }
 
 #[test]
@@ -158,8 +161,8 @@ fn update_order_fill_advances_the_order_row() {
     ledger.record_order(order_record("o1"));
     ledger.update_order_fill(
         "o1",
-        Quantity::new(dec!(25)),
-        Price::new(dec!(101)),
+        Quantity::try_new(dec!(25)).unwrap(),
+        Price::try_new(dec!(101)).unwrap(),
         OrderStatus::Filled,
         Utc::now(),
     );
@@ -169,8 +172,8 @@ fn update_order_fill_advances_the_order_row() {
         .unwrap()
         .unwrap();
     assert_eq!(row.status, OrderStatus::Filled);
-    assert_eq!(row.filled_quantity, Quantity::new(dec!(25)));
-    assert_eq!(row.avg_fill_price, Some(Price::new(dec!(101))));
+    assert_eq!(row.filled_quantity, Quantity::try_new(dec!(25)).unwrap());
+    assert_eq!(row.avg_fill_price, Some(Price::try_new(dec!(101)).unwrap()));
 }
 
 #[tokio::test]
@@ -194,7 +197,7 @@ async fn ledger_portfolio_reader_answers_real_state() {
 
     let positions = reader.positions(&acct()).await.unwrap();
     assert_eq!(positions.len(), 1);
-    assert_eq!(positions[0].quantity, Quantity::new(dec!(25)));
+    assert_eq!(positions[0].quantity, Quantity::try_new(dec!(25)).unwrap());
 
     let cash = reader.cash(&acct()).await.unwrap();
     assert_eq!(cash, vec![Money::inr(dec!(97475))]);

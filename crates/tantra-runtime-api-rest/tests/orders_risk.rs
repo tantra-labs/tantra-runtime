@@ -21,13 +21,13 @@ use tantra_runtime_api_rest::{AppState, api_router_with};
 use tower::util::ServiceExt;
 
 fn instrument_id() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "X")
+    InstrumentId::try_new(Exchange::Nse, "X").unwrap()
 }
 
 /// A flat bar on `X.NSE` at event time `ts`, close `close`, volume 1000. Feeding it to the
 /// state seeds the paper exchange's feed depth (plan 0005 D1): market orders fill against it.
 fn bar(ts: u64, close: f64) -> tantra_core::Bar {
-    let px = tantra_core::Price::new(Decimal::from_f64_retain(close).unwrap());
+    let px = tantra_core::Price::try_new(Decimal::from_f64_retain(close).unwrap()).unwrap();
     tantra_core::Bar {
         instrument: instrument_id(),
         open: px,

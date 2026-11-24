@@ -764,14 +764,21 @@ async fn check_risk(
         .map(|q| q.ts_event().to_datetime())
         .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
     let order_type = match price {
-        Some(px) => tantra_core::OrderType::Limit(Price::new(px)),
+        Some(px) => {
+            let valid = Price::try_new(px).map_err(|e| {
+                ErrorDetail::new(ErrorCode::ValidationInvalidRequest, e.to_string())
+            })?;
+            tantra_core::OrderType::Limit(valid)
+        }
         None => tantra_core::OrderType::Market,
     };
+    let valid_qty = Quantity::try_new(quantity)
+        .map_err(|e| ErrorDetail::new(ErrorCode::ValidationInvalidRequest, e.to_string()))?;
     let request = tantra_core::OrderRequest::new(
         instrument_id.clone(),
         side,
         order_type,
-        Quantity::new(quantity),
+        valid_qty,
         REST_ALGO_ID,
     );
     let mut engine = state
@@ -951,22 +958,25 @@ fn record_into_shared(state: &AppState, account_id: &AccountId, order: &Order) {
         side: order.side(),
         order_type: match order.order_type() {
             OrderType::Market => tantra_core::OrderType::Market,
-            OrderType::Limit => {
-                tantra_core::OrderType::Limit(order.price().map(Price::new).unwrap_or(Price::ZERO))
-            }
+            OrderType::Limit => tantra_core::OrderType::Limit(
+                order
+                    .price()
+                    .and_then(|p| Price::try_new(p).ok())
+                    .unwrap_or(Price::ZERO),
+            ),
             OrderType::StopMarket { trigger } => {
-                tantra_core::OrderType::StopLoss(Price::new(trigger))
+                tantra_core::OrderType::StopLoss(Price::try_new(trigger).unwrap_or(Price::ZERO))
             }
             OrderType::StopLimit { trigger, limit } => tantra_core::OrderType::StopLimit {
-                trigger: Price::new(trigger),
-                limit: Price::new(limit),
+                trigger: Price::try_new(trigger).unwrap_or(Price::ZERO),
+                limit: Price::try_new(limit).unwrap_or(Price::ZERO),
             },
         },
         time_in_force: order.time_in_force(),
-        price: order.price().map(Price::new),
-        quantity: Quantity::new(order.quantity()),
-        filled_quantity: Quantity::new(order.filled_qty()),
-        avg_fill_price: order.avg_fill_price().map(Price::new),
+        price: order.price().and_then(|p| Price::try_new(p).ok()),
+        quantity: Quantity::try_new(order.quantity()).unwrap_or(Quantity::ZERO),
+        filled_quantity: Quantity::try_new(order.filled_qty()).unwrap_or(Quantity::ZERO),
+        avg_fill_price: order.avg_fill_price().and_then(|p| Price::try_new(p).ok()),
         status: to_core_status(order.status()),
         created_at: order.created_at,
         updated_at: order.created_at,
@@ -1147,11 +1157,11 @@ pub(crate) async fn get_orders(
     let orders = account.orders.filter(|order| {
         let symbol_ok = match query.symbol.as_deref() {
             None => true,
-            Some(symbol) => order.instrument_id().symbol == symbol,
+            Some(symbol) => order.instrument_id().symbol() == symbol,
         };
         let exchange_ok = match query.exchange.as_deref() {
             None => true,
-            Some(exchange) => order.instrument_id().exchange.as_str() == exchange,
+            Some(exchange) => order.instrument_id().exchange().as_str() == exchange,
         };
         symbol_ok && exchange_ok
     });
@@ -1197,8 +1207,8 @@ pub(crate) async fn post_close_positions(
         let key = format!(
             "close-{}-{}.{}-{}",
             caller.0,
-            instrument_id.symbol,
-            instrument_id.exchange,
+            instrument_id.symbol(),
+            instrument_id.exchange(),
             base_len + idx
         );
         let req = OrdersRequest {

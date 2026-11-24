@@ -347,8 +347,8 @@ impl CatalogLoader {
             };
             for sym_dir in sorted_subdirs(&exch_dir)? {
                 let symbol = file_name(&sym_dir);
-                if !symbol.is_empty() {
-                    instruments.push(InstrumentId::new(exchange, symbol));
+                if let Ok(id) = InstrumentId::try_new(exchange, symbol) {
+                    instruments.push(id);
                 }
             }
         }
@@ -388,7 +388,7 @@ impl CatalogLoader {
             let (_commit, mut pairs) = resolver.resolve_partition_entries(
                 "market",
                 "bars",
-                Some(instrument.exchange.as_str()),
+                Some(instrument.exchange().as_str()),
                 None,
                 Some(timeframe),
                 None,
@@ -593,11 +593,11 @@ impl CatalogLoader {
                 .cmp(&b.timestamp)
                 .then_with(|| {
                     a.instrument
-                        .exchange
+                        .exchange()
                         .as_str()
-                        .cmp(b.instrument.exchange.as_str())
+                        .cmp(b.instrument.exchange().as_str())
                 })
-                .then_with(|| a.instrument.symbol.cmp(&b.instrument.symbol))
+                .then_with(|| a.instrument.symbol().cmp(b.instrument.symbol()))
         });
         Ok(all_bars.into_iter().map(MarketEvent::Bar).collect())
     }
@@ -623,8 +623,8 @@ impl CatalogLoader {
                     bar_count: bars.len(),
                     first_timestamp: bars.first().map(|b| b.timestamp),
                     last_timestamp: bars.last().map(|b| b.timestamp),
-                    first_close: bars.first().map(|b| b.close.0),
-                    last_close: bars.last().map(|b| b.close.0),
+                    first_close: bars.first().map(|b| b.close.value()),
+                    last_close: bars.last().map(|b| b.close.value()),
                 });
             }
         }
@@ -669,28 +669,33 @@ impl CatalogLoader {
                     }
                     prev_ts = Some(b.timestamp);
 
-                    if b.low.0 > b.high.0 {
+                    if b.low.value() > b.high.value() {
                         anomalies.push(format!(
                             "{inst} ({tf}) row {idx}: low {} > high {}",
-                            b.low.0, b.high.0
+                            b.low.value(),
+                            b.high.value()
                         ));
                     }
-                    if b.open.0 < b.low.0 || b.open.0 > b.high.0 {
+                    if b.open.value() < b.low.value() || b.open.value() > b.high.value() {
                         anomalies.push(format!(
                             "{inst} ({tf}) row {idx}: open {} out of bounds [{}, {}]",
-                            b.open.0, b.low.0, b.high.0
+                            b.open.value(),
+                            b.low.value(),
+                            b.high.value()
                         ));
                     }
-                    if b.close.0 < b.low.0 || b.close.0 > b.high.0 {
+                    if b.close.value() < b.low.value() || b.close.value() > b.high.value() {
                         anomalies.push(format!(
                             "{inst} ({tf}) row {idx}: close {} out of bounds [{}, {}]",
-                            b.close.0, b.low.0, b.high.0
+                            b.close.value(),
+                            b.low.value(),
+                            b.high.value()
                         ));
                     }
-                    if b.volume.0 < Decimal::ZERO {
+                    if b.volume.value() < Decimal::ZERO {
                         anomalies.push(format!(
                             "{inst} ({tf}) row {idx}: negative volume {}",
-                            b.volume.0
+                            b.volume.value()
                         ));
                     }
                 }
@@ -731,11 +736,12 @@ impl CatalogLoader {
             for exch_dir in sorted_subdirs(&tf_dir)? {
                 if exch_dir.file_name().is_some_and(|n| {
                     n.to_string_lossy()
-                        .eq_ignore_ascii_case(instrument.exchange.as_str())
+                        .eq_ignore_ascii_case(instrument.exchange().as_str())
                 }) {
                     for sym_dir in sorted_subdirs(&exch_dir)? {
                         if sym_dir.file_name().is_some_and(|n| {
-                            n.to_string_lossy().eq_ignore_ascii_case(&instrument.symbol)
+                            n.to_string_lossy()
+                                .eq_ignore_ascii_case(instrument.symbol())
                         }) {
                             return sorted_parquet_files(&sym_dir);
                         }
@@ -750,15 +756,15 @@ impl CatalogLoader {
             .root
             .join("bars")
             .join(format!("timeframe={}", timeframe.to_ascii_lowercase()))
-            .join(format!("exchange={}", instrument.exchange.as_str()));
+            .join(format!("exchange={}", instrument.exchange().as_str()));
         if lh_tf_dir.is_dir() {
             let mut files = Vec::new();
             for year_dir in sorted_subdirs(&lh_tf_dir)? {
                 for month_dir in sorted_subdirs(&year_dir)? {
                     for file in sorted_parquet_files(&month_dir)? {
                         let fname = file_name(&file);
-                        let base = format!("{}.parquet", instrument.symbol);
-                        let prefix = format!("{}.part-", instrument.symbol);
+                        let base = format!("{}.parquet", instrument.symbol());
+                        let prefix = format!("{}.part-", instrument.symbol());
                         if fname == base || fname.starts_with(&prefix) {
                             files.push(file);
                         }
@@ -804,15 +810,15 @@ struct InstrumentMatcher {
 
 impl InstrumentMatcher {
     fn build(instrument: &InstrumentId, aliases: &[InstrumentAlias]) -> Self {
-        let exchange = instrument.exchange.as_str().to_string();
+        let exchange = instrument.exchange().as_str().to_string();
         let mut alias_uids = Vec::new();
         let mut target_uids = HashSet::new();
         let mut target_symbols = HashSet::new();
 
         for a in aliases {
             if (a.exchange.eq_ignore_ascii_case(&exchange)
-                && a.symbol.eq_ignore_ascii_case(&instrument.symbol))
-                || a.instrument_uid == instrument.symbol
+                && a.symbol.eq_ignore_ascii_case(instrument.symbol()))
+                || a.instrument_uid == instrument.symbol()
             {
                 if !alias_uids.contains(&a.instrument_uid) {
                     alias_uids.push(a.instrument_uid.clone());
@@ -829,9 +835,9 @@ impl InstrumentMatcher {
             }
         }
 
-        target_symbols.insert(instrument.symbol.to_ascii_uppercase());
-        target_uids.insert(format!("{exchange}:{}", instrument.symbol));
-        target_uids.insert(instrument.symbol.clone());
+        target_symbols.insert(instrument.symbol().to_ascii_uppercase());
+        target_uids.insert(format!("{exchange}:{}", instrument.symbol()));
+        target_uids.insert(instrument.symbol().to_string());
 
         Self {
             exchange,
@@ -855,13 +861,16 @@ fn build_uid_to_canonical_map(aliases: &[InstrumentAlias]) -> HashMap<String, In
             .is_some_and(|s| s.eq_ignore_ascii_case("EQ"));
         let is_open = a.valid_to.is_none();
         let rank: AliasRank = (is_eq, is_open, a.valid_to, a.valid_from);
+        let Ok(inst_id) = InstrumentId::try_new(ex, &a.symbol) else {
+            continue;
+        };
         match best.entry(a.instrument_uid.as_str()) {
             std::collections::hash_map::Entry::Vacant(slot) => {
-                slot.insert((rank, InstrumentId::new(ex, &a.symbol)));
+                slot.insert((rank, inst_id));
             }
             std::collections::hash_map::Entry::Occupied(mut slot) => {
                 if rank > slot.get().0 {
-                    *slot.get_mut() = (rank, InstrumentId::new(ex, &a.symbol));
+                    *slot.get_mut() = (rank, inst_id);
                 }
             }
         }
@@ -975,9 +984,9 @@ fn collect_v3_file_instruments(
                 }
                 if let Some((ex_str, sym)) = uid.split_once(':')
                     && let Ok(ex) = ex_str.parse::<Exchange>()
-                    && !sym.is_empty()
+                    && let Ok(id) = InstrumentId::try_new(ex, sym)
                 {
-                    out.insert(InstrumentId::new(ex, sym));
+                    out.insert(id);
                     last_uid = Some(uid.to_owned());
                     continue;
                 }
@@ -994,8 +1003,8 @@ fn collect_v3_file_instruments(
                 && let Some(ex) = row_ex
             {
                 let sym = syms.value(row);
-                if !sym.is_empty() {
-                    out.insert(InstrumentId::new(ex, sym));
+                if let Ok(id) = InstrumentId::try_new(ex, sym) {
+                    out.insert(id);
                 }
             }
         }
@@ -1167,18 +1176,17 @@ fn read_v3_cas_all_bars_into(
                         Some(canon.clone())
                     } else if let Some((ex_str, sym)) = uid.split_once(':')
                         && let Ok(ex) = ex_str.parse::<Exchange>()
-                        && !sym.is_empty()
                     {
-                        Some(InstrumentId::new(ex, sym))
+                        InstrumentId::try_new(ex, sym).ok()
                     } else if let (Some(sym), Some(ex)) =
                         (sym_val.filter(|s| !s.is_empty()), row_ex)
                     {
-                        Some(InstrumentId::new(ex, sym))
+                        InstrumentId::try_new(ex, sym).ok()
                     } else {
                         None
                     }
                 } else if let (Some(sym), Some(ex)) = (sym_val.filter(|s| !s.is_empty()), row_ex) {
-                    Some(InstrumentId::new(ex, sym))
+                    InstrumentId::try_new(ex, sym).ok()
                 } else {
                     None
                 };
@@ -1199,14 +1207,28 @@ fn read_v3_cas_all_bars_into(
             let Some(timestamp) = extract_timestamp(path, ts_col, row)? else {
                 continue;
             };
-            let open = Price(extract_decimal(path, open_col, "open", row)?);
-            let high = Price(extract_decimal(path, high_col, "high", row)?);
-            let low = Price(extract_decimal(path, low_col, "low", row)?);
-            let close = Price(extract_decimal(path, close_col, "close", row)?);
+            let to_price = |col_name: &'static str, v: Decimal| {
+                Price::try_new(v).map_err(|e| CatalogError::InvalidRow {
+                    path: path.into(),
+                    row,
+                    column: col_name,
+                    reason: e.to_string().into(),
+                })
+            };
+            let open = to_price("open", extract_decimal(path, open_col, "open", row)?)?;
+            let high = to_price("high", extract_decimal(path, high_col, "high", row)?)?;
+            let low = to_price("low", extract_decimal(path, low_col, "low", row)?)?;
+            let close = to_price("close", extract_decimal(path, close_col, "close", row)?)?;
             let volume = if vol_col.is_null(row) {
-                Quantity(Decimal::ZERO)
+                Quantity::ZERO
             } else {
-                Quantity(extract_decimal(path, vol_col, "volume", row)?.max(Decimal::ZERO))
+                Quantity::try_new(extract_decimal(path, vol_col, "volume", row)?.max(Decimal::ZERO))
+                    .map_err(|e| CatalogError::InvalidRow {
+                        path: path.into(),
+                        row,
+                        column: "volume",
+                        reason: e.to_string().into(),
+                    })?
             };
             let is_eq = series_col
                 .as_ref()
@@ -1505,14 +1527,28 @@ fn append_batch_bars(
             continue;
         }
 
-        let open = Price(extract_decimal(path, open_col, "open", row)?);
-        let high = Price(extract_decimal(path, high_col, "high", row)?);
-        let low = Price(extract_decimal(path, low_col, "low", row)?);
-        let close = Price(extract_decimal(path, close_col, "close", row)?);
+        let to_price = |col_name: &'static str, v: Decimal| {
+            Price::try_new(v).map_err(|e| CatalogError::InvalidRow {
+                path: path.into(),
+                row,
+                column: col_name,
+                reason: e.to_string().into(),
+            })
+        };
+        let open = to_price("open", extract_decimal(path, open_col, "open", row)?)?;
+        let high = to_price("high", extract_decimal(path, high_col, "high", row)?)?;
+        let low = to_price("low", extract_decimal(path, low_col, "low", row)?)?;
+        let close = to_price("close", extract_decimal(path, close_col, "close", row)?)?;
         let volume = if vol_col.is_null(row) {
-            Quantity(Decimal::ZERO)
+            Quantity::ZERO
         } else {
-            Quantity(extract_decimal(path, vol_col, "volume", row)?.max(Decimal::ZERO))
+            Quantity::try_new(extract_decimal(path, vol_col, "volume", row)?.max(Decimal::ZERO))
+                .map_err(|e| CatalogError::InvalidRow {
+                    path: path.into(),
+                    row,
+                    column: "volume",
+                    reason: e.to_string().into(),
+                })?
         };
 
         out.push(Bar {

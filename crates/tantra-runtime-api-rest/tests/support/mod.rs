@@ -168,7 +168,7 @@ pub fn quote(n: u64) -> Message {
     // across runs and across calls (the store tests compare them).
     let now = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
     let q = QuoteTick::new(
-        InstrumentId::new(Exchange::Nse, "TCS"),
+        InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(),
         Decimal::from(100 + n),
         Decimal::from(101 + n),
         Decimal::from(10),
@@ -200,7 +200,8 @@ const DAY_NS: u64 = 86_400_000_000_000;
 /// 80 daily TCS bars from 2024-01-01 shaped to make the 3/8 SMA crossover trade.
 pub fn fixture_reader() -> Arc<DatasetReader> {
     let spec = BarSpecification::new(1, BarAggregation::Day, PriceType::Last);
-    let mut builder = ColumnarSliceBuilder::new(InstrumentId::new(Exchange::Nse, "TCS"), spec);
+    let mut builder =
+        ColumnarSliceBuilder::new(InstrumentId::try_new(Exchange::Nse, "TCS").unwrap(), spec);
     for i in 0..80u64 {
         let c = 100.0 + 12.0 * (i as f64 * 0.35).sin() + i as f64 * 0.05;
         let ts = UnixNanos::from_u64(BARS_FROM_NS + i * DAY_NS);
@@ -237,7 +238,7 @@ impl tantra_core::BarReader for TestBarReader {
         &self,
         req: &tantra_core::BarRequest,
     ) -> tantra_core::PortResult<Vec<tantra_core::Bar>> {
-        if req.instrument != InstrumentId::new(Exchange::Nse, "TCS") {
+        if req.instrument != InstrumentId::try_new(Exchange::Nse, "TCS").unwrap() {
             return Ok(Vec::new());
         }
         let mut bars = Vec::with_capacity(80);
@@ -246,19 +247,23 @@ impl tantra_core::BarReader for TestBarReader {
             let ts = chrono::DateTime::from_timestamp_nanos((BARS_FROM_NS + i * DAY_NS) as i64);
             let bar = tantra_core::Bar {
                 instrument: req.instrument.clone(),
-                open: tantra_core::Price::new(
+                open: tantra_core::Price::try_new(
                     rust_decimal::Decimal::from_f64_retain(c - 0.5).unwrap_or_default(),
-                ),
-                high: tantra_core::Price::new(
+                )
+                .unwrap(),
+                high: tantra_core::Price::try_new(
                     rust_decimal::Decimal::from_f64_retain(c + 1.0).unwrap_or_default(),
-                ),
-                low: tantra_core::Price::new(
+                )
+                .unwrap(),
+                low: tantra_core::Price::try_new(
                     rust_decimal::Decimal::from_f64_retain(c - 1.0).unwrap_or_default(),
-                ),
-                close: tantra_core::Price::new(
+                )
+                .unwrap(),
+                close: tantra_core::Price::try_new(
                     rust_decimal::Decimal::from_f64_retain(c).unwrap_or_default(),
-                ),
-                volume: tantra_core::Quantity::new(rust_decimal::Decimal::from(1_000)),
+                )
+                .unwrap(),
+                volume: tantra_core::Quantity::try_new(rust_decimal::Decimal::from(1_000)).unwrap(),
                 timestamp: ts,
             };
             if req.from <= ts && ts < req.to {
@@ -395,7 +400,7 @@ pub fn run_status(store: &RunStore, id: &RunId) -> RunStatus {
 pub fn tests_manifest(name: &str) -> tantra_runtime_api::StrategyManifest {
     use tantra_runtime_api::wire::BarAggregation;
     use tantra_runtime_api::{StrategyManifest, Subscriptions, TimeframeSpec, Universe};
-    let tcs = InstrumentId::new(Exchange::Nse, "TCS");
+    let tcs = InstrumentId::try_new(Exchange::Nse, "TCS").unwrap();
     StrategyManifest::new(
         name,
         "sha256:abc",

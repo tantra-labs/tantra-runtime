@@ -37,11 +37,11 @@ use tantra_runtime_strategy::{
 };
 
 fn reliance() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "RELIANCE")
+    InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap()
 }
 
 fn infy() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "INFY")
+    InstrumentId::try_new(Exchange::Nse, "INFY").unwrap()
 }
 
 fn ts(h: u32, m: u32) -> DateTime<Utc> {
@@ -214,8 +214,8 @@ fn economic(fill: &FillReport) -> EconomicFill {
     EconomicFill {
         instrument: fill.instrument.clone(),
         side: fill.side,
-        price: fill.price.0,
-        quantity: fill.quantity.0,
+        price: fill.price.value(),
+        quantity: fill.quantity.value(),
         timestamp: fill.timestamp,
     }
 }
@@ -252,18 +252,18 @@ fn backtest_l2_fills_match_paper_adapter_on_shared_tape() {
         .filter(|f| f.instrument == reliance() && f.side == OrderSide::Buy)
         .collect();
     assert_eq!(reliance_buys.len(), 2);
-    assert_eq!(reliance_buys[0].price.0, dec!(1000.00));
-    assert_eq!(reliance_buys[0].quantity.0, dec!(30.00));
-    assert_eq!(reliance_buys[1].price.0, dec!(990.00));
-    assert_eq!(reliance_buys[1].quantity.0, dec!(20.00));
+    assert_eq!(reliance_buys[0].price.value(), dec!(1000.00));
+    assert_eq!(reliance_buys[0].quantity.value(), dec!(30.00));
+    assert_eq!(reliance_buys[1].price.value(), dec!(990.00));
+    assert_eq!(reliance_buys[1].quantity.value(), dec!(20.00));
 
     let reliance_sell = result
         .fills
         .iter()
         .find(|f| f.instrument == reliance() && f.side == OrderSide::Sell)
         .expect("RELIANCE sell fill");
-    assert_eq!(reliance_sell.price.0, dec!(990.00));
-    assert_eq!(reliance_sell.quantity.0, dec!(20.00));
+    assert_eq!(reliance_sell.price.value(), dec!(990.00));
+    assert_eq!(reliance_sell.quantity.value(), dec!(20.00));
 
     // INFY: market buy 40 / sell 40 @ 2000.00 (tape price).
     let infy_sell = result
@@ -271,8 +271,8 @@ fn backtest_l2_fills_match_paper_adapter_on_shared_tape() {
         .iter()
         .find(|f| f.instrument == infy() && f.side == OrderSide::Sell)
         .expect("INFY sell fill");
-    assert_eq!(infy_sell.price.0, dec!(2000.00));
-    assert_eq!(infy_sell.quantity.0, dec!(40.00));
+    assert_eq!(infy_sell.price.value(), dec!(2000.00));
+    assert_eq!(infy_sell.quantity.value(), dec!(40.00));
 
     // The paper adapter driven on the same tape books identical economics.
     let paper = paper_fills();

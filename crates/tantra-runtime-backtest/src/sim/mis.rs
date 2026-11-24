@@ -5,7 +5,6 @@
 //! to 15:20 IST, supporting any exchange venue (Phase 4.4 items 2 & 4).
 
 use chrono::{DateTime, Timelike, Utc};
-use rust_decimal::Decimal;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -124,13 +123,13 @@ impl MisSquareOffManager {
             );
             Some(SquareOffResult::ForcedSquareOff {
                 reason,
-                square_off_price: Price(Decimal::ZERO),
+                square_off_price: Price::ZERO,
             })
         } else if local_time_only >= close {
             // Market closed
             Some(SquareOffResult::ForcedSquareOff {
                 reason: format!("market close at {}", close.format("%H:%M")),
-                square_off_price: Price(Decimal::ZERO),
+                square_off_price: Price::ZERO,
             })
         } else {
             None // Outside square-off window

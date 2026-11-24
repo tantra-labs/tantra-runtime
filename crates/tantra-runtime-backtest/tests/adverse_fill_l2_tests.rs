@@ -21,7 +21,7 @@ use tantra_runtime_backtest::{
 use tantra_runtime_strategy::{OrderIntent, Strategy, StrategyContext};
 
 fn reliance() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "RELIANCE")
+    InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap()
 }
 
 fn ts(h: u32, m: u32) -> DateTime<Utc> {
@@ -114,11 +114,11 @@ fn l2_market_buy_fills_worse_than_best_touch_with_adverse_model() {
         .iter()
         .find(|f| f.instrument == reliance() && f.side == OrderSide::Buy)
         .expect("RELIANCE buy fill");
-    assert_eq!(buy.quantity.0, dec!(30.00));
+    assert_eq!(buy.quantity.value(), dec!(30.00));
     assert!(
-        buy.price.0 > dec!(1000.00),
+        buy.price.value() > dec!(1000.00),
         "adverse-fill L2 buy should fill worse than the 1000.00 touch, got {}",
-        buy.price.0
+        buy.price.value()
     );
 }
 
@@ -130,6 +130,6 @@ fn l2_market_buy_fills_at_best_touch_without_adverse_model() {
         .iter()
         .find(|f| f.instrument == reliance() && f.side == OrderSide::Buy)
         .expect("RELIANCE buy fill");
-    assert_eq!(buy.quantity.0, dec!(30.00));
-    assert_eq!(buy.price.0, dec!(1000.00));
+    assert_eq!(buy.quantity.value(), dec!(30.00));
+    assert_eq!(buy.price.value(), dec!(1000.00));
 }

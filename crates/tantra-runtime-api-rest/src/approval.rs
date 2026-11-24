@@ -117,7 +117,7 @@ impl ApprovalQueue {
                     .request
                     .instrument_id
                     .as_ref()
-                    .map(|id| format!("{}.{}", id.symbol, id.exchange));
+                    .map(|id| format!("{}.{}", id.symbol(), id.exchange()));
                 json!({
                     "queue_id": q.id.as_str(),
                     "instrument_id": instrument,

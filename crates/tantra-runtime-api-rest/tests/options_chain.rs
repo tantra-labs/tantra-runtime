@@ -148,7 +148,7 @@ async fn options_chain_requires_read_scope_when_auth_enabled() {
 
 #[tokio::test]
 async fn offline_underlying_returns_theoretical_bs_with_null_bid_ask() {
-    let rel_id = InstrumentId::new(Exchange::Nse, "RELIANCE-EQ");
+    let rel_id = InstrumentId::try_new(Exchange::Nse, "RELIANCE-EQ").unwrap();
     let slice = build_daily_spot_slice(rel_id.clone(), &[1350.0, 1362.5, 1370.0, 1368.2, 1382.4]);
     let dataset = Dataset::from_slices(vec![slice]).unwrap();
     let instruments = vec![Instrument::new(
@@ -208,7 +208,7 @@ async fn offline_underlying_returns_theoretical_bs_with_null_bid_ask() {
 
 #[tokio::test]
 async fn live_chain_joins_contracts_quotes_and_oi_history_across_expiries() {
-    let nifty_id = InstrumentId::new(Exchange::Nse, "NIFTY50-INDEX");
+    let nifty_id = InstrumentId::try_new(Exchange::Nse, "NIFTY50-INDEX").unwrap();
     let slice = build_daily_spot_slice(
         nifty_id.clone(),
         &[25300.0, 25410.0, 25480.0, 25514.3, 25800.6],
@@ -227,7 +227,7 @@ async fn live_chain_joins_contracts_quotes_and_oi_history_across_expiries() {
     )];
 
     let mut add_opt = |sym: &str, exp: NaiveDate, strike: f64, kind: OptionType| -> InstrumentId {
-        let id = InstrumentId::new(Exchange::Nfo, sym);
+        let id = InstrumentId::try_new(Exchange::Nfo, sym).unwrap();
         instruments.push(
             Instrument::new(
                 id.clone(),
@@ -270,7 +270,7 @@ async fn live_chain_joins_contracts_quotes_and_oi_history_across_expiries() {
             .put(OpenInterestSnapshot {
                 instrument: id.clone(),
                 as_of: prev_day,
-                open_interest: Quantity::new(prev_oi),
+                open_interest: Quantity::try_new(prev_oi).unwrap(),
             })
             .await
             .unwrap();
@@ -278,7 +278,7 @@ async fn live_chain_joins_contracts_quotes_and_oi_history_across_expiries() {
             .put(OpenInterestSnapshot {
                 instrument: id.clone(),
                 as_of: curr_day,
-                open_interest: Quantity::new(curr_oi),
+                open_interest: Quantity::try_new(curr_oi).unwrap(),
             })
             .await
             .unwrap();

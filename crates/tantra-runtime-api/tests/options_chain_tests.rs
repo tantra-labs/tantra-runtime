@@ -43,28 +43,28 @@ fn resolves_common_underlying_aliases_to_canonical_id_and_fno_root() {
     assert_eq!(
         resolve_underlying_symbol("NSE:NIFTY50-INDEX").unwrap(),
         (
-            InstrumentId::new(Exchange::Nse, "NIFTY50-INDEX"),
+            InstrumentId::try_new(Exchange::Nse, "NIFTY50-INDEX").unwrap(),
             "NIFTY".to_string()
         )
     );
     assert_eq!(
         resolve_underlying_symbol("NIFTY").unwrap(),
         (
-            InstrumentId::new(Exchange::Nse, "NIFTY50-INDEX"),
+            InstrumentId::try_new(Exchange::Nse, "NIFTY50-INDEX").unwrap(),
             "NIFTY".to_string()
         )
     );
     assert_eq!(
         resolve_underlying_symbol("RELIANCE.NSE").unwrap(),
         (
-            InstrumentId::new(Exchange::Nse, "RELIANCE"),
+            InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap(),
             "RELIANCE".to_string()
         )
     );
     assert_eq!(
         resolve_underlying_symbol("banknifty").unwrap(),
         (
-            InstrumentId::new(Exchange::Nse, "BANKNIFTY-INDEX"),
+            InstrumentId::try_new(Exchange::Nse, "BANKNIFTY-INDEX").unwrap(),
             "BANKNIFTY".to_string()
         )
     );

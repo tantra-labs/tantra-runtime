@@ -21,7 +21,7 @@ type Client =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 fn state() -> AppState {
-    let id = InstrumentId::new(Exchange::Nse, "X");
+    let id = InstrumentId::try_new(Exchange::Nse, "X").unwrap();
     let spec = BarSpecification::new(1, BarAggregation::Minute, PriceType::Last);
     let mut builder = ColumnarSliceBuilder::new(id.clone(), spec);
     builder

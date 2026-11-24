@@ -26,7 +26,7 @@ fn ts(secs: i64) -> DateTime<Utc> {
 
 fn sample_request(algo_id: &str) -> OrderRequest {
     OrderRequest::new(
-        InstrumentId::new(Exchange::Nse, "RELIANCE"),
+        InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap(),
         OrderSide::Buy,
         OrderType::Limit(Price::from_rupees("2850.50").unwrap()),
         Quantity::from_u64(100),
@@ -70,11 +70,11 @@ async fn upsert_is_idempotent_on_client_order_id() {
     assert_eq!(first.tif(), Some(tantra_core::TimeInForce::Day));
     assert_eq!(
         first.order_type(),
-        Some(OrderType::Limit(Price(dec!(2850.50))))
+        Some(OrderType::Limit(Price::try_new(dec!(2850.50)).unwrap()))
     );
     assert_eq!(
         first.instrument(),
-        Some(InstrumentId::new(Exchange::Nse, "RELIANCE"))
+        Some(InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap())
     );
     assert_eq!(first.client_order_id_uuid(), Some(req.client_order_id));
     assert_eq!(first.created_at, ts(1000));

@@ -58,7 +58,7 @@ fn inspect_and_verify_catalog_detect_valid_and_anomalous_ohlc() {
     assert_eq!(summary[0].bar_count, 2);
     assert_eq!(
         summary[0].instrument,
-        InstrumentId::new(Exchange::Nse, "TCS")
+        InstrumentId::try_new(Exchange::Nse, "TCS").unwrap()
     );
 
     let report = loader.verify_integrity(None).unwrap();

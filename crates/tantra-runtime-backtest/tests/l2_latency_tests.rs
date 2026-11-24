@@ -90,7 +90,7 @@ fn make_engine(instrument: &InstrumentId, latency_us: u64) -> BacktestEngine<Onc
 
 #[test]
 fn test_latency_delays_fill_to_later_event_timestamp() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let day = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
     // 5ms (5_000us) latency.
@@ -127,7 +127,7 @@ fn test_latency_delays_fill_to_later_event_timestamp() {
 
 #[test]
 fn test_zero_latency_fills_immediately() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let day = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
     let t0 = ts_us(day, 9, 20, 0, 0);
 

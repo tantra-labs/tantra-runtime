@@ -25,7 +25,7 @@ use uuid::Uuid;
 const TS0: i64 = 1_700_000_000;
 
 fn reliance() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "RELIANCE")
+    InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap()
 }
 
 /// The shared golden tape: two resting buy limits (100@101, 100@100) then a
@@ -84,13 +84,13 @@ fn book_parity_price_time_priority() {
 
     // Byte-identical tuple: (filled, vwap, remaining, worst).
     assert_eq!(
-        (bt.0, bt.1.0, bt.2, bt.3.map(|p| p.0)),
-        (pp.0, pp.1.0, pp.2, pp.3.map(|p| p.0))
+        (bt.0, bt.1.value(), bt.2, bt.3.map(|p| p.value())),
+        (pp.0, pp.1.value(), pp.2, pp.3.map(|p| p.value()))
     );
     assert_eq!(bt.0, 60);
-    assert_eq!(bt.1.0, dec!(99.6667));
+    assert_eq!(bt.1.value(), dec!(99.6667));
     assert_eq!(bt.2, 0);
-    assert_eq!(bt.3.map(|p| p.0), Some(dec!(99)));
+    assert_eq!(bt.3.map(|p| p.value()), Some(dec!(99)));
 }
 
 /// Book-level parity: limit buy 50 @ 101 walking two ask levels (25@100 +
@@ -121,9 +121,9 @@ fn book_parity_limit_walk() {
     let pp = paper.execute_limit_order(OrderSide::Buy, 50, limit);
 
     // Byte-identical tuple: (filled, vwap, remaining).
-    assert_eq!((bt.0, bt.1.0, bt.2), (pp.0, pp.1.0, pp.2));
+    assert_eq!((bt.0, bt.1.value(), bt.2), (pp.0, pp.1.value(), pp.2));
     assert_eq!(bt.0, 50);
-    assert_eq!(bt.1.0, dec!(100.5));
+    assert_eq!(bt.1.value(), dec!(100.5));
     assert_eq!(bt.2, 0);
 }
 
@@ -144,18 +144,18 @@ fn paper_exchange_fills_match_golden_tape() {
         .filter(|f| f.client_order_id == Uuid::from_u128(3))
         .collect();
     assert_eq!(sell_fills.len(), 2);
-    assert_eq!(sell_fills[0].price.0, dec!(101));
-    assert_eq!(sell_fills[0].quantity.0, dec!(100));
-    assert_eq!(sell_fills[1].price.0, dec!(100));
-    assert_eq!(sell_fills[1].quantity.0, dec!(50));
+    assert_eq!(sell_fills[0].price.value(), dec!(101));
+    assert_eq!(sell_fills[0].quantity.value(), dec!(100));
+    assert_eq!(sell_fills[1].price.value(), dec!(100));
+    assert_eq!(sell_fills[1].quantity.value(), dec!(50));
 
     let buy101_fills: Vec<_> = fills
         .iter()
         .filter(|f| f.client_order_id == Uuid::from_u128(1))
         .collect();
     assert_eq!(buy101_fills.len(), 1);
-    assert_eq!(buy101_fills[0].price.0, dec!(101));
-    assert_eq!(buy101_fills[0].quantity.0, dec!(100));
+    assert_eq!(buy101_fills[0].price.value(), dec!(101));
+    assert_eq!(buy101_fills[0].quantity.value(), dec!(100));
 
     // Order lifecycle states.
     assert_eq!(ex.order(&id_buy101).unwrap().state, OrderState::Filled);
@@ -165,14 +165,14 @@ fn paper_exchange_fills_match_golden_tape() {
     );
     let sell = ex.order(&id_sell).unwrap();
     assert_eq!(sell.state, OrderState::Filled);
-    assert_eq!(sell.filled_qty.0, dec!(150));
-    assert_eq!(sell.avg_fill_price.0, dec!(100.6667));
+    assert_eq!(sell.filled_qty.value(), dec!(150));
+    assert_eq!(sell.avg_fill_price.value(), dec!(100.6667));
 
     // Buy side accumulated 150 gross (100@101 + 50@100)...
     let buy_qty: rust_decimal::Decimal = fills
         .iter()
         .filter(|f| f.side == OrderSide::Buy)
-        .map(|f| f.quantity.0)
+        .map(|f| f.quantity.value())
         .sum();
     assert_eq!(buy_qty, dec!(150));
 
@@ -189,10 +189,10 @@ fn paper_exchange_fills_match_golden_tape() {
     book.add_bid(Price::from_rupees("100").unwrap(), 100);
     let (filled, vwap, remaining, worst) = book.execute_market_order(OrderSide::Sell, 150);
     assert_eq!(filled, 150);
-    assert_eq!(vwap.0, dec!(100.6667));
+    assert_eq!(vwap.value(), dec!(100.6667));
     assert_eq!(remaining, 0);
-    assert_eq!(worst.map(|p| p.0), Some(dec!(100)));
-    assert_eq!(sell.avg_fill_price.0, vwap.0);
+    assert_eq!(worst.map(|p| p.value()), Some(dec!(100)));
+    assert_eq!(sell.avg_fill_price.value(), vwap.value());
 }
 
 /// Determinism: replaying the golden tape through two fresh exchanges produces

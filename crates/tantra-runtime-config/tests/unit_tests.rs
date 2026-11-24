@@ -3,7 +3,7 @@ use tantra_runtime_config::ResolvedUniverse;
 
 #[test]
 fn resolved_universe_holds_instruments() {
-    let inst = InstrumentId::new(Exchange::Nse, "INFY");
+    let inst = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
     let universe = ResolvedUniverse::new("test", vec![inst.clone()]);
     assert_eq!(universe.instruments, vec![inst]);
 }

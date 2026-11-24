@@ -107,7 +107,7 @@ fn warmup_gate_vectors() {
             .map(|s| {
                 serde_json::json!([
                     s.ts_init.timestamp_nanos_opt().unwrap_or(0),
-                    s.intent.instrument_id.symbol
+                    s.intent.instrument_id.symbol()
                 ])
             })
             .collect();
@@ -123,7 +123,7 @@ fn warmup_gate_vectors() {
                 serde_json::json!([
                     s.ts_init.timestamp_nanos_opt().unwrap_or(0),
                     s.request.tag.as_deref().unwrap_or(""),
-                    s.intent.instrument_id.symbol
+                    s.intent.instrument_id.symbol()
                 ])
             })
             .collect();

@@ -8,7 +8,7 @@ use tantra_runtime_strategy::{
 };
 
 fn tcs() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "TCS")
+    InstrumentId::try_new(Exchange::Nse, "TCS").unwrap()
 }
 
 #[test]

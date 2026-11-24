@@ -22,7 +22,7 @@ fn ts(secs: i64) -> DateTime<Utc> {
 }
 
 fn reliance() -> InstrumentId {
-    InstrumentId::new(Exchange::Nse, "RELIANCE")
+    InstrumentId::try_new(Exchange::Nse, "RELIANCE").unwrap()
 }
 
 async fn buy(store: &PositionStore, client: &str, qty: Decimal, price: Decimal, at: i64) {

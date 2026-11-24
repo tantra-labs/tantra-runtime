@@ -322,7 +322,7 @@ fn submit_to_venue(
     let mut guard = venue.lock().expect("poisoned lock");
 
     if let Some(px) = guard.market_prices.get(&order.instrument).copied() {
-        let price = Price::new(px);
+        let price = Price::try_new(px).map_err(|e| format!("invalid market price: {e}"))?;
         guard
             .exchange
             .set_market_price(order.instrument.clone(), price);
@@ -367,7 +367,9 @@ fn cancel_on_venue(
 /// exchange last price for an instrument. Depth is seeded lazily at submit.
 fn venue_set_market_price(venue: &Mutex<PaperVenue>, instrument: InstrumentId, price: Decimal) {
     let mut guard = venue.lock().expect("poisoned lock");
-    let px = Price::new(price);
+    let Ok(px) = Price::try_new(price) else {
+        return;
+    };
     guard.market_prices.insert(instrument.clone(), price);
     guard.last_prices.insert(instrument.clone(), price);
     guard.exchange.set_market_price(instrument, px);

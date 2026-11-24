@@ -389,7 +389,7 @@ impl MarketReader for RuntimeMarketReader {
         let hits = index
             .iter()
             .filter(|r| {
-                r.instrument.symbol.to_lowercase().contains(&q)
+                r.instrument.symbol().to_lowercase().contains(&q)
                     || r.name.to_lowercase().contains(&q)
             })
             .cloned()
