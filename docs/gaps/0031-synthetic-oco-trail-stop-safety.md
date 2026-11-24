@@ -6,7 +6,7 @@
 
 ## What's stubbed or hardcoded
 
-- `crates/tantra-runtime-strategy/src/synthetic_oco.rs:558-577`: the tracker `modify_stop` is applied first (`:560`), then `stop_broker_id.take()` (`:565`), then the old stop is cancelled, then the new one submitted. Any `?` after the `take()` returns with `stop_broker_id = None` and the tracker already advanced.
+- `crates/tantra-runtime-strategy/src/synthetic_oco.rs:558-577`: the tracker `modify_stop` is applied first (`:560-563`), then `stop_broker_id.take()` (`:565`), then the old stop is cancelled, then the new one submitted. Any `?` after the `take()` returns with `stop_broker_id = None` and the tracker already advanced.
 - The resubmission reuses the deterministic client id from `stop_leg_client_id` (`crates/tantra-runtime-strategy/src/synthetic_oco.rs:173`). A broker or exchange that dedups on `client_order_id` rejects it, and between cancel and submit no stop is resting.
 - Errors are `Result<_, String>` (known item, tracked in root plan 0019 P3.3); the atomicity bug is separate.
 

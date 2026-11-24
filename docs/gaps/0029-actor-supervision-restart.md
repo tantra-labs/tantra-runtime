@@ -8,8 +8,8 @@
 
 - `crates/tantra-runtime-actors/src/supervisor.rs:347` `restart_actor_handle` only swaps a `JoinHandle` and increments counters. Nothing awaits the handles or detects an actor exit; the only callers are `crates/tantra-runtime-actors/tests/actor_runtime_tests.rs:277,287` with dummy handles.
 - `crates/tantra-runtime-actors/src/supervisor.rs:78-95`: actors own their `mpsc::Receiver` and are moved into `tokio::spawn`. After a panic the receiver and its queued messages are gone, so a "restart" cannot reuse the same channels.
-- `RestartStrategy::AllForOne` (`supervisor.rs:361-371`) is identical to `OneForOne`; siblings are not restarted.
-- `supervisor.rs:276-331` `shutdown_gracefully` returns `Result<(), String>` and on timeout only logs; handles are not aborted.
+- `RestartStrategy::AllForOne` (`crates/tantra-runtime-actors/src/supervisor.rs:364-374`) is identical to `OneForOne`; siblings are not restarted.
+- `crates/tantra-runtime-actors/src/supervisor.rs:276-331` `shutdown_gracefully` returns `Result<(), String>` and on timeout only logs; handles are not aborted.
 
 ## Why
 
