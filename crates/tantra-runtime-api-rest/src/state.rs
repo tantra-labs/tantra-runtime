@@ -191,9 +191,12 @@ pub struct AppState {
     /// The write ledger every risk-approved placement lands in (E11-S7, ADR 0019
     /// decision 3). `GET /orders` reads it; a restart empties it.
     pub orders: OrderLedger,
-    /// The shared `tantra-exec-paper` exchange approved orders are submitted to (plan 0005 D1,
-    /// T14.5; ADR 0016's simulator is gone).
+    /// The default caller's `tantra-exec-paper` exchange (backed by `paper_accounts` for
+    /// [`DEFAULT_USER_ID`](crate::profile_store::DEFAULT_USER_ID); plan 0005 D1, T14.5).
     pub(crate) exec: crate::exec::ExecGateway,
+    /// Per-caller paper accounts (`(OrderLedger, ExecGateway)`), seeded with
+    /// `DEFAULT_USER_ID` sharing `orders` and `exec`.
+    pub(crate) paper_accounts: crate::exec::CallerPaperAccounts,
     /// The writable store behind `quotes`, when the state was built by `from_reader`.
     live: Option<Arc<LiveQuoteStore>>,
     /// The quote/trade tick source `fill_model = l2` runs match against (ADR 0030); `None`
@@ -246,6 +249,13 @@ impl AppState {
     ) -> Self {
         let mut engine = RiskEngine::default();
         engine.register_algo(crate::orders::REST_ALGO_ID);
+        let orders = OrderLedger::default();
+        let exec = crate::exec::ExecGateway::default_sim();
+        let paper_accounts = crate::exec::CallerPaperAccounts::seeded(
+            crate::profile_store::DEFAULT_USER_ID,
+            orders.clone(),
+            exec.clone(),
+        );
         Self {
             instruments,
             bars,
@@ -266,8 +276,9 @@ impl AppState {
             risk_engine: Arc::new(Mutex::new(engine)),
             approval_queue: None,
             journal: None,
-            orders: OrderLedger::default(),
-            exec: crate::exec::ExecGateway::default_sim(),
+            orders: orders.clone(),
+            exec: exec.clone(),
+            paper_accounts,
             live: None,
             ticks: None,
             execution: tantra_runtime_config::ExecutionConfig::default(),
@@ -388,13 +399,22 @@ impl AppState {
     }
 
     /// Replaces the paper exchange behind the order routes with `exchange` (clears whatever it
-    /// was tracking as working orders and simulated holdings).
+    /// was tracking as working orders and simulated holdings). Lazily created per-caller
+    /// paper exchanges start with the same initial cash.
     pub fn with_execution_sim(mut self, exchange: tantra_exec_paper::PaperExchange) -> Self {
+        let initial_cash = exchange.cash();
         self.exec = crate::exec::ExecGateway::with_exchange(exchange);
+        self.paper_accounts = crate::exec::CallerPaperAccounts::seeded_with_cash(
+            crate::profile_store::DEFAULT_USER_ID,
+            self.orders.clone(),
+            self.exec.clone(),
+            initial_cash,
+        );
         self
     }
 
-    /// Advances the market: feeds `bars` (ascending `ts_event`) to the paper exchange.
+    /// Advances the market: feeds `bars` (ascending `ts_event`) to every caller's paper
+    /// exchange and records them for lazily activated accounts.
     ///
     /// Market orders fill when the exchange has feed depth (from a bar or a resting
     /// participant), resting limits fill once a bar crosses them, and armed stops trigger on
@@ -402,7 +422,13 @@ impl AppState {
     /// [`OrderLedger::position`] follows). This is the hook a live bar feed calls; event time
     /// is the bars' `ts_event`, never the wall clock.
     pub fn advance_market(&self, bars: &[tantra_core::Bar]) -> Result<(), ErrorDetail> {
-        self.exec.advance(&self.orders, &self.shared_ledger, bars)
+        self.paper_accounts.advance_all(&self.shared_ledger, bars)
+    }
+
+    /// Squares off open positions across every materialized caller paper account.
+    pub(crate) fn mis_square_off(&self, at: chrono::DateTime<chrono::Utc>) -> usize {
+        self.paper_accounts
+            .mis_square_off_all(&self.shared_ledger, at)
     }
 
     /// Sets the operator trading state the write routes evaluate against.

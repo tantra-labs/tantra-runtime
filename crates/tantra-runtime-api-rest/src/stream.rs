@@ -65,8 +65,12 @@ async fn stream_handler(
         || token
             .as_ref()
             .is_some_and(|Extension(t)| t.scopes.iter().any(|s| s == "trade"));
+    let account = match state.paper_accounts.for_caller(&caller.0) {
+        Ok(acct) => acct,
+        Err(detail) => return crate::market::error(detail),
+    };
     ws.max_message_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| run(socket, state, can_trade, caller.0))
+        .on_upgrade(move |socket| run(socket, state, account, can_trade, caller.0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -174,9 +178,15 @@ async fn recv_market(rx: &mut Option<Receiver<Tick>>) -> Result<Tick, RecvError>
     }
 }
 
-async fn run(socket: WebSocket, state: Arc<AppState>, can_trade: bool, owner: String) {
+async fn run(
+    socket: WebSocket,
+    state: Arc<AppState>,
+    account: crate::exec::PaperAccount,
+    can_trade: bool,
+    owner: String,
+) {
     let (mut sender, mut receiver) = socket.split();
-    let mut exec_rx = state.exec.subscribe_events();
+    let mut exec_rx = account.exec.subscribe_events();
     let mut conn = Conn {
         state,
         can_trade,
@@ -499,17 +509,8 @@ impl Conn {
             "EquitySnapshot" => (Channel::Portfolio, Vec::new()),
             _ => return false,
         };
-        // Order lifecycle and fills are private to the placing caller (gap 0013); an unmapped
-        // broker id is dropped. Depth is market data and stays unfiltered. Portfolio snapshots
-        // remain account-wide until docs/gaps/0017-per-caller-paper-accounts.md lands.
-        if matches!(ch, Channel::Orders | Channel::Fills)
-            && !self
-                .state
-                .exec
-                .event_owned_by(&self.state.orders, payload, &self.owner)
-        {
-            return false;
-        }
+        // Every caller subscribes to its own `ExecGateway`, so order, fill, and
+        // portfolio streams are isolated per caller without cross-caller filtering.
         self.emit(sender, ch, &symbols, payload.clone()).await
     }
 }

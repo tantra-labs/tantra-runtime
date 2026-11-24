@@ -1,37 +1,31 @@
 //! The execution gateway behind the order routes: a thin adapter over the shared
-//! `tantra-exec-paper` exchange (plan 0005 D1, T14.5).
+//! `tantra-exec-paper` exchange (plan 0005 D1, T14.5), partitioned per authenticated caller.
 //!
-//! A risk-approved order is recorded in the [`OrderLedger`] as `Submitted` and handed to
-//! [`ExecGateway`], which converts the ledger row into a canonical [`OrderRequest`] and submits
-//! it to the shared [`PaperExchange`]. The exchange owns the order lifecycle — resting limits,
+//! A risk-approved order is recorded in the caller's [`OrderLedger`] as `Submitted` and handed to
+//! their [`ExecGateway`], which converts the ledger row into a canonical [`OrderRequest`] and submits
+//! it to that caller's [`PaperExchange`]. The exchange owns the order lifecycle — resting limits,
 //! armed stops, fills, cancellations, rejections — and is the single source of fills. The
-//! gateway drains the exchange's fill and lifecycle-event streams back into the ledger (and the
-//! shared ledger repositories, docs/gaps/0006) on every submit and market advance, so the
+//! gateway drains the exchange's fill and lifecycle-event streams back into the caller's ledger
+//! (and the shared ledger repositories, docs/gaps/0006) on every submit and market advance, so the
 //! ledger row follows whatever the exchange did: a marketable order fills immediately, a
 //! market order with no contra liquidity is refused (`no market price`), a limit rests as
 //! `Accepted` until a bar crosses it, and a stop arms until its trigger is breached.
 //!
 //! Event time is the ledger row's `created_at` and the bars' `timestamp` — nothing here reads
-//! the wall clock except the cancel path (this crate is the I/O edge; the no-clock rule binds
-//! the zero-I/O domain crates, not this adapter).
-//!
-//! # Rebuilt on this migration, not a rename
-//!
-//! This file used to embed `NextOpenSim`, a crate-local bar-driven market-order simulator
-//! (long-only, market orders only, filling at the next bar's open). `tantra-exec-paper` is now a
-//! workspace dependency with a full matching engine (participant orders + feed-book depth,
-//! stops, partial fills, cancels), so the embedded simulator is deleted and this file is the
-//! adapter that stands between the REST ledger and that shared exchange.
+//! the wall clock except the cancel path and portfolio snapshot timestamps (this crate is the
+//! I/O edge; the no-clock rule binds the zero-I/O domain crates, not this adapter).
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use chrono::{DateTime, Utc};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal_macros::dec;
+use serde_json::json;
 use tantra_core::rust_decimal::Decimal;
 use tantra_core::{
-    Bar, OrderRequest, OrderSide, OrderType as CoreOrderType, Price, Quantity, TimeInForce,
+    AccountId, Bar, OrderRequest, OrderSide, OrderType as CoreOrderType, Price, Quantity,
+    TimeInForce,
 };
 use tantra_exec_paper::{ExchangeError, ExchangeEvent, FillCostFn, OrderState, PaperExchange};
 use tantra_market_finance::india::costs::NseCashEquitySchedule;
@@ -40,6 +34,12 @@ use tantra_runtime_api::{ErrorCode, ErrorDetail, SharedLedger};
 
 use crate::OrderLedger;
 use crate::orders::{Order, OrderStatus, OrderType, REST_ALGO_ID, RejectReason, to_core_status};
+
+/// Maximum number of per-caller paper accounts held in memory (matching `MAX_JOURNAL_PARTITIONS`).
+pub(crate) const MAX_ACCOUNT_PARTITIONS: usize = 4096;
+
+/// Maximum number of market bars kept in replay history for lazily-created caller exchanges.
+const MAX_BAR_HISTORY: usize = 10_000;
 
 /// The real NSE cash-equity delivery schedule as the exchange's [`FillCostFn`]: per-fill fees
 /// are the schedule's total across its charge lines, converted from the fee table's `f64` to
@@ -59,15 +59,239 @@ impl FillCostFn for NseCashEquityFillCost {
     }
 }
 
-/// Shared handle on the paper exchange.
+/// One caller's isolated paper trading account: its own write ledger and paper exchange.
+#[derive(Clone)]
+pub(crate) struct PaperAccount {
+    pub(crate) owner: String,
+    pub(crate) orders: OrderLedger,
+    pub(crate) exec: ExecGateway,
+}
+
+impl PaperAccount {
+    /// Canonical account identifier used when mirroring this caller's fills into [`SharedLedger`].
+    ///
+    /// Keeps the default unauthenticated/`DEFAULT_USER_ID` partition on `"rest-api"` for chat
+    /// portfolio tools and isolates named callers onto `"rest-api:<owner>"`.
+    pub(crate) fn shared_account_id(&self) -> AccountId {
+        if self.owner == crate::profile_store::DEFAULT_USER_ID {
+            AccountId::from(REST_ALGO_ID)
+        } else {
+            AccountId::from(format!("{REST_ALGO_ID}:{}", self.owner))
+        }
+    }
+}
+
+/// Per-caller paper trading accounts (`(OrderLedger, ExecGateway)`), created lazily and bounded
+/// by [`MAX_ACCOUNT_PARTITIONS`], with market bar fan-out and historical bar replay so newly
+/// active callers share live market depth without sharing cash, orders, or positions.
+#[derive(Clone)]
+pub(crate) struct CallerPaperAccounts {
+    default_owner: String,
+    inner: Arc<RwLock<CallerPaperAccountsInner>>,
+}
+
+struct CallerPaperAccountsInner {
+    template_cash: Option<Decimal>,
+    accounts: HashMap<String, PaperAccount>,
+    claimed_ids: HashMap<String, String>,
+    bar_history: VecDeque<Bar>,
+}
+
+impl CallerPaperAccounts {
+    /// Creates the account table seeded with `default_owner` backed by `orders` and `exec`.
+    pub(crate) fn seeded(default_owner: &str, orders: OrderLedger, exec: ExecGateway) -> Self {
+        Self::seeded_inner(default_owner, orders, exec, None)
+    }
+
+    /// Creates the account table seeded with `default_owner` and custom `initial_cash` for
+    /// lazily created caller exchanges (e.g. `AppState::with_execution_sim`).
+    pub(crate) fn seeded_with_cash(
+        default_owner: &str,
+        orders: OrderLedger,
+        exec: ExecGateway,
+        initial_cash: Decimal,
+    ) -> Self {
+        Self::seeded_inner(default_owner, orders, exec, Some(initial_cash))
+    }
+
+    fn seeded_inner(
+        default_owner: &str,
+        orders: OrderLedger,
+        exec: ExecGateway,
+        template_cash: Option<Decimal>,
+    ) -> Self {
+        let mut accounts = HashMap::new();
+        accounts.insert(
+            default_owner.to_string(),
+            PaperAccount {
+                owner: default_owner.to_string(),
+                orders,
+                exec,
+            },
+        );
+        Self {
+            default_owner: default_owner.to_string(),
+            inner: Arc::new(RwLock::new(CallerPaperAccountsInner {
+                template_cash,
+                accounts,
+                claimed_ids: HashMap::new(),
+                bar_history: VecDeque::new(),
+            })),
+        }
+    }
+
+    /// Returns `caller`'s paper account, lazily creating one seeded with current market bars
+    /// when first accessed.
+    pub(crate) fn for_caller(&self, caller: &str) -> Result<PaperAccount, ErrorDetail> {
+        {
+            let guard = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+            if let Some(acct) = guard.accounts.get(caller) {
+                return Ok(acct.clone());
+            }
+        }
+        let mut guard = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        if let Some(acct) = guard.accounts.get(caller) {
+            return Ok(acct.clone());
+        }
+        if guard.accounts.len() >= MAX_ACCOUNT_PARTITIONS {
+            return Err(ErrorDetail::new(
+                ErrorCode::ServiceUnavailable,
+                "too many paper-account partitions",
+            )
+            .with_context(json!({ "reason": "paper_account_partitions_exhausted" })));
+        }
+        let exec = match guard.template_cash {
+            Some(cash) => ExecGateway::with_exchange(PaperExchange::new(cash)),
+            None => ExecGateway::default_sim(),
+        };
+        exec.seed_bars(guard.bar_history.iter());
+        let acct = PaperAccount {
+            owner: caller.to_string(),
+            orders: OrderLedger::new(),
+            exec,
+        };
+        guard.accounts.insert(caller.to_string(), acct.clone());
+        Ok(acct)
+    }
+
+    /// Ensures `order_id` has not already been claimed by a different caller.
+    pub(crate) fn check_client_order_id(
+        &self,
+        order_id: &str,
+        owner: &str,
+    ) -> Result<(), ErrorDetail> {
+        let guard = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+        if let Some(existing_owner) = guard.claimed_ids.get(order_id) {
+            if existing_owner != owner {
+                return Err(conflict_client_order_id());
+            }
+        } else if owner != self.default_owner
+            && guard
+                .accounts
+                .get(&self.default_owner)
+                .is_some_and(|a| a.orders.get(order_id).is_some())
+        {
+            return Err(conflict_client_order_id());
+        }
+        Ok(())
+    }
+
+    /// Atomically claims `order_id` for `owner`, rejecting if another caller claimed it first.
+    pub(crate) fn claim_client_order_id(
+        &self,
+        order_id: &str,
+        owner: &str,
+    ) -> Result<(), ErrorDetail> {
+        let mut guard = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        if let Some(existing_owner) = guard.claimed_ids.get(order_id) {
+            if existing_owner != owner {
+                return Err(conflict_client_order_id());
+            }
+            return Ok(());
+        }
+        if owner != self.default_owner
+            && guard
+                .accounts
+                .get(&self.default_owner)
+                .is_some_and(|a| a.orders.get(order_id).is_some())
+        {
+            return Err(conflict_client_order_id());
+        }
+        guard
+            .claimed_ids
+            .insert(order_id.to_string(), owner.to_string());
+        Ok(())
+    }
+
+    /// Feeds `bars` to every active caller exchange and appends them to the bounded replay
+    /// history for callers activated later.
+    pub(crate) fn advance_all(
+        &self,
+        shared: &SharedLedger,
+        bars: &[Bar],
+    ) -> Result<(), ErrorDetail> {
+        let accounts: Vec<PaperAccount> = {
+            let mut guard = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+            for bar in bars {
+                guard.bar_history.push_back(bar.clone());
+                while guard.bar_history.len() > MAX_BAR_HISTORY {
+                    guard.bar_history.pop_front();
+                }
+            }
+            guard.accounts.values().cloned().collect()
+        };
+        for acct in accounts {
+            acct.exec
+                .advance(&acct.orders, &acct.shared_account_id(), shared, bars)?;
+        }
+        Ok(())
+    }
+
+    /// Squares off open positions across all materialized caller accounts.
+    pub(crate) fn mis_square_off_all(&self, shared: &SharedLedger, at: DateTime<Utc>) -> usize {
+        let accounts: Vec<PaperAccount> = {
+            let guard = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+            guard.accounts.values().cloned().collect()
+        };
+        accounts
+            .into_iter()
+            .map(|acct| {
+                acct.exec
+                    .mis_square_off(&acct.orders, &acct.shared_account_id(), shared, at)
+            })
+            .sum()
+    }
+
+    /// Total fills recorded across all materialized caller accounts.
+    pub(crate) fn total_fills(&self) -> usize {
+        let accounts: Vec<PaperAccount> = {
+            let guard = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+            guard.accounts.values().cloned().collect()
+        };
+        accounts.into_iter().map(|a| a.exec.fill_count()).sum()
+    }
+
+    /// Total orders recorded across all materialized caller accounts.
+    pub(crate) fn total_orders(&self) -> usize {
+        let accounts: Vec<PaperAccount> = {
+            let guard = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+            guard.accounts.values().cloned().collect()
+        };
+        accounts.into_iter().map(|a| a.orders.list().len()).sum()
+    }
+}
+
+fn conflict_client_order_id() -> ErrorDetail {
+    ErrorDetail::new(ErrorCode::Conflict, "client_order_id is already in use")
+        .with_context(json!({ "reason": "client_order_id_in_use" }))
+}
+
+/// Shared handle on one caller's paper exchange.
 #[derive(Clone)]
 pub(crate) struct ExecGateway {
     exchange: Arc<Mutex<PaperExchange>>,
     /// Ledger order id -> broker order id (`PAPER-0001`-style) as returned by the exchange.
     ledger_to_broker: Arc<Mutex<HashMap<String, String>>>,
-    /// Broker order id -> ledger order id, kept after cancel/fill so a terminal lifecycle event
-    /// broadcast after the forward mapping is dropped still resolves to its owner (gap 0013).
-    broker_to_ledger: Arc<Mutex<HashMap<String, String>>>,
     /// Cumulative filled quantity per ledger order id, so partial fills report a running
     /// cumulative quantity to the ledger.
     cum_qty: Arc<Mutex<HashMap<String, Decimal>>>,
@@ -88,7 +312,6 @@ impl ExecGateway {
         Self {
             exchange: Arc::new(Mutex::new(exchange)),
             ledger_to_broker: Arc::default(),
-            broker_to_ledger: Arc::default(),
             cum_qty: Arc::default(),
             last_seen_fills: Arc::default(),
             last_seen_events: Arc::default(),
@@ -110,35 +333,18 @@ impl ExecGateway {
         Self::new(exchange)
     }
 
+    /// Replays historical bars into a brand-new exchange so it matches live market depth/prices
+    /// without emitting historical stream frames.
+    fn seed_bars<'a>(&self, bars: impl IntoIterator<Item = &'a Bar>) {
+        let mut exchange = self.exchange.lock().unwrap_or_else(PoisonError::into_inner);
+        for bar in bars {
+            exchange.feed_bar(bar);
+        }
+    }
+
     /// A fresh `/api/v2/stream` event stream subscription, starting at the next published payload.
     pub(crate) fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<serde_json::Value> {
         self.events_tx.subscribe()
-    }
-
-    /// The ledger id the exchange's `broker_id` belongs to.
-    pub(crate) fn ledger_id_for_broker(&self, broker_id: &str) -> Option<String> {
-        self.broker_to_ledger
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(broker_id)
-            .cloned()
-    }
-
-    /// Whether an order-lifecycle or fill `payload` concerns an order owned by `caller` (gap
-    /// 0013). Payloads without a resolvable broker order id, or with an unmapped one, are not.
-    pub(crate) fn event_owned_by(
-        &self,
-        ledger: &OrderLedger,
-        payload: &serde_json::Value,
-        caller: &str,
-    ) -> bool {
-        let broker_id = payload
-            .get("broker_order_id")
-            .or_else(|| payload.pointer("/fill/order_id"))
-            .and_then(serde_json::Value::as_str);
-        broker_id
-            .and_then(|b| self.ledger_id_for_broker(b))
-            .is_some_and(|ledger_id| ledger.is_owned_by(&ledger_id, caller))
     }
 
     /// Publishes one wire payload to every `/api/v2/stream` subscriber. A full channel drops the
@@ -149,7 +355,13 @@ impl ExecGateway {
 
     /// Converts the ledger row into a canonical [`OrderRequest`] and submits it to the
     /// exchange, applying any immediate fill or rejection to `ledger` (and the shared ledger).
-    pub(crate) fn submit(&self, ledger: &OrderLedger, shared: &SharedLedger, order: Order) {
+    pub(crate) fn submit(
+        &self,
+        ledger: &OrderLedger,
+        account_id: &AccountId,
+        shared: &SharedLedger,
+        order: Order,
+    ) {
         let ledger_id = order.order_id().to_owned();
         let instrument = order.instrument_id().clone();
         let side = order.side();
@@ -195,13 +407,9 @@ impl ExecGateway {
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .insert(ledger_id.clone(), broker_id.clone());
-                self.broker_to_ledger
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .insert(broker_id.clone(), ledger_id.clone());
                 // A marketable order fills on submit; a resting one (or an armed stop) must at
                 // least read as `Accepted` in the ledger.
-                self.drain_fills(ledger, shared);
+                self.drain_fills(ledger, account_id, shared);
                 let resting = self
                     .exchange
                     .lock()
@@ -240,6 +448,7 @@ impl ExecGateway {
     pub(crate) fn advance(
         &self,
         ledger: &OrderLedger,
+        account_id: &AccountId,
         shared: &SharedLedger,
         bars: &[Bar],
     ) -> Result<(), ErrorDetail> {
@@ -262,7 +471,7 @@ impl ExecGateway {
                 "timestamp": timestamp.to_rfc3339(),
             }));
         }
-        self.drain_fills(ledger, shared);
+        self.drain_fills(ledger, account_id, shared);
         Ok(())
     }
 
@@ -329,6 +538,7 @@ impl ExecGateway {
     pub(crate) fn mis_square_off(
         &self,
         ledger: &OrderLedger,
+        account_id: &AccountId,
         shared: &SharedLedger,
         at: DateTime<Utc>,
     ) -> usize {
@@ -371,14 +581,14 @@ impl ExecGateway {
                 submitted += 1;
             }
         }
-        self.drain_fills(ledger, shared);
+        self.drain_fills(ledger, account_id, shared);
         submitted
     }
 
     /// Drains the exchange's new fills and lifecycle events (since the last drain) into the
     /// ledger and, for fills, the shared ledger repositories. Called on submit (immediate
     /// fills of marketable orders) and on advance (bar-driven fills).
-    fn drain_fills(&self, ledger: &OrderLedger, shared: &SharedLedger) {
+    fn drain_fills(&self, ledger: &OrderLedger, account_id: &AccountId, shared: &SharedLedger) {
         let exchange = self.exchange.lock().unwrap_or_else(PoisonError::into_inner);
         let mapping = self
             .ledger_to_broker
@@ -422,11 +632,12 @@ impl ExecGateway {
                 fill.timestamp,
                 status,
             );
-            // Mirror the fill into the shared ledger repositories under the REST account and
-            // the ledger order id (the exchange's broker id would not match the order row).
+            // Mirror the fill into the shared ledger repositories under the caller's REST
+            // account and ledger order id (the exchange's broker id would not match the order
+            // row).
             let mut mirrored = fill.clone();
             mirrored.order_id = ledger_id.clone();
-            mirrored.account_id = Some(REST_ALGO_ID.to_string());
+            mirrored.account_id = Some(account_id.to_string());
             mirrored.algo_id = REST_ALGO_ID.to_string();
             shared.record_fill(&mirrored);
             shared.update_order_fill(

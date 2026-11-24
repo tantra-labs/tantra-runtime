@@ -305,8 +305,8 @@ pub async fn run_tape_serve(
 
     Ok(PaperServeOutcome {
         bars_fed,
-        fills: state.exec.fill_count(),
-        orders: state.orders.list().len(),
+        fills: state.paper_accounts.total_fills(),
+        orders: state.paper_accounts.total_orders(),
     })
 }
 
@@ -334,10 +334,7 @@ async fn process_bar(
         // NSE trading-calendar gate (plan 0005 D5 follow-on, closed): never submit MIS
         // square-off closes on non-trading days (weekends / exchange holidays).
         if calendar.is_trading_day(bar.timestamp.date_naive()) && ist_hhmm(bar.timestamp) == *hhmm {
-            let closes =
-                state
-                    .exec
-                    .mis_square_off(&state.orders, &state.shared_ledger, bar.timestamp);
+            let closes = state.mis_square_off(bar.timestamp);
             eprintln!("paper-serve: MIS square-off {hhmm} submitted {closes} close orders");
         }
     }

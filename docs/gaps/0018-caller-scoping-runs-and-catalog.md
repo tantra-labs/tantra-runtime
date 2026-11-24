@@ -26,5 +26,5 @@ With auth on, token B can list and read the full event journal (fills, equity) o
 
 ## Related
 
-- Follows closed gap 0013 (journal/orders scoped) and open gap 0017 (per-caller paper accounts); adjacent, not covering runs.
+- Follows closed gaps 0013 (journal/orders scoped) and 0017 (per-caller paper accounts); adjacent, not covering runs.
 - Binding rule: `.agents/rules/security-and-secrets.md` §2.1.

@@ -25,5 +25,5 @@ Memory grows O(fills x positions) per day and the history is not persisted, so p
 
 ## Related
 
-- [0017](0017-per-caller-paper-accounts.md) (per-caller accounts); [0021](0021-durable-trading-state.md) (persistence).
+- Closed `tantra-runtime` gap 0017 (per-caller paper accounts); [0021](0021-durable-trading-state.md) (persistence).
 - `tantra-ledger` gap 0022 (bounded state and snapshots), gap 0015 (`apply_fill` ignores side).
