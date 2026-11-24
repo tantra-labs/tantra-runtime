@@ -191,7 +191,7 @@ pub struct RunService {
 }
 
 fn shutting_down() -> ErrorDetail {
-    ErrorDetail::new(ErrorCode::Timeout, "server is shutting down")
+    ErrorDetail::new(ErrorCode::ServiceUnavailable, "server is shutting down")
         .with_context(json!({"reason": "shutting_down"}))
 }
 

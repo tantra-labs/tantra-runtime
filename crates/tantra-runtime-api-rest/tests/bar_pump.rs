@@ -49,7 +49,7 @@ async fn call(
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(value) => {
             builder = builder.header("content-type", "application/json");
@@ -176,4 +176,12 @@ async fn get_quotes_returns_the_pumped_bar_close() {
     let text = v.to_string();
     assert!(text.contains("123.5"), "{text}");
     assert!(text.contains("000005Z"), "{text}");
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

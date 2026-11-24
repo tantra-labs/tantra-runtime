@@ -57,7 +57,7 @@ fn bar(ts: u64, open: f64) -> tantra_core::Bar {
 }
 
 async fn call(app: Router, method: Method, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(value) => {
             builder = builder.header("content-type", "application/json");
@@ -214,4 +214,12 @@ async fn trade_intent_sink_enqueues_into_the_jobs_registry() {
         jobs[0].metadata.get("instrument").map(String::as_str),
         Some("NSE:X")
     );
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

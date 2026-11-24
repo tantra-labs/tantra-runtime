@@ -77,7 +77,7 @@ pub(crate) struct ExecGateway {
     last_seen_fills: Arc<Mutex<usize>>,
     last_seen_events: Arc<Mutex<usize>>,
     /// Broadcast of the exchange's lifecycle events, fills, depth updates and account
-    /// snapshots as wire JSON, fanned out to `/ws/live` clients (plan 0005 D3, T14.7). A full
+    /// snapshots as wire JSON, fanned out to `/api/v2/stream` clients (plan 0005 D3, T14.7). A full
     /// channel drops the oldest payload for lagged receivers; `send` never blocks.
     events_tx: tokio::sync::broadcast::Sender<serde_json::Value>,
 }
@@ -110,21 +110,12 @@ impl ExecGateway {
         Self::new(exchange)
     }
 
-    /// A fresh `/ws/live` event stream subscription, starting at the next published payload.
+    /// A fresh `/api/v2/stream` event stream subscription, starting at the next published payload.
     pub(crate) fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<serde_json::Value> {
         self.events_tx.subscribe()
     }
 
-    /// The broker order id (`PAPER-0001`-style) the exchange assigned to `ledger_id`, if it is
-    /// still being tracked.
-    pub(crate) fn broker_id_for(&self, ledger_id: &str) -> Option<String> {
-        self.ledger_to_broker
-            .lock()
-            .ok()
-            .and_then(|m| m.get(ledger_id).cloned())
-    }
-
-    /// The ledger id the exchange's `broker_id` belongs to (reverse of [`Self::broker_id_for`]).
+    /// The ledger id the exchange's `broker_id` belongs to.
     pub(crate) fn ledger_id_for_broker(&self, broker_id: &str) -> Option<String> {
         self.broker_to_ledger
             .lock()
@@ -150,7 +141,7 @@ impl ExecGateway {
             .is_some_and(|ledger_id| ledger.is_owned_by(&ledger_id, caller))
     }
 
-    /// Publishes one wire payload to every `/ws/live` subscriber. A full channel drops the
+    /// Publishes one wire payload to every `/api/v2/stream` subscriber. A full channel drops the
     /// oldest payload for lagged receivers and returns `Err`; `send` never blocks.
     fn publish(&self, payload: serde_json::Value) {
         let _ = self.events_tx.send(payload);
@@ -299,7 +290,7 @@ impl ExecGateway {
         match result {
             Ok(()) => {
                 // The exchange's own `Cancelled` event stays undrained (this path takes only
-                // `ledger`, not `shared`), so notify `/ws/live` subscribers directly.
+                // `ledger`, not `shared`), so notify `/api/v2/stream` subscribers directly.
                 self.publish(serde_json::json!({
                     "type": "Cancelled",
                     "broker_order_id": broker_id,
@@ -333,7 +324,7 @@ impl ExecGateway {
     /// `paper serve` MIS close, plan 0005 D5).
     ///
     /// Submits directly to the exchange — the daemon's own close path, not the REST risk gate
-    /// — then drains fills/events so the ledger and `/ws/live` subscribers see the closes
+    /// — then drains fills/events so the ledger and `/api/v2/stream` subscribers see the closes
     /// exactly as any other fill. Returns the number of close orders submitted.
     pub(crate) fn mis_square_off(
         &self,
@@ -448,7 +439,7 @@ impl ExecGateway {
         }
         *fills_cursor = fills.len();
 
-        // The account book follows every drain: publish fresh snapshots so `/ws/live` clients
+        // The account book follows every drain: publish fresh snapshots so `/api/v2/stream` clients
         // can track positions and equity without polling (plan 0005 D3, T14.7).
         let snapshot_ts = Utc::now();
         self.publish(serde_json::json!({
@@ -495,7 +486,7 @@ impl ExecGateway {
                 _ => {}
             }
         }
-        // Fan every new lifecycle event out to `/ws/live` subscribers as wire JSON, exactly as
+        // Fan every new lifecycle event out to `/api/v2/stream` subscribers as wire JSON, exactly as
         // the exchange reported it.
         for event in new_events {
             self.publish(exchange_event_to_json(event));
@@ -504,7 +495,7 @@ impl ExecGateway {
     }
 }
 
-/// Serializes one exchange lifecycle event to the canonical `/ws/live` wire shape (plan 0005
+/// Serializes one exchange lifecycle event to the canonical `/api/v2/stream` wire shape (plan 0005
 /// D3, T14.7): a `type` tag plus the event's fields, decimals as strings. A fill payload is the
 /// canonical `tantra_core` `FillReport` DTO as-is.
 fn exchange_event_to_json(event: &ExchangeEvent) -> serde_json::Value {
@@ -560,7 +551,7 @@ fn exchange_event_to_json(event: &ExchangeEvent) -> serde_json::Value {
     }
 }
 
-/// The `/ws/live` wire spelling of an order side: lowercase `buy`/`sell` (the canonical core
+/// The `/api/v2/stream` wire spelling of an order side: lowercase `buy`/`sell` (the canonical core
 /// [`OrderSide`] serde spells it `BUY`/`SELL`).
 fn live_side(side: OrderSide) -> &'static str {
     match side {

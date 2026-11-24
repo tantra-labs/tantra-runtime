@@ -54,7 +54,7 @@ async fn call(
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
-    let mut req = Request::builder().method(method).uri(uri);
+    let mut req = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(v) => {
             req = req.header("content-type", "application/json");
@@ -127,4 +127,12 @@ async fn a_parquet_store_with_no_ticks_is_still_the_l2_refusal() {
         done["data"]["error"]["context"]["reason"],
         "l2_requires_ticks"
     );
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

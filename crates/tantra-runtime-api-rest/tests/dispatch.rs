@@ -43,7 +43,7 @@ fn data_dir() -> PathBuf {
 
 async fn call(method: &str, target: &str, body: Option<&str>) -> (u16, Value) {
     let state = AppState::from_parquet_dir(&data_dir()).unwrap();
-    let (status, text) = dispatch(api_router_with(state), method, target, body)
+    let (status, text) = dispatch(api_router_with(state), method, &v2(target), body)
         .await
         .unwrap();
     (status, serde_json::from_str(&text).unwrap_or(Value::Null))
@@ -96,4 +96,12 @@ async fn bad_arguments_are_errors_not_panics() {
         dispatch(router, "GET", "no-slash", None).await,
         Err(DispatchError::InvalidTarget(_))
     ));
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

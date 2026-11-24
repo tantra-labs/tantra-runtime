@@ -22,7 +22,7 @@ fn manifest(name: &str, hash: &str) -> Value {
 }
 
 async fn call(router: &Router, method: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let mut req = Request::builder().method(method).uri("/strategies");
+    let mut req = Request::builder().method(method).uri("/api/v2/strategies");
     let body = match body {
         Some(v) => {
             req = req.header("content-type", "application/json");
@@ -156,7 +156,7 @@ async fn a_malformed_json_body_is_still_the_standard_envelope() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/strategies")
+                .uri("/api/v2/strategies")
                 .header("content-type", "application/json")
                 .body(Body::from("{not json"))
                 .unwrap(),
@@ -204,7 +204,7 @@ async fn verify_and_compile_agree_on_the_ir() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/strategies/verify")
+                .uri("/api/v2/strategies/verify")
                 .header("content-type", "application/json")
                 .body(Body::from(m.to_string()))
                 .unwrap(),

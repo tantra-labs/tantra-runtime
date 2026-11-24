@@ -207,7 +207,7 @@ pub struct ChatRuntime {
     /// Late-bound weak handle to the served [`AppState`] used by the in-process strategy-loop
     /// port (weak to avoid an `AppState -> ChatRuntime -> port -> AppState` cycle).
     loop_state: Arc<OnceLock<Weak<AppState>>>,
-    /// ACP (`GET /api/v1/acp`) agent host shared by all ACP connections (agent plan 0019 Phase 2).
+    /// ACP (`GET /api/v2/acp`) agent host shared by all ACP connections (agent plan 0019 Phase 2).
     acp: Arc<AcpBridge>,
 }
 
@@ -851,7 +851,7 @@ async fn send_capability_notice(
     }
 }
 
-/// `GET /api/v1/acp` — serves the Tantra chat agent over the Agent Client Protocol (newline-delimited
+/// `GET /api/v2/acp` — serves the Tantra chat agent over the Agent Client Protocol (newline-delimited
 /// JSON-RPC, one message per WebSocket text frame) with the runtime's full chat tool set.
 ///
 /// Extracting [`Caller`] makes the route fail closed when auth is enforced.

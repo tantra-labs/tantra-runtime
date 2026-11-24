@@ -1,13 +1,9 @@
-//! Conformance tests: the generated OpenAPI 3.1 document must cover every v1
+//! Conformance tests: the generated OpenAPI 3.1 document must cover every
 //! route, register the wire/profile component schemas, and match the
 //! checked-in static artifact (`schema/openapi.v2.json`).
 
 use tantra_runtime_api_rest::openapi::{OpenApiDocument, Operation};
 use tantra_runtime_api_rest::{RouteScope, route_registry};
-
-fn is_root_doc_route(path: &str) -> bool {
-    path.starts_with("/schema/openapi") || path == "/docs" || path == "/swagger-ui"
-}
 
 fn brace(path: &str) -> String {
     path.split('/')
@@ -39,59 +35,25 @@ fn all_ops(doc: &OpenApiDocument) -> Vec<&Operation> {
         .collect()
 }
 
-/// Every registry entry (minus root doc routes) has an operation in v2; non-v2-only in v1 too.
+/// Every registry entry (minus root doc routes) has an operation in the document.
 #[test]
 fn every_registry_route_has_an_operation() {
-    let v1 = OpenApiDocument::generate_v1();
-    let v2 = OpenApiDocument::generate_v2();
-    for e in route_registry()
-        .iter()
-        .filter(|e| !is_root_doc_route(e.path))
-    {
+    let doc = OpenApiDocument::generate();
+    for e in route_registry().iter().filter(|e| !e.root) {
         assert!(
-            op(&v2, e.method, e.path).is_some(),
-            "v2 missing {} {}",
+            op(&doc, e.method, e.path).is_some(),
+            "missing {} {}",
             e.method,
             e.path
         );
-        if !e.v2_only {
-            assert!(
-                op(&v1, e.method, e.path).is_some(),
-                "v1 missing {} {}",
-                e.method,
-                e.path
-            );
-        }
-    }
-}
-
-/// The v1 document contains no v2-only path.
-#[test]
-fn v1_document_has_no_v2_only_path() {
-    let v1 = OpenApiDocument::generate_v1();
-    for e in route_registry().iter().filter(|e| e.v2_only) {
-        let still_v1 = route_registry()
-            .iter()
-            .any(|o| !o.v2_only && o.path == e.path && o.method == e.method);
-        if !still_v1 {
-            assert!(
-                op(&v1, e.method, e.path).is_none(),
-                "v1 has v2-only {} {}",
-                e.method,
-                e.path
-            );
-        }
     }
 }
 
 /// Every operation's security comes from its route's scope.
 #[test]
 fn operation_security_matches_scope() {
-    let v2 = OpenApiDocument::generate_v2();
-    for e in route_registry()
-        .iter()
-        .filter(|e| !is_root_doc_route(e.path))
-    {
+    let v2 = OpenApiDocument::generate();
+    for e in route_registry().iter().filter(|e| !e.root) {
         let o = op(&v2, e.method, e.path).expect("operation exists");
         let got = serde_json::to_value(&o.security).expect("serializes");
         let want = match e.scope {
@@ -112,10 +74,8 @@ fn no_phantom_operations() {
 /// operationIds are unique within each document.
 #[test]
 fn operation_ids_are_unique() {
-    for doc in [
-        OpenApiDocument::generate_v1(),
-        OpenApiDocument::generate_v2(),
-    ] {
+    {
+        let doc = OpenApiDocument::generate();
         let mut seen = std::collections::BTreeSet::new();
         for o in all_ops(&doc) {
             assert!(
@@ -130,11 +90,8 @@ fn operation_ids_are_unique() {
 /// `x-tantra-max-body-bytes` equals the registry body limit.
 #[test]
 fn max_body_bytes_matches_registry() {
-    let v2 = OpenApiDocument::generate_v2();
-    for e in route_registry()
-        .iter()
-        .filter(|e| !is_root_doc_route(e.path))
-    {
+    let v2 = OpenApiDocument::generate();
+    for e in route_registry().iter().filter(|e| !e.root) {
         let o = op(&v2, e.method, e.path).expect("operation exists");
         assert_eq!(
             o.max_body_bytes, e.body_limit,
@@ -155,7 +112,7 @@ fn write_static_artifact() {
 /// The gap's listed wire models are registered as component schemas.
 #[test]
 fn wire_schemas_are_registered() {
-    let doc = OpenApiDocument::generate_v2();
+    let doc = OpenApiDocument::generate();
     for name in [
         "ResponseEnvelope",
         "ErrorDetail",
@@ -198,7 +155,7 @@ fn static_artifact_is_current() {
         .unwrap_or_else(|e| panic!("failed to read {artifact_path}: {e}"));
     let artifact_value: serde_json::Value = serde_json::from_str(&artifact)
         .unwrap_or_else(|e| panic!("artifact is not valid JSON: {e}"));
-    let generated = serde_json::to_value(OpenApiDocument::generate_v2())
+    let generated = serde_json::to_value(OpenApiDocument::generate())
         .expect("generated document serializes to JSON");
     assert_eq!(
         artifact_value, generated,

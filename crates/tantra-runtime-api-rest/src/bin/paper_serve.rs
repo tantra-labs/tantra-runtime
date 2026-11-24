@@ -1,5 +1,5 @@
 //! `paper serve` daemon binary: replays a bar tape into the paper exchange and serves the
-//! REST + `/ws/live` surface, exiting cleanly when the tape ends.
+//! `/api/v2` REST + `/api/v2/stream` surface, exiting cleanly when the tape ends.
 //!
 //! Arguments are parsed manually (no `clap` in the workspace):
 //! `paper-serve --tape <file> [--addr <ip:port>] [--cash <decimal>] [--real-time]

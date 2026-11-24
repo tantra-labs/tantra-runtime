@@ -58,14 +58,14 @@ async fn call(router: &Router, method: &str, uri: &str, body: Option<&str>) -> (
     let request = if let Some(b) = body {
         Request::builder()
             .method(method)
-            .uri(uri)
+            .uri(v2(uri))
             .header("content-type", "application/json")
             .body(Body::from(b.to_string()))
             .unwrap()
     } else {
         Request::builder()
             .method(method)
-            .uri(uri)
+            .uri(v2(uri))
             .header("content-type", "application/json")
             .body(Body::empty())
             .unwrap()
@@ -92,7 +92,7 @@ async fn trade_journal_requires_configured_store() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/v1/trade-journal/accounts")
+                .uri("/api/v2/trade-journal/accounts")
                 .header("content-type", "application/json")
                 .body(Body::empty())
                 .unwrap(),
@@ -105,7 +105,7 @@ async fn trade_journal_requires_configured_store() {
 #[tokio::test]
 async fn list_accounts() {
     let router = build_router();
-    let (status, body) = call(&router, "GET", "/api/v1/trade-journal/accounts", None).await;
+    let (status, body) = call(&router, "GET", "/api/v2/trade-journal/accounts", None).await;
     assert_eq!(status, StatusCode::OK);
     let accounts = &body["data"]["accounts"];
     assert_eq!(accounts.as_array().unwrap().len(), 1);
@@ -119,7 +119,7 @@ async fn create_account() {
     let (status, body) = call(
         &router,
         "POST",
-        "/api/v1/trade-journal/accounts",
+        "/api/v2/trade-journal/accounts",
         Some(&json_body(&serde_json::json!({
             "display_name": "New Account",
             "provenance": "Imported",
@@ -134,7 +134,7 @@ async fn create_account() {
     assert_eq!(body["data"]["starting_balance"], "50000.00");
 
     // Listing now shows two accounts.
-    let (status, body) = call(&router, "GET", "/api/v1/trade-journal/accounts", None).await;
+    let (status, body) = call(&router, "GET", "/api/v2/trade-journal/accounts", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["accounts"].as_array().unwrap().len(), 2);
 }
@@ -145,7 +145,7 @@ async fn create_account_bad_provenance() {
     let (status, _body) = call(
         &router,
         "POST",
-        "/api/v1/trade-journal/accounts",
+        "/api/v2/trade-journal/accounts",
         Some(&json_body(&serde_json::json!({
             "display_name": "X",
             "provenance": "NotAProvenance",
@@ -159,7 +159,7 @@ async fn create_account_bad_provenance() {
 #[tokio::test]
 async fn list_trades() {
     let router = build_router();
-    let (status, body) = call(&router, "GET", "/api/v1/trade-journal/trades", None).await;
+    let (status, body) = call(&router, "GET", "/api/v2/trade-journal/trades", None).await;
     assert_eq!(status, StatusCode::OK);
     let trades = &body["data"]["trades"];
     assert_eq!(trades.as_array().unwrap().len(), 1);
@@ -178,7 +178,7 @@ async fn patch_trade_annotation() {
     let (status, body) = call(
         &router,
         "PATCH",
-        "/api/v1/trade-journal/trades/T-1",
+        "/api/v2/trade-journal/trades/T-1",
         Some(&json_body(&serde_json::json!({
             "rating": 5,
             "review": "great setup",
@@ -195,7 +195,7 @@ async fn patch_trade_annotation() {
 #[tokio::test]
 async fn overview() {
     let router = build_router();
-    let (status, body) = call(&router, "GET", "/api/v1/trade-journal/overview", None).await;
+    let (status, body) = call(&router, "GET", "/api/v2/trade-journal/overview", None).await;
     assert_eq!(status, StatusCode::OK);
     let metrics = &body["data"]["metrics"];
     assert_eq!(metrics["total_trades"], 1);
@@ -214,7 +214,7 @@ async fn calendar() {
     let (status, body) = call(
         &router,
         "GET",
-        "/api/v1/trade-journal/calendar?month=2026-03",
+        "/api/v2/trade-journal/calendar?month=2026-03",
         None,
     )
     .await;
@@ -241,7 +241,7 @@ async fn notes() {
     let (status, _body) = call(
         &router,
         "POST",
-        "/api/v1/trade-journal/notes",
+        "/api/v2/trade-journal/notes",
         Some(&json_body(&serde_json::json!({
             "account_id": "acc-journal-1",
             "day": "2026-03-15",
@@ -255,7 +255,7 @@ async fn notes() {
     let (status, body) = call(
         &router,
         "GET",
-        "/api/v1/trade-journal/notes?account=acc-journal-1",
+        "/api/v2/trade-journal/notes?account=acc-journal-1",
         None,
     )
     .await;
@@ -272,7 +272,7 @@ async fn compare() {
     let (status, body) = call(
         &router,
         "GET",
-        "/api/v1/trade-journal/compare?accountA=acc-journal-1&accountB=acc-journal-1",
+        "/api/v2/trade-journal/compare?accountA=acc-journal-1&accountB=acc-journal-1",
         None,
     )
     .await;
@@ -285,7 +285,7 @@ async fn compare() {
 #[tokio::test]
 async fn routes_are_not_flagged_not_implemented() {
     let router = api_router_with(AppState::default());
-    let (_status, body) = call(&router, "GET", "/api/v1/capabilities", None).await;
+    let (_status, body) = call(&router, "GET", "/api/v2/capabilities", None).await;
     let flagged: Vec<String> = body["data"]["capabilities"]["not_implemented"]
         .as_array()
         .unwrap()
@@ -346,4 +346,12 @@ fn store_test_helpers() {
 
 fn now() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 3, 15).unwrap()
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

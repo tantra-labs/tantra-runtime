@@ -452,8 +452,8 @@ impl<Q, B> Endpoint<Q, B> {
     }
 }
 
-/// The full endpoint registry: every `METHOD /path` pair this API version
-/// serves, in registry order. The code generator walks it to emit OpenAPI
+/// The full endpoint registry: every canonical `METHOD /path` pair (relative to `/api/v2`)
+/// this API version serves, in registry order. The code generator walks it to emit OpenAPI
 /// `paths`.
 pub static ENDPOINTS: &[(&str, &str)] = &[
     ("GET", "/health"),
@@ -468,18 +468,18 @@ pub static ENDPOINTS: &[(&str, &str)] = &[
     ("GET", "/bars/{id}"),
     ("POST", "/bars"),
     ("GET", "/depth/{id}"),
-    ("GET", "/experimental-analysis/catalog"),
-    ("POST", "/experimental-analysis/returns"),
-    ("POST", "/experimental-analysis/intraday"),
-    ("POST", "/experimental-analysis/correlation"),
-    ("POST", "/experimental-analysis/options-overlay"),
-    ("POST", "/experimental-analysis/forecast"),
-    ("POST", "/experimental-analysis/events"),
-    ("POST", "/experimental-analysis/outlier-news"),
+    ("GET", "/studies/experimental-analysis/catalog"),
+    ("POST", "/studies/experimental-analysis/returns"),
+    ("POST", "/studies/experimental-analysis/intraday"),
+    ("POST", "/studies/experimental-analysis/correlation"),
+    ("POST", "/studies/experimental-analysis/options-overlay"),
+    ("POST", "/studies/experimental-analysis/forecast"),
+    ("POST", "/studies/experimental-analysis/events"),
+    ("POST", "/studies/experimental-analysis/outlier-news"),
     ("POST", "/studies/strategy-loop/evaluate"),
     ("POST", "/studies/strategy-loop/sweep"),
     ("POST", "/studies/strategy-loop/recommend-hedge"),
-    ("GET", "/screener/scan"),
+    ("GET", "/screener/scans"),
     ("GET", "/strategies"),
     ("POST", "/strategies"),
     ("POST", "/strategies/verify"),
@@ -492,22 +492,22 @@ pub static ENDPOINTS: &[(&str, &str)] = &[
     ("GET", "/sweeps/{id}"),
     ("GET", "/orders"),
     ("POST", "/orders"),
-    ("DELETE", "/orders/{id}"),
+    ("GET", "/orders/{id}"),
+    ("POST", "/orders/{id}/cancel"),
     ("GET", "/orders/{id}/fills"),
     ("POST", "/positions/close"),
-    ("GET", "/positions"),
-    ("GET", "/positions/audit"),
-    ("GET", "/trades"),
     ("GET", "/portfolio"),
     ("GET", "/portfolio/accounts"),
     ("GET", "/portfolio/positions"),
     ("GET", "/portfolio/holdings"),
-    ("GET", "/portfolio/chart"),
-    ("GET", "/portfolio/concentration"),
-    ("GET", "/portfolio/wac"),
-    ("GET", "/ledger"),
-    ("GET", "/tax/report"),
-    ("GET", "/fees"),
+    ("GET", "/portfolio/trades"),
+    ("GET", "/reports/equity-curve"),
+    ("GET", "/reports/concentration"),
+    ("GET", "/reports/wac"),
+    ("GET", "/reports/ledger"),
+    ("GET", "/reports/tax"),
+    ("GET", "/reports/fees"),
+    ("GET", "/reports/audit"),
     ("GET", "/trading-state"),
     ("PUT", "/trading-state"),
 ];
@@ -519,7 +519,7 @@ pub static WRITE_PATHS: &[(&str, &str)] = &[
     ("POST", "/bars"),
     ("PUT", "/trading-state"),
     ("POST", "/orders"),
-    ("DELETE", "/orders/{id}"),
+    ("POST", "/orders/{id}/cancel"),
     ("POST", "/positions/close"),
 ];
 

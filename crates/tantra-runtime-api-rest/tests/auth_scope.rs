@@ -9,20 +9,58 @@ use tantra_runtime_api::ENDPOINTS;
 use tantra_runtime_api_rest::{api_router, route_registry, unscoped_routes};
 use tower::util::ServiceExt;
 
+/// `ENDPOINTS` spells paths relative to `/api/v2` (and with `{param}`); the router serves them
+/// under that prefix.
+fn endpoints_under_v2() -> Vec<(String, String)> {
+    ENDPOINTS
+        .iter()
+        .map(|(m, p)| ((*m).to_owned(), format!("/api/v2{p}")))
+        .collect()
+}
+
 #[test]
 fn drift_test_fails_on_new_route() {
+    let owned = endpoints_under_v2();
+    let mut routes: Vec<(&str, &str)> = owned
+        .iter()
+        .map(|(m, p)| (m.as_str(), p.as_str()))
+        .collect();
     // Every endpoint in the registry already has a scope row: no drift today.
     assert!(
-        unscoped_routes(ENDPOINTS).is_empty(),
+        unscoped_routes(&routes).is_empty(),
         "the registry has an unscoped endpoint: {:?}",
-        unscoped_routes(ENDPOINTS)
+        unscoped_routes(&routes)
     );
 
     // Add a route that is not in the route registry: the guard must report it, so a
     // new endpoint cannot ship as an accidental public route.
-    let mut routes = ENDPOINTS.to_vec();
-    routes.push(("GET", "/brand/new"));
-    assert_eq!(unscoped_routes(&routes), vec!["GET /brand/new".to_owned()]);
+    routes.push(("GET", "/api/v2/brand/new"));
+    assert_eq!(
+        unscoped_routes(&routes),
+        vec!["GET /api/v2/brand/new".to_owned()]
+    );
+}
+
+/// Every route the real router serves has a scope row (design 0006 R0): the manifest is
+/// recorded by the router builder itself, so this cannot drift like the endpoint registry.
+#[test]
+fn every_served_route_has_a_scope_row() {
+    let served = tantra_runtime_api_rest::served_routes();
+    assert!(served.len() > 60, "manifest looks empty: {}", served.len());
+    let mut pairs: Vec<(&str, &str)> = served
+        .iter()
+        .map(|(m, p)| (m.as_str(), p.as_str()))
+        .collect();
+    assert!(
+        unscoped_routes(&pairs).is_empty(),
+        "served routes without a scope row: {:?}",
+        unscoped_routes(&pairs)
+    );
+    pairs.push(("GET", "/api/v2/brand/new"));
+    assert_eq!(
+        unscoped_routes(&pairs),
+        vec!["GET /api/v2/brand/new".to_owned()]
+    );
 }
 
 /// Every scoped route is a route the router actually serves (no phantom rows).
@@ -40,11 +78,11 @@ async fn every_scoped_route_is_registered_on_the_router() {
             .replace(":order_id", "ord1")
             .replace(":id", "X.NSE")
             .replace(":name", "main");
-        // v2-only routes are mounted under /api/v2 only.
-        let uri = if entry.v2_only {
-            format!("/api/v2{concrete}")
-        } else {
+        // Only the documentation routes are mounted at the root.
+        let uri = if entry.root {
             concrete
+        } else {
+            format!("/api/v2{concrete}")
         };
         let res = router
             .clone()
@@ -80,26 +118,4 @@ async fn every_scoped_route_is_registered_on_the_router() {
             );
         }
     }
-}
-
-/// Every route the real router serves has a scope row (design 0006 R0): the manifest is
-/// recorded by the router builder itself, so this cannot drift like the endpoint registry.
-#[test]
-fn every_served_route_has_a_scope_row() {
-    let served = tantra_runtime_api_rest::served_routes();
-    assert!(served.len() > 100, "manifest looks empty: {}", served.len());
-    let mut pairs: Vec<(&str, &str)> = served
-        .iter()
-        .map(|(m, p)| (m.as_str(), p.as_str()))
-        .collect();
-    assert!(
-        unscoped_routes(&pairs).is_empty(),
-        "served routes without a scope row: {:?}",
-        unscoped_routes(&pairs)
-    );
-    pairs.push(("GET", "/api/v2/brand/new"));
-    assert_eq!(
-        unscoped_routes(&pairs),
-        vec!["GET /api/v2/brand/new".to_owned()]
-    );
 }

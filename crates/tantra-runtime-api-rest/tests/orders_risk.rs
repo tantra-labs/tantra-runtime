@@ -54,7 +54,7 @@ fn state() -> AppState {
 }
 
 async fn call(app: Router, method: Method, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(value) => {
             builder = builder.header("content-type", "application/json");
@@ -236,7 +236,13 @@ async fn cancel_and_close_allowed_when_halted() {
     assert_eq!(body["error"]["code"], json!("risk_trading_halted"));
 
     // Cancelling and closing cannot add exposure, so both are allowed while halted.
-    let (status, body) = call(app.clone(), Method::DELETE, "/orders/o1", None).await;
+    let (status, body) = call(
+        app.clone(),
+        Method::POST,
+        "/orders/o1/cancel",
+        Some(json!({})),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["status"], json!("cancelled"));
     let (status, body) = call(app, Method::POST, "/positions/close", None).await;
@@ -266,9 +272,9 @@ async fn approval_queue_holds_placements() {
     );
 
     // GET /approval/queue returns the queued order
-    let (status, body) = call(app.clone(), Method::GET, "/approval/queue", None).await;
+    let (status, body) = call(app.clone(), Method::GET, "/approvals", None).await;
     assert_eq!(status, StatusCode::OK);
-    let queue = body["data"]["queue"].as_array().unwrap();
+    let queue = queue_items(&body);
     assert_eq!(queue.len(), 1);
     // A keyless order is queued under a fresh UUID, never a shared constant (design 0006 R2a).
     let queue_id = queue[0]["queue_id"].as_str().unwrap();
@@ -297,16 +303,15 @@ async fn approve_flows_through_risk_to_sim() {
     assert_eq!(body["data"]["status"], json!("queued"));
 
     // Approve it
-    let (status, body) = call(app.clone(), Method::POST, "/approval/approve", None).await;
+    let (status, body) = decide_oldest(&app, "approve").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["order_id"], json!("approve-flow"));
     assert_eq!(body["data"]["status"], json!("filled"));
 
     // Queue is now empty
-    let (status, body) = call(app, Method::GET, "/approval/queue", None).await;
+    let (status, body) = call(app, Method::GET, "/approvals", None).await;
     assert_eq!(status, StatusCode::OK);
-    let queue = body["data"]["queue"].as_array().unwrap();
-    assert_eq!(queue.len(), 0);
+    assert_eq!(pending_items(&body).len(), 0);
 }
 
 #[tokio::test]
@@ -324,16 +329,15 @@ async fn reject_removes_from_queue() {
     assert_eq!(body["data"]["status"], json!("queued"));
 
     // Reject it
-    let (status, body) = call(app.clone(), Method::POST, "/approval/reject", None).await;
+    let (status, body) = decide_oldest(&app, "reject").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["status"], json!("rejected"));
     assert_eq!(body["data"]["message"], json!("Order rejected by operator"));
 
     // Queue is now empty
-    let (status, body) = call(app, Method::GET, "/approval/queue", None).await;
+    let (status, body) = call(app, Method::GET, "/approvals", None).await;
     assert_eq!(status, StatusCode::OK);
-    let queue = body["data"]["queue"].as_array().unwrap();
-    assert_eq!(queue.len(), 0);
+    assert_eq!(pending_items(&body).len(), 0);
 }
 
 #[tokio::test]
@@ -357,7 +361,13 @@ async fn cancel_and_close_bypass_queue_even_when_halted() {
     assert_eq!(body["data"]["status"], json!("queued"));
 
     // Cancelling and closing bypass the queue entirely
-    let (status, body) = call(app.clone(), Method::DELETE, "/orders/o1", None).await;
+    let (status, body) = call(
+        app.clone(),
+        Method::POST,
+        "/orders/o1/cancel",
+        Some(json!({})),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["status"], json!("cancelled"));
     let (status, body) = call(app, Method::POST, "/positions/close", None).await;
@@ -594,9 +604,9 @@ async fn close_goes_through_the_approval_queue_when_enabled() {
     assert_eq!(status, StatusCode::OK, "{body}");
     // Held, not yet in the ledger.
     assert!(close_orders(&st).is_empty());
-    let (_, queue) = call(app.clone(), Method::GET, "/approval/queue", None).await;
-    assert_eq!(queue["data"]["queue"].as_array().unwrap().len(), 1);
-    let (status, _) = call(app, Method::POST, "/approval/approve", None).await;
+    let (_, queue) = call(app.clone(), Method::GET, "/approvals", None).await;
+    assert_eq!(queue_items(&queue).len(), 1);
+    let (status, _) = decide_oldest(&app, "approve").await;
     assert_eq!(status, StatusCode::OK);
     let rows = close_orders(&st);
     assert_eq!(rows.len(), 1);
@@ -789,4 +799,51 @@ async fn close_covers_the_filled_part_of_a_cancelled_partial() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].side(), OrderSide::Sell);
     assert_eq!(rows[0].quantity(), dec!(25.0));
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
+}
+
+fn queue_items(body: &Value) -> Vec<Value> {
+    let d = &body["data"];
+    d.as_array()
+        .or_else(|| d["queue"].as_array())
+        .or_else(|| d["approvals"].as_array())
+        .or_else(|| d["items"].as_array())
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Only the still-pending entries (decided ones stay listed with a final status).
+fn pending_items(body: &Value) -> Vec<Value> {
+    queue_items(body)
+        .into_iter()
+        .filter(|i| i["status"] == json!("pending"))
+        .collect()
+}
+
+fn queue_item_id(item: &Value) -> String {
+    item["id"]
+        .as_str()
+        .or_else(|| item["queue_id"].as_str())
+        .unwrap()
+        .to_string()
+}
+
+/// Approve or reject the oldest pending approval (`verb` is `approve` or `reject`).
+async fn decide_oldest(app: &Router, verb: &str) -> (StatusCode, Value) {
+    let (_, q) = call(app.clone(), Method::GET, "/approvals", None).await;
+    let id = queue_item_id(&pending_items(&q)[0]);
+    call(
+        app.clone(),
+        Method::POST,
+        &format!("/approvals/{id}/{verb}"),
+        Some(json!({})),
+    )
+    .await
 }

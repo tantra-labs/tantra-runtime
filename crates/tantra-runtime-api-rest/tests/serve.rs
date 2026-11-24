@@ -9,6 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 
 async fn http_get(addr: std::net::SocketAddr, path: &str) -> (u16, Value) {
+    let path = &format!("/api/v2{path}");
     let mut stream = TcpStream::connect(addr).await.unwrap();
     let request = format!("GET {path} HTTP/1.0\r\nHost: {addr}\r\n\r\n");
     stream.write_all(request.as_bytes()).await.unwrap();

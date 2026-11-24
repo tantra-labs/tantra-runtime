@@ -15,30 +15,30 @@ const TRADE: RouteScope = RouteScope::Required("trade");
 const ADMIN: RouteScope = RouteScope::Required("admin");
 const RESEARCH: RouteScope = RouteScope::Required("research");
 
-/// `(METHOD, path, scope, v2_only)` snapshot, one or more rows per scope class.
+/// `(METHOD, path, scope, root)` snapshot, one or more rows per scope class.
 const SNAPSHOT: &[(&str, &str, RouteScope, bool)] = &[
     ("GET", "/health", PUBLIC, false),
+    ("GET", "/openapi.json", PUBLIC, false),
     ("GET", "/bars/:id", READ, false),
     ("POST", "/orders", TRADE, false),
     ("PUT", "/trading-state", ADMIN, false),
     ("GET", "/profile", AUTHED, false),
     ("POST", "/backtests", RESEARCH, false),
     ("GET", "/acp", AUTHED, false),
-    ("GET", "/ws/live", TRADE, false),
+    ("GET", "/stream", READ, false),
     ("POST", "/trade-journal/notes", TRADE, false),
-    ("GET", "/market-data/calendar", READ, false),
-    ("GET", "/studies/library/entries", READ, true),
-    ("GET", "/ws", PUBLIC, false),
-    ("POST", "/approval/approve", ADMIN, false),
-    ("GET", "/docs", PUBLIC, false),
+    ("GET", "/calendar", READ, false),
+    ("GET", "/studies/library/entries", READ, false),
+    ("POST", "/approvals/:id/approve", ADMIN, false),
+    ("GET", "/docs", PUBLIC, true),
 ];
 
 #[test]
 fn scope_snapshot_matches_registry() {
-    for (method, path, scope, v2_only) in SNAPSHOT {
+    for (method, path, scope, root) in SNAPSHOT {
         let entry = route_registry()
             .iter()
-            .find(|e| e.method == *method && e.path == *path && e.v2_only == *v2_only)
+            .find(|e| e.method == *method && e.path == *path && e.root == *root)
             .unwrap_or_else(|| panic!("{method} {path} is not in the registry"));
         assert_eq!(entry.scope, *scope, "{method} {path}");
     }
@@ -63,7 +63,7 @@ fn no_duplicate_entries() {
     let mut seen = HashSet::new();
     for e in route_registry() {
         assert!(
-            seen.insert((e.method, e.path, e.v2_only)),
+            seen.insert((e.method, e.path, e.root)),
             "duplicate registry entry {} {}",
             e.method,
             e.path
@@ -74,20 +74,9 @@ fn no_duplicate_entries() {
 #[test]
 fn served_routes_length_follows_registry() {
     let reg = route_registry();
-    let v2_only = reg.iter().filter(|e| e.v2_only).count();
-    let v1 = reg
-        .iter()
-        .filter(|e| {
-            !e.v2_only
-                && !e.path.starts_with("/schema/openapi")
-                && !e.path.starts_with("/docs")
-                && e.path != "/swagger-ui"
-        })
-        .count();
-    // Root doc routes: the five registered by `root_table`.
-    let root = reg.len() - v2_only - v1;
-    assert_eq!(root, 5, "expected five root documentation routes");
-    assert_eq!(served_routes().len(), 2 * v1 + (v1 + v2_only) + root);
+    let root = reg.iter().filter(|e| e.root).count();
+    assert_eq!(root, 2, "expected the two root documentation routes");
+    assert_eq!(served_routes().len(), reg.len());
 }
 
 async fn post_status(uri: &str, len: usize) -> StatusCode {

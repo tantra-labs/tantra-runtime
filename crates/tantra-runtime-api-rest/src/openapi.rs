@@ -478,45 +478,6 @@ impl OpenApiDocument {
         );
 
         paths.insert(
-            "/orders/{id}".to_string(),
-            PathItem {
-                get: None,
-                post: None,
-                put: None,
-                patch: None,
-                delete: Some(Operation {
-                    tags: vec!["trading".to_string()],
-                    summary: "Cancel an order".to_string(),
-                    operation_id: "deleteOrder".to_string(),
-                    parameters: vec![Parameter {
-                        name: "id".to_string(),
-                        r#in: "path".to_string(),
-                        required: true,
-                        schema: schema_for!(String).schema.into(),
-                    }],
-                    request_body: None,
-                    responses: BTreeMap::from([(
-                        "200".to_string(),
-                        Response {
-                            description: "Order cancelled".to_string(),
-                            content: BTreeMap::from([(
-                                "application/json".to_string(),
-                                MediaType {
-                                    schema: schema_for!(serde_json::Value).schema.into(),
-                                },
-                            )]),
-                        },
-                    )]),
-                    max_body_bytes: None,
-                    deprecated: false,
-                    security: vec![SecurityRequirement {
-                        scheme: BTreeMap::from([("Bearer".to_string(), vec!["trade".to_string()])]),
-                    }],
-                }),
-            },
-        );
-
-        paths.insert(
             "/portfolio".to_string(),
             PathItem {
                 get: Some(Operation {
@@ -542,38 +503,6 @@ impl OpenApiDocument {
                     security: vec![SecurityRequirement {
                         scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
                     }],
-                }),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-
-        paths.insert(
-            "/schema".to_string(),
-            PathItem {
-                get: Some(Operation {
-                    tags: vec!["meta".to_string()],
-                    summary: "Get OpenAPI schema".to_string(),
-                    operation_id: "getSchema".to_string(),
-                    parameters: vec![],
-                    request_body: None,
-                    responses: BTreeMap::from([(
-                        "200".to_string(),
-                        Response {
-                            description: "OpenAPI 3.1 schema".to_string(),
-                            content: BTreeMap::from([(
-                                "application/json".to_string(),
-                                MediaType {
-                                    schema: schema_for!(serde_json::Value).schema.into(),
-                                },
-                            )]),
-                        },
-                    )]),
-                    max_body_bytes: None,
-                    deprecated: false,
-                    security: vec![],
                 }),
                 post: None,
                 put: None,
@@ -735,62 +664,6 @@ impl OpenApiDocument {
 
         // Market reference data endpoints (/market-data/*), backed by
         // tantra-data's calendar and symbol-profile ingestion.
-        paths.insert(
-            "/market-data/symbol-profile/{id}".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "market-reference",
-                    "Company symbol profile / fundamentals",
-                    "getSymbolProfile",
-                    vec![path_param("id")],
-                    None,
-                    "Symbol profile",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/market-data/calendar".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "market-reference",
-                    "Economic / earnings / dividends / splits / IPO calendar",
-                    "getMarketCalendar",
-                    vec![
-                        query_param("from"),
-                        query_param("to"),
-                        query_param("category"),
-                    ],
-                    None,
-                    "Calendar events",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/market-data/block-deals".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "market-reference",
-                    "Block / bulk deal disclosures",
-                    "getBlockDeals",
-                    vec![query_param("instrument"), query_param("date")],
-                    None,
-                    "Block deals",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-
         // Meta endpoints (capabilities, health)
         paths.insert(
             "/capabilities".to_string(),
@@ -1105,162 +978,6 @@ impl OpenApiDocument {
                 delete: None,
             },
         );
-        paths.insert(
-            "/portfolio/chart".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "portfolio",
-                    "Portfolio equity curve",
-                    "getEquityCurve",
-                    vec![],
-                    None,
-                    "Equity curve",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/portfolio/concentration".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "portfolio",
-                    "Portfolio concentration risk",
-                    "getConcentrationRisk",
-                    vec![],
-                    None,
-                    "Concentration risk",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/portfolio/wac".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "portfolio",
-                    "Weighted average cost per instrument",
-                    "getWeightedAverageCost",
-                    vec![],
-                    None,
-                    "Weighted average cost",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-
-        // Legacy report aliases
-        paths.insert(
-            "/ledger".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "reports",
-                    "General ledger (legacy alias of /reports/ledger)",
-                    "getLedger",
-                    vec![],
-                    None,
-                    "Ledger entries",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/tax/report".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "reports",
-                    "Tax report (legacy alias of /reports/tax)",
-                    "getTaxReport",
-                    vec![],
-                    None,
-                    "Tax report",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/fees".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "reports",
-                    "Fees report (legacy alias of /reports/fees)",
-                    "getFeesReport",
-                    vec![],
-                    None,
-                    "Fees report",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/positions".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "trading",
-                    "Current open positions",
-                    "getPositions",
-                    vec![],
-                    None,
-                    "Open positions",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/positions/audit".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "reports",
-                    "Position audit trail",
-                    "getPositionAudit",
-                    vec![],
-                    None,
-                    "Position audit trail",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/trades".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "portfolio",
-                    "Trade history",
-                    "getTrades",
-                    vec![],
-                    None,
-                    "Trade history",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-
         // Report endpoints
         paths.insert(
             "/reports/ledger".to_string(),
@@ -1398,24 +1115,6 @@ impl OpenApiDocument {
                 delete: None,
             },
         );
-        paths.insert(
-            "/reports/fills/{order_id}".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "reports",
-                    "Fills report for one order",
-                    "getReportFills",
-                    vec![path_param("order_id")],
-                    None,
-                    "Fills for the order",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-
         // Strategy authoring endpoints
         paths.insert(
             "/strategies".to_string(),
@@ -1633,58 +1332,6 @@ impl OpenApiDocument {
         );
 
         // Order approval workflow
-        paths.insert(
-            "/approval/queue".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "approval",
-                    "Pending order approval queue",
-                    "getApprovalQueue",
-                    vec![],
-                    None,
-                    "Approval queue",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/approval/approve".to_string(),
-            PathItem {
-                get: None,
-                post: Some(operation(
-                    "approval",
-                    "Approve a pending order",
-                    "postApproveOrder",
-                    vec![],
-                    Some(true),
-                    "Order approved",
-                )),
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/approval/reject".to_string(),
-            PathItem {
-                get: None,
-                post: Some(operation(
-                    "approval",
-                    "Reject a pending order",
-                    "postRejectOrder",
-                    vec![],
-                    Some(true),
-                    "Order rejected",
-                )),
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-
         // Experimental-Analysis multi-asset statistical workbench endpoints
         let catalog_resp_schema =
             register_schema::<ResponseEnvelope<ExperimentalCatalogResponse>>(&mut schemas);
@@ -2247,81 +1894,7 @@ impl OpenApiDocument {
             },
         );
 
-        // Screener and run journals
-        paths.insert(
-            "/screener/scan".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "screener",
-                    "Run an AST-filtered screener scan",
-                    "getScreenerScan",
-                    vec![
-                        query_param("symbols"),
-                        query_param("min_price"),
-                        query_param("max_price"),
-                    ],
-                    None,
-                    "Screener result rows",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/journals/{id}".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "runs",
-                    "Run journal by id",
-                    "getJournalById",
-                    vec![path_param("id")],
-                    None,
-                    "Run journal",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-
-        // WebSocket upgrade endpoints
-        paths.insert(
-            "/ws".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "ws",
-                    "WebSocket live stream",
-                    "getWs",
-                    vec![],
-                    None,
-                    "WebSocket upgrade",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
-        paths.insert(
-            "/ws/market".to_string(),
-            PathItem {
-                get: Some(operation(
-                    "ws",
-                    "WebSocket market data stream",
-                    "getWsMarket",
-                    vec![],
-                    None,
-                    "WebSocket upgrade",
-                )),
-                post: None,
-                put: None,
-                patch: None,
-                delete: None,
-            },
-        );
+        // Chat WebSocket upgrade endpoint
         paths.insert(
             "/ws/chat".to_string(),
             PathItem {
@@ -2571,19 +2144,26 @@ impl OpenApiDocument {
         (base.paths, base.components.schemas)
     }
 
-    /// Generate the default (v1-shaped) OpenAPI 3.1 document for the Tantra REST API.
+    /// Generate the OpenAPI 3.1 document for the Tantra REST API (`/api/v2`).
     pub fn generate() -> Self {
-        Self::from_registry(false)
+        let mut doc = Self::from_registry();
+        doc.info.title = "Tantra REST API v2".to_string();
+        doc.info.version = "2.0.0".to_string();
+        doc.info.description = "Tantra trading platform REST API v2".to_string();
+        doc.servers = vec![OpenApiServer {
+            url: "/api/v2".to_string(),
+            description: "Tantra REST API v2".to_string(),
+        }];
+        doc
     }
 
-    /// Hand-written operations that have no route in the registry (v1 plus v2-only), as
+    /// Hand-written operations that have no route in the registry (`/api/v2`), as
     /// `"METHOD path"`. Must be empty; a conformance test enforces it.
     #[doc(hidden)]
     pub fn phantom_operations() -> Vec<String> {
-        let (v1, v2_only, _root) = crate::registry_parts();
-        let routes: std::collections::BTreeSet<(String, String)> = v1
+        let (api, _root) = crate::registry_parts();
+        let routes: std::collections::BTreeSet<(String, String)> = api
             .iter()
-            .chain(v2_only.iter())
             .map(|e| (e.method.to_string(), brace_path(e.path)))
             .collect();
         let (paths, _) = Self::hand_written();
@@ -2600,15 +2180,10 @@ impl OpenApiDocument {
 
     /// Build the document by walking the route registry: one operation per served route,
     /// security taken from the route's scope, hand-written metadata used where it exists.
-    pub fn from_registry(include_v2_only: bool) -> Self {
+    pub fn from_registry() -> Self {
         let mut doc = Self::hand_base();
         let (hand_paths, hand_schemas) = Self::hand_written();
-        let (v1, v2_only, _root) = crate::registry_parts();
-        let entries: Vec<RouteEntry> = if include_v2_only {
-            v1.into_iter().chain(v2_only).collect()
-        } else {
-            v1
-        };
+        let (entries, _root) = crate::registry_parts();
         let mut paths: BTreeMap<String, PathItem> = BTreeMap::new();
         for entry in &entries {
             let path = brace_path(entry.path);
@@ -2625,13 +2200,6 @@ impl OpenApiDocument {
                 RouteScope::Authenticated => vec![bearer_requirement(vec![])],
             };
             op.max_body_bytes = entry.body_limit;
-            if include_v2_only
-                && let crate::route_table::V2Disposition::Redirect(next)
-                | crate::route_table::V2Disposition::Deprecated(next) = entry.v2
-            {
-                op.deprecated = true;
-                op.summary = format!("{} (successor: {next})", op.summary);
-            }
             let item = paths.entry(path).or_insert_with(empty_path_item);
             match entry.method {
                 "GET" => item.get = Some(op),
@@ -2642,39 +2210,6 @@ impl OpenApiDocument {
                 _ => {}
             }
         }
-        // A superseded route and its canonical successor can synthesize the same operationId;
-        // the deprecated one yields.
-        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-        for item in paths.values_mut() {
-            for op in [
-                &mut item.get,
-                &mut item.post,
-                &mut item.put,
-                &mut item.patch,
-                &mut item.delete,
-            ]
-            .into_iter()
-            .flatten()
-            {
-                *counts.entry(op.operation_id.clone()).or_default() += 1;
-            }
-        }
-        for item in paths.values_mut() {
-            for op in [
-                &mut item.get,
-                &mut item.post,
-                &mut item.put,
-                &mut item.patch,
-                &mut item.delete,
-            ]
-            .into_iter()
-            .flatten()
-            {
-                if op.deprecated && counts.get(&op.operation_id).copied().unwrap_or(0) > 1 {
-                    op.operation_id.push_str("Legacy");
-                }
-            }
-        }
         doc.paths = paths;
         doc.components.schemas = hand_schemas;
         doc
@@ -2682,7 +2217,7 @@ impl OpenApiDocument {
 
     /// Serialize the v2 spec to pretty JSON (the checked-in artifact format).
     pub fn v2_json() -> String {
-        serde_json::to_string_pretty(&Self::generate_v2()).unwrap_or_default()
+        serde_json::to_string_pretty(&Self::generate()).unwrap_or_default()
     }
 
     /// Serialize the generated OpenAPI 3.1 document as a JSON `Value`,
@@ -2691,28 +2226,9 @@ impl OpenApiDocument {
         serde_json::to_value(Self::generate()).unwrap_or(serde_json::Value::Null)
     }
 
-    /// Generate the OpenAPI 3.1 document for v1 (legacy & supported).
-    pub fn generate_v1() -> Self {
-        let mut doc = Self::from_registry(false);
-        doc.info.title = "Tantra REST API v1".to_string();
-        doc.info.version = "1.0.0".to_string();
-        doc.info.description =
-            "Tantra trading platform REST API v1 (Supported for legacy software)".to_string();
-        doc.servers = vec![
-            OpenApiServer {
-                url: "/api/v1".to_string(),
-                description: "Tantra REST API v1 (Supported for legacy software)".to_string(),
-            },
-            OpenApiServer {
-                url: "/".to_string(),
-                description: "Legacy un-prefixed root (Deprecated)".to_string(),
-            },
-        ];
-        doc
-    }
-
     /// Registers the v2-only canonical study routes: the library/signal-study surface and the
-    /// `/studies/experimental-analysis/*` aliases of the (deprecated) v1-era paths.
+    /// `/studies/experimental-analysis/*` operations (moved from their hand-written
+    /// `/experimental-analysis/*` metadata).
     fn add_study_hand_ops(&mut self) {
         use crate::library_routes::{IndicatorComputeRequest, SignalStudyRequest};
         let bearer = || {
@@ -2736,21 +2252,24 @@ impl OpenApiDocument {
         let compute_req = register_schema::<IndicatorComputeRequest>(&mut self.components.schemas);
         let study_req = register_schema::<SignalStudyRequest>(&mut self.components.schemas);
 
-        // Canonical aliases of the experimental-analysis operations.
-        let aliases: Vec<(String, PathItem)> = self
+        // Re-home the experimental-analysis operations under `/studies/`.
+        let old: Vec<String> = self
             .paths
-            .iter()
-            .filter_map(|(path, item)| {
-                let rest = path.strip_prefix("/experimental-analysis/")?;
-                let mut item = item.clone();
-                for op in [&mut item.get, &mut item.post].into_iter().flatten() {
-                    op.operation_id = format!("studies_{}", op.operation_id);
-                    op.summary = format!("{} (canonical; supersedes {path})", op.summary);
-                }
-                Some((format!("/studies/experimental-analysis/{rest}"), item))
-            })
+            .keys()
+            .filter(|p| p.starts_with("/experimental-analysis/"))
+            .cloned()
             .collect();
-        self.paths.extend(aliases);
+        for path in old {
+            let Some(mut item) = self.paths.remove(&path) else {
+                continue;
+            };
+            for op in [&mut item.get, &mut item.post].into_iter().flatten() {
+                op.operation_id = format!("studies_{}", op.operation_id);
+            }
+            let rest = path.trim_start_matches("/experimental-analysis/");
+            self.paths
+                .insert(format!("/studies/experimental-analysis/{rest}"), item);
+        }
 
         let empty = || PathItem {
             get: None,
@@ -3078,65 +2597,14 @@ impl OpenApiDocument {
             },
         );
     }
-
-    /// Generate the OpenAPI 3.1 document for v2 (latest & recommended).
-    pub fn generate_v2() -> Self {
-        let mut doc = Self::from_registry(true);
-        doc.info.title = "Tantra REST API v2".to_string();
-        doc.info.version = "2.0.0".to_string();
-        doc.info.description =
-            "Tantra trading platform REST API v2 (Latest & Recommended)".to_string();
-        doc.servers = vec![OpenApiServer {
-            url: "/api/v2".to_string(),
-            description: "Tantra REST API v2 (Latest & Recommended)".to_string(),
-        }];
-        doc
-    }
 }
 
-/// Handler for `GET /schema/openapi/v1.json`.
-pub async fn get_openapi_v1() -> axum::response::Response {
-    let doc = OpenApiDocument::generate_v1();
+/// Handler for `GET /api/v2/openapi.json`.
+pub async fn get_openapi() -> axum::response::Response {
+    let doc = OpenApiDocument::generate();
     (
         [(axum::http::header::CONTENT_TYPE, "application/json")],
         serde_json::to_string_pretty(&doc).unwrap_or_default(),
-    )
-        .into_response()
-}
-
-/// Handler for `GET /schema/openapi/v2.json`.
-pub async fn get_openapi_v2() -> axum::response::Response {
-    let doc = OpenApiDocument::generate_v2();
-    (
-        [(axum::http::header::CONTENT_TYPE, "application/json")],
-        serde_json::to_string_pretty(&doc).unwrap_or_default(),
-    )
-        .into_response()
-}
-
-/// Handler for `GET /schema/openapi`.
-pub async fn get_openapi_index() -> axum::response::Response {
-    let index = serde_json::json!({
-        "openapi_versions": [
-            {
-                "version": "v1",
-                "status": "supported_legacy",
-                "url": "/schema/openapi/v1.json",
-                "description": "Tantra REST API v1 (Supported for legacy software)"
-            },
-            {
-                "version": "v2",
-                "status": "latest_recommended",
-                "url": "/schema/openapi/v2.json",
-                "description": "Tantra REST API v2 (Latest & Recommended)"
-            }
-        ],
-        "latest": "v2",
-        "documentation_url": "/docs"
-    });
-    (
-        [(axum::http::header::CONTENT_TYPE, "application/json")],
-        serde_json::to_string_pretty(&index).unwrap_or_default(),
     )
         .into_response()
 }
@@ -3146,7 +2614,7 @@ pub async fn get_swagger_ui() -> axum::response::Html<&'static str> {
     axum::response::Html(SWAGGER_UI_HTML)
 }
 
-/// Swagger UI HTML page with multi-version selector.
+/// Swagger UI HTML page for the `/api/v2` document.
 pub const SWAGGER_UI_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3165,11 +2633,7 @@ pub const SWAGGER_UI_HTML: &str = r#"<!DOCTYPE html>
   <script>
     window.onload = function() {
       window.ui = SwaggerUIBundle({
-        urls: [
-          { url: "/schema/openapi/v2.json", name: "v2 (Latest & Recommended)" },
-          { url: "/schema/openapi/v1.json", name: "v1 (Supported / Legacy)" }
-        ],
-        "urls.primaryName": "v2 (Latest & Recommended)",
+        url: "/api/v2/openapi.json",
         dom_id: '#swagger-ui',
         deepLinking: true,
         presets: [

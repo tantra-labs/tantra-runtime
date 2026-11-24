@@ -1,7 +1,7 @@
 //! Stateful Strategy Loop Evaluation, Bounded Parameter Sweeps, Expiry-Aware
 //! F&O/Commodity Hedges, and Real `RuntimeStrategyRunner` Composition Root.
 //!
-//! Endpoints (served under `/api/v2/studies/strategy-loop/*` and `/api/v1/studies/strategy-loop/*`):
+//! Endpoints (served under `/api/v2/studies/strategy-loop/*`):
 //! - `POST /studies/strategy-loop/evaluate`
 //! - `POST /studies/strategy-loop/sweep`
 //! - `POST /studies/strategy-loop/recommend-hedge`

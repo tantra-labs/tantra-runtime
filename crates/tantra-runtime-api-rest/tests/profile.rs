@@ -44,7 +44,7 @@ async fn send(
     body: Option<Value>,
     token: Option<&str>,
 ) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     if let Some(t) = token {
         builder = builder.header("authorization", format!("Bearer {t}"));
     }
@@ -129,7 +129,7 @@ async fn head_needs_the_same_token_as_get() {
     let (app, dir) = two_users();
     for uri in ["/profile", "/profile/layouts", "/orders"] {
         let req = |token: Option<&str>| {
-            let mut b = Request::builder().method(Method::HEAD).uri(uri);
+            let mut b = Request::builder().method(Method::HEAD).uri(v2(uri));
             if let Some(t) = token {
                 b = b.header("authorization", format!("Bearer {t}"));
             }
@@ -150,7 +150,7 @@ async fn head_needs_the_same_token_as_get() {
         .oneshot(
             Request::builder()
                 .method(Method::HEAD)
-                .uri("/profile")
+                .uri("/api/v2/profile")
                 .header("authorization", "Bearer test")
                 .body(Body::empty())
                 .unwrap(),
@@ -519,5 +519,13 @@ async fn a_layout_may_be_any_json_value() {
         assert_eq!(status, StatusCode::OK, "{name}: {body}");
         let (_, body) = send(&app, Method::GET, "/profile/layouts", None, None).await;
         assert_eq!(body["data"]["layouts"][name], layout);
+    }
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
     }
 }

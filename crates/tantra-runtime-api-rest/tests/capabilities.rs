@@ -12,7 +12,7 @@ async fn call(method: &str, uri: &str) -> (StatusCode, Value) {
         .oneshot(
             Request::builder()
                 .method(method)
-                .uri(uri)
+                .uri(v2(uri))
                 .header("content-type", "application/json")
                 .body(Body::from("{}"))
                 .unwrap(),
@@ -93,7 +93,6 @@ async fn the_backtest_and_journal_routes_are_built_and_only_sweeps_and_trading_s
         ("POST", "/backtests"),
         ("GET", "/backtests/{id}"),
         ("GET", "/backtests/{id}/journal"),
-        ("GET", "/journals/{id}"),
         ("POST", "/sweeps"),
         ("GET", "/sweeps/{id}"),
     ] {
@@ -126,7 +125,7 @@ async fn probing_the_unflagged_routes_answers_non_501_and_writes_nothing() {
             .oneshot(
                 Request::builder()
                     .method(*method)
-                    .uri(uri)
+                    .uri(v2(&uri))
                     .header("content-type", "application/json")
                     .body(Body::from("{}"))
                     .unwrap(),
@@ -138,4 +137,12 @@ async fn probing_the_unflagged_routes_answers_non_501_and_writes_nothing() {
     let written = std::fs::read_dir(&dir).map_or(0, Iterator::count);
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(written, 0, "the probe wrote into the journals root");
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

@@ -97,14 +97,6 @@ pub(crate) async fn get_backtest_journal(
     journal(state, id, Some(RunKind::Backtest)).await
 }
 
-/// `GET /journals/{id}`.
-pub(crate) async fn get_journal_by_id(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
-    journal(state, id, None).await
-}
-
 async fn journal(state: Arc<AppState>, id: String, kind: Option<RunKind>) -> Response {
     let Some(runs) = state.runs.clone() else {
         return respond::<()>(Err(not_found()));

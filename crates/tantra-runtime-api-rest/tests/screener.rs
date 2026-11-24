@@ -58,7 +58,7 @@ fn app() -> Router {
 }
 
 async fn scan(app: Router, query: Value) -> (StatusCode, Value) {
-    let target = build_target("/screener/scan", Some(&query.to_string())).unwrap();
+    let target = build_target("/api/v2/screener/scans", Some(&query.to_string())).unwrap();
     let res = app
         .oneshot(Request::builder().uri(target).body(Body::empty()).unwrap())
         .await

@@ -39,7 +39,7 @@ async fn call(
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
-    let mut req = Request::builder().method(method).uri(uri);
+    let mut req = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(v) => {
             req = req.header("content-type", "application/json");
@@ -182,5 +182,13 @@ async fn submit_and_finish(router: &Router, body: Value) -> (StatusCode, Value) 
         }
         assert!(Instant::now() < deadline, "run never finished");
         tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
     }
 }

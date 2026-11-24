@@ -60,14 +60,12 @@ async fn status(router: &Router, method: &str, uri: &str, token: Option<&str>) -
 async fn anonymous_requests_to_formerly_unscoped_routes_are_401() {
     let (router, _dir) = auth_router();
     let cases = [
-        ("GET", "/api/v2/ws/live"),
-        ("GET", "/ws/live"),
         ("POST", "/api/v2/trade-journal/accounts"),
         ("PATCH", "/api/v2/trade-journal/trades/x"),
         ("POST", "/api/v2/trade-journal/notes"),
         ("GET", "/api/v2/trade-journal/overview"),
-        ("GET", "/api/v2/market-data/calendar"),
-        ("GET", "/api/v1/market-data/block-deals"),
+        ("GET", "/api/v2/calendar"),
+        ("GET", "/api/v2/block-deals"),
     ];
     for (method, uri) in cases {
         assert_eq!(
@@ -82,7 +80,6 @@ async fn anonymous_requests_to_formerly_unscoped_routes_are_401() {
 async fn read_only_token_is_403_on_trade_routes() {
     let (router, _dir) = auth_router();
     let cases = [
-        ("GET", "/api/v2/ws/live"),
         ("POST", "/api/v2/trade-journal/accounts"),
         ("PATCH", "/api/v2/trade-journal/trades/x"),
         ("POST", "/api/v2/trade-journal/notes"),
@@ -94,13 +91,7 @@ async fn read_only_token_is_403_on_trade_routes() {
             "{method} {uri}"
         );
     }
-    let s = status(
-        &router,
-        "GET",
-        "/api/v2/market-data/calendar",
-        Some("reader-secret"),
-    )
-    .await;
+    let s = status(&router, "GET", "/api/v2/calendar", Some("reader-secret")).await;
     assert_ne!(s, StatusCode::UNAUTHORIZED);
     assert_ne!(s, StatusCode::FORBIDDEN);
 }

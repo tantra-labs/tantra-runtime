@@ -22,7 +22,7 @@ async fn call(
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
-    let mut req = Request::builder().method(method).uri(uri);
+    let mut req = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(v) => {
             req = req.header("content-type", "application/json");
@@ -115,7 +115,7 @@ async fn rest_backtest_roundtrip() {
     // object (the old `costs` field predates `FillReport::fee`).
     assert!(trades[0]["fee"].is_object() || trades[0]["fee"].is_number());
 
-    let (status, same) = call(&router, "GET", &format!("/journals/{id}"), None).await;
+    let (status, same) = call(&router, "GET", &format!("/backtests/{id}/journal"), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(same["data"], journal["data"]);
 }
@@ -146,7 +146,7 @@ async fn ill_formed_and_unknown_ids_are_404_before_any_filesystem_access() {
         for uri in [
             format!("/backtests/{id}"),
             format!("/backtests/{id}/journal"),
-            format!("/journals/{id}"),
+            format!("/backtests/{id}/journal"),
         ] {
             let (status, body) = call(&router, "GET", &uri, None).await;
             assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
@@ -163,7 +163,7 @@ async fn ill_formed_and_unknown_ids_are_404_before_any_filesystem_access() {
 }
 
 #[tokio::test]
-async fn a_sweep_id_is_404_on_backtest_routes_and_422_on_the_journal_route() {
+async fn a_sweep_id_is_404_on_backtest_routes() {
     let scratch = Scratch::new("rest-sweep-id");
     let (router, store) = router_with(&scratch, real_executor(), config(1, 4, 100));
     let sweep = submit(&store, sweep_request(7));
@@ -178,13 +178,6 @@ async fn a_sweep_id_is_404_on_backtest_routes_and_422_on_the_journal_route() {
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         assert_eq!(body["error"]["code"], "not_found");
     }
-    let (status, body) = call(&router, "GET", &format!("/journals/{id}"), None).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["error"]["code"], "validation_invalid_request");
-    assert_eq!(
-        body["error"]["context"]["reason"],
-        "sweep_journal_per_trial"
-    );
 }
 
 #[tokio::test]
@@ -275,7 +268,7 @@ async fn the_journal_of_a_running_run_is_an_empty_prefix_not_an_error() {
     assert!(running["data"]["metrics"].is_null());
     for uri in [
         format!("/backtests/{id}/journal"),
-        format!("/journals/{id}"),
+        format!("/backtests/{id}/journal"),
     ] {
         let (status, journal) = call(&router, "GET", &uri, None).await;
         assert_eq!(status, StatusCode::OK, "{uri}: {journal}");
@@ -370,7 +363,7 @@ async fn a_journal_at_another_schema_version_is_422_unsupported() {
     .unwrap();
     for uri in [
         format!("/backtests/{id}/journal"),
-        format!("/journals/{id}"),
+        format!("/backtests/{id}/journal"),
     ] {
         let (status, body) = call(&router, "GET", &uri, None).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{uri}: {body}");
@@ -443,7 +436,15 @@ async fn shutting_down_stops_admission() {
     let report = state.shutdown_runs().expect("a service is configured");
     assert_eq!(report.cancelled_pending, 0);
     let (status, body) = call(&router, "POST", "/backtests", Some(submit_body(1))).await;
-    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
     assert_eq!(body["error"]["context"]["reason"], "shutting_down");
     assert!(base_state().shutdown_runs().is_none());
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

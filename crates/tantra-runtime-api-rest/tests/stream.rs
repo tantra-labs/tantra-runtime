@@ -1,5 +1,5 @@
 //! Integration tests for the multiplexed `GET /api/v2/stream` socket (design 0006 R2d) and the
-//! `/ws/live` keyless-order regression (a constant ledger key collapsed every keyless order).
+//! keyless-order regression (a constant ledger key collapsed every keyless order).
 
 use std::time::Duration;
 
@@ -225,21 +225,14 @@ async fn order_ids(ws: &mut Client, place: &Value, result_type: &str) -> Vec<Str
 }
 
 #[tokio::test]
-async fn keyless_orders_get_distinct_ids_on_stream_and_ws_live() {
+async fn keyless_orders_get_distinct_ids_on_stream() {
     let server = Server::plain().await;
 
     let (mut ws, _) = server.connect("/api/v2/stream", None).await.unwrap();
     let ids = order_ids(&mut ws, &keyless_limit("op"), "result").await;
     assert_ne!(ids[0], ids[1], "stream keyless orders collapsed");
 
-    let (mut live, _) = server.connect("/api/v2/ws/live", None).await.unwrap();
-    let mut place = keyless_limit("action");
-    place["action"] = json!("place_order");
-    let ids = order_ids(&mut live, &place, "PlaceResult").await;
-    assert_ne!(ids[0], ids[1], "ws/live keyless orders collapsed");
-
     drop(ws);
-    drop(live);
     server.shutdown().await;
 }
 
@@ -331,26 +324,6 @@ async fn quotes_without_feed_reports_unavailable_once() {
         "service_unavailable"
     );
     assert_eq!(find(&frames, |v| v["type"] == "ack")["ids"], json!(["X"]));
-    drop(ws);
-    server.shutdown().await;
-}
-
-#[tokio::test]
-async fn deprecated_ws_live_carries_deprecation_headers() {
-    let server = Server::plain().await;
-    let (ws, resp) = server.connect("/api/v2/ws/live", None).await.unwrap();
-    assert_eq!(resp.status().as_u16(), 101);
-    assert!(
-        resp.headers().contains_key("deprecation"),
-        "{:?}",
-        resp.headers()
-    );
-    let link = resp
-        .headers()
-        .get("link")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default();
-    assert!(link.contains("/stream"), "link: {link}");
     drop(ws);
     server.shutdown().await;
 }

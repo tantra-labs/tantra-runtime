@@ -181,7 +181,7 @@ impl RunStore {
     }
 
     /// Admits a run: mints an id, writes `manifest.json` (`pending`) and an empty
-    /// `events.ndjson`, registers it. Refused with 429 `rate_limited` / `shutting_down` once
+    /// `events.ndjson`, registers it. Refused with 503 `service_unavailable` / `shutting_down` once
     /// [`RunStore::shutdown`] ran. A refusal leaves nothing on disk.
     pub fn submit(
         &self,
@@ -192,7 +192,7 @@ impl RunStore {
         let mut inner = self.lock();
         if !inner.accepting {
             return Err(
-                ErrorDetail::new(ErrorCode::Timeout, "server is shutting down")
+                ErrorDetail::new(ErrorCode::ServiceUnavailable, "server is shutting down")
                     .with_context(json!({"reason": "shutting_down"})),
             );
         }

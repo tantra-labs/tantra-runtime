@@ -1,6 +1,5 @@
-//! Design 0006 R2a: canonical `/api/v2` resources, 308 redirects from the superseded paths,
-//! deprecation headers where a redirect cannot preserve semantics, and unique `POST /orders`
-//! idempotency keys.
+//! Design 0006 R2a/R5: canonical `/api/v2` resources (the superseded paths are gone since R5,
+//! see `r5_removed_paths.rs`) and unique `POST /orders` idempotency keys.
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
@@ -10,9 +9,7 @@ use tantra_runtime_api_rest::market_feed::wire::{
     BarAggregation, BarSpecification, Instrument, PriceType, UnixNanos,
 };
 use tantra_runtime_api_rest::market_feed::{ColumnarSliceBuilder, Dataset, DatasetReader};
-use tantra_runtime_api_rest::{
-    ApiConfig, AppState, V2Disposition, api_router_with, api_router_with_config, route_registry,
-};
+use tantra_runtime_api_rest::{ApiConfig, AppState, api_router_with, api_router_with_config};
 use tower::util::ServiceExt;
 
 fn state() -> AppState {
@@ -29,7 +26,6 @@ fn state() -> AppState {
 
 struct Reply {
     status: StatusCode,
-    headers: axum::http::HeaderMap,
     body: Value,
 }
 
@@ -40,7 +36,7 @@ async fn send(
     body: Option<Value>,
     extra: &[(&str, &str)],
 ) -> Reply {
-    let mut b = Request::builder().method(method).uri(uri);
+    let mut b = Request::builder().method(method).uri(v2(uri));
     for (k, v) in extra {
         b = b.header(*k, *v);
     }
@@ -53,122 +49,17 @@ async fn send(
     };
     let res = router.oneshot(b.body(body).unwrap()).await.unwrap();
     let status = res.status();
-    let headers = res.headers().clone();
     let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
         .await
         .unwrap();
     Reply {
         status,
-        headers,
         body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
     }
 }
 
-fn fill(path: &str) -> String {
-    path.split('/')
-        .map(|s| if s.starts_with(':') { "P1" } else { s })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 fn order_body() -> Value {
     json!({"instrument_id":{"symbol":"X","exchange":"NSE"},"side":"buy","qty":25.0})
-}
-
-fn loc(r: &Reply) -> String {
-    r.headers
-        .get("location")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string()
-}
-
-#[tokio::test]
-async fn every_redirect_entry_answers_308_under_v2_and_serves_under_v1() {
-    let mut n = 0;
-    for e in route_registry() {
-        let V2Disposition::Redirect(next) = e.v2 else {
-            continue;
-        };
-        n += 1;
-        let method = Method::from_bytes(e.method.as_bytes()).unwrap();
-        let body = (e.method != "GET").then(|| json!({}));
-        let r = send(
-            api_router_with(state()),
-            method.clone(),
-            &format!("/api/v2{}", fill(e.path)),
-            body.clone(),
-            &[],
-        )
-        .await;
-        assert_eq!(
-            r.status,
-            StatusCode::PERMANENT_REDIRECT,
-            "{} {}",
-            e.method,
-            e.path
-        );
-        assert_eq!(loc(&r), format!("/api/v2{}", fill(next)), "{}", e.path);
-        let r1 = send(
-            api_router_with(state()),
-            method,
-            &format!("/api/v1{}", fill(e.path)),
-            body,
-            &[],
-        )
-        .await;
-        assert_ne!(r1.status, StatusCode::PERMANENT_REDIRECT, "v1 {}", e.path);
-    }
-    assert!(n >= 22, "only {n} redirect entries");
-}
-
-#[tokio::test]
-async fn redirect_fills_params_and_keeps_the_query() {
-    let r = send(
-        api_router_with(state()),
-        Method::GET,
-        "/api/v2/reports/fills/O1",
-        None,
-        &[],
-    )
-    .await;
-    assert_eq!(r.status, StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(loc(&r), "/api/v2/orders/O1/fills");
-    let r = send(
-        api_router_with(state()),
-        Method::GET,
-        "/api/v2/screener/scan?q=1",
-        None,
-        &[],
-    )
-    .await;
-    assert_eq!(r.status, StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(loc(&r), "/api/v2/screener/scans?q=1");
-}
-
-#[tokio::test]
-async fn deprecated_routes_stay_served_with_headers() {
-    let r = send(
-        api_router_with(state()),
-        Method::DELETE,
-        "/api/v2/orders/X",
-        None,
-        &[],
-    )
-    .await;
-    assert_eq!(r.status, StatusCode::OK);
-    assert_eq!(r.headers.get("deprecation").unwrap(), "true");
-    let link = r.headers.get("link").unwrap().to_str().unwrap();
-    assert!(link.contains("/api/v2/orders/{id}/cancel") && link.contains("successor-version"));
-    let v1 = send(
-        api_router_with(state()),
-        Method::DELETE,
-        "/api/v1/orders/X",
-        None,
-        &[],
-    )
-    .await;
-    assert!(v1.headers.get("deprecation").is_none());
 }
 
 fn order_id(r: &Reply) -> String {
@@ -282,11 +173,26 @@ async fn approved_keyless_orders_stay_distinct() {
     }
     let mut ids = Vec::new();
     for _ in 0..2 {
+        let q = send(
+            api_router_with(st.clone()),
+            Method::GET,
+            "/api/v2/approvals",
+            None,
+            &[],
+        )
+        .await;
+        let pending = q.body["data"]
+            .as_array()
+            .or_else(|| q.body["data"]["queue"].as_array())
+            .and_then(|a| a.iter().find(|i| i["status"] == "pending"))
+            .unwrap_or_else(|| panic!("no pending approval: {}", q.body))
+            .clone();
+        let approval_id = pending["queue_id"].as_str().unwrap().to_string();
         let r = send(
             api_router_with(st.clone()),
             Method::POST,
-            "/api/v2/approval/approve",
-            None,
+            &format!("/api/v2/approvals/{approval_id}/approve"),
+            Some(json!({})),
             &[],
         )
         .await;
@@ -325,4 +231,12 @@ async fn approving_needs_the_admin_scope() {
     )
     .await;
     assert_eq!(r.status, StatusCode::FORBIDDEN, "{}", r.body);
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

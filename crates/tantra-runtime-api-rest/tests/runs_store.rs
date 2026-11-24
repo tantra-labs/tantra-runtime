@@ -382,7 +382,7 @@ fn shutdown_cancels_every_non_terminal_run_and_stops_admitting() {
         RunStatus::Cancelled
     );
 
-    // No new admissions: 429 rate_limited / shutting_down, and nothing written.
+    // No new admissions: 503 service_unavailable / shutting_down, and nothing written.
     let before = std::fs::read_dir(scratch.journals()).unwrap().count();
     let shared = {
         let other = self::store(scratch.path().join("other"), &clock);
@@ -395,7 +395,7 @@ fn shutdown_cancels_every_non_terminal_run_and_stops_admitting() {
             shared.request.clone(),
         )
         .unwrap_err();
-    assert_eq!(err.code, ErrorCode::Timeout);
+    assert_eq!(err.code, ErrorCode::ServiceUnavailable);
     assert_eq!(err.context.unwrap()["reason"], "shutting_down");
     assert_eq!(
         std::fs::read_dir(scratch.journals()).unwrap().count(),

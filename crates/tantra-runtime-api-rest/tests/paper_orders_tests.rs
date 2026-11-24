@@ -57,7 +57,7 @@ fn bar(ts: u64, open: f64) -> tantra_core::Bar {
 }
 
 async fn call(app: Router, method: Method, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(value) => {
             builder = builder.header("content-type", "application/json");
@@ -165,9 +165,9 @@ async fn partial_fill_then_cancel_keeps_filled_qty_and_marks_cancelled() {
 
     let (s, _) = call(
         api_router_with(st.clone()),
-        Method::DELETE,
-        "/orders/p1",
-        None,
+        Method::POST,
+        "/orders/p1/cancel",
+        Some(json!({})),
     )
     .await;
     assert_eq!(s, StatusCode::OK);
@@ -276,4 +276,12 @@ async fn with_execution_sim_swaps_in_a_zero_fee_exchange() {
     assert_eq!(s, StatusCode::OK);
     assert_eq!(status_of(&st, "z1"), "filled");
     assert_eq!(st.orders.position(&iid()), dec!(25.0));
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

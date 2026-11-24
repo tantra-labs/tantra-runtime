@@ -83,7 +83,7 @@ async fn call(state: AppState, uri: &str) -> (StatusCode, Value) {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(uri)
+                .uri(v2(uri))
                 .header("content-type", "application/json")
                 .body(Body::from("{}"))
                 .unwrap(),
@@ -106,7 +106,7 @@ async fn block_deals_route_serves_projection() {
     write_block_deals_projection(dir.path());
 
     let state = AppState::from_reader(empty_reader()).with_block_deals(dir.path());
-    let (status, body) = call(state, "/api/v1/market-data/block-deals?date=2026-11-06").await;
+    let (status, body) = call(state, "/api/v2/block-deals?date=2026-11-06").await;
     assert_eq!(status, StatusCode::OK);
     let deals = &body["data"]["deals"];
     assert_eq!(deals.as_array().unwrap().len(), 2);
@@ -124,11 +124,7 @@ async fn block_deals_route_filters_by_instrument() {
     write_block_deals_projection(dir.path());
 
     let state = AppState::from_reader(empty_reader()).with_block_deals(dir.path());
-    let (status, body) = call(
-        state,
-        "/api/v1/market-data/block-deals?instrument=RELIANCE-EQ.NSE",
-    )
-    .await;
+    let (status, body) = call(state, "/api/v2/block-deals?instrument=RELIANCE-EQ.NSE").await;
     assert_eq!(status, StatusCode::OK);
     let deals = &body["data"]["deals"];
     assert_eq!(deals.as_array().unwrap().len(), 1);
@@ -142,14 +138,22 @@ async fn block_deals_route_rejects_bad_date() {
     write_block_deals_projection(dir.path());
 
     let state = AppState::from_reader(empty_reader()).with_block_deals(dir.path());
-    let (status, _body) = call(state, "/api/v1/market-data/block-deals?date=not-a-date").await;
+    let (status, _body) = call(state, "/api/v2/block-deals?date=not-a-date").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
 async fn block_deals_route_unconfigured_is_service_unavailable() {
     let state = AppState::default();
-    let (status, body) = call(state, "/api/v1/market-data/block-deals").await;
+    let (status, body) = call(state, "/api/v2/block-deals").await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body["error"]["code"], "service_unavailable");
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

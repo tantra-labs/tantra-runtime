@@ -66,7 +66,7 @@ fn app() -> Router {
 
 async fn get(app: Router, uri: &str) -> (StatusCode, Value) {
     let res = app
-        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        .oneshot(Request::builder().uri(v2(uri)).body(Body::empty()).unwrap())
         .await
         .unwrap();
     let status = res.status();
@@ -618,4 +618,12 @@ async fn a_selection_over_the_row_cap_is_a_422_too_many_rows() {
     let (status, body) = get(app(), "/bars/BIG.NSE?tf=1m&to=2024-01-01T00:10:00Z").await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["bars"].as_array().unwrap().len(), 10);
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

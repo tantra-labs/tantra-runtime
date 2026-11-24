@@ -352,7 +352,7 @@ fn shutdown_cancels_pending_and_a_running_run_that_outlives_the_grace() {
     }
     // Admission is closed.
     let err = service.submit_backtest(&sma_request(9)).unwrap_err();
-    assert_eq!(err.code, ErrorCode::Timeout);
+    assert_eq!(err.code, ErrorCode::ServiceUnavailable);
     assert_eq!(err.context.unwrap()["reason"], "shutting_down");
     // Idempotent.
     assert_eq!(service.shutdown(), Default::default());

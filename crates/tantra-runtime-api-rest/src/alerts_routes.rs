@@ -35,7 +35,7 @@ pub(crate) fn v2_only_manifest() -> Vec<RouteEntry> {
 
 fn table() -> RouteTable {
     const AUTHED: RouteScope = RouteScope::Authenticated;
-    RouteTable::new_v2_only()
+    RouteTable::new()
         .get("/alerts", list_alerts, AUTHED)
         .post("/alerts", create_alert, AUTHED)
         .delete("/alerts/:id", delete_alert, AUTHED)

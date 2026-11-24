@@ -180,7 +180,7 @@ async fn get_json(app: &Router, uri: &str) -> (StatusCode, Value) {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(uri)
+                .uri(v2(uri))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -199,7 +199,7 @@ async fn post_json(app: &Router, uri: &str, payload: Value) -> (StatusCode, Valu
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(uri)
+                .uri(v2(uri))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -440,10 +440,14 @@ async fn returns_evaluates_full_study_and_fno_spread_reconciliation() {
     // Also test v1 envelope & EXCHANGE:SYMBOL alternate id syntax
     let mut payload_v1 = payload;
     payload_v1["instrument_id"] = json!("NSE:RELIANCE");
-    let (status_v1, body_v1) =
-        post_json(&app, "/api/v1/experimental-analysis/returns", payload_v1).await;
+    let (status_v1, body_v1) = post_json(
+        &app,
+        "/api/v2/studies/experimental-analysis/returns",
+        payload_v1,
+    )
+    .await;
     assert_eq!(status_v1, StatusCode::OK, "{body_v1}");
-    assert_eq!(body_v1["api_version"], "v1");
+    assert_eq!(body_v1["api_version"], "v2");
     assert_eq!(body_v1["data"]["period_count"], data["period_count"]);
 }
 
@@ -882,4 +886,12 @@ async fn events_and_outlier_news_report_honest_offline_and_real_lakehouse_car() 
         kinds.contains(&"corporate_action"),
         "expected buyback hit: {kinds:?}"
     );
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

@@ -95,6 +95,7 @@ impl Drop for RunningServer {
 }
 
 fn get(addr: SocketAddr, path: &str) -> (u16, Value) {
+    let path = &v2(path);
     let mut stream = TcpStream::connect(addr).unwrap();
     write!(stream, "GET {path} HTTP/1.0\r\nHost: {addr}\r\n\r\n").unwrap();
     let mut text = String::new();
@@ -105,6 +106,7 @@ fn get(addr: SocketAddr, path: &str) -> (u16, Value) {
 }
 
 fn post(addr: SocketAddr, path: &str, body: &str) -> (u16, Value) {
+    let path = &v2(path);
     let mut stream = TcpStream::connect(addr).unwrap();
     write!(
         stream,
@@ -510,7 +512,7 @@ fn prepare_server_serves_lakehouse_v3_with_empty_catalog_gitkeep_and_pinned_back
     assert_eq!(body["data"]["quotes"].as_array().unwrap().len(), 1);
 
     // 5. Block-deal disclosures work over v3 (`disclosures/block_deals`)
-    let (status, body) = get(srv.addr, "/market-data/block-deals");
+    let (status, body) = get(srv.addr, "/block-deals");
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["data"]["deals"].as_array().unwrap().len(), 1);
 
@@ -610,4 +612,12 @@ fn prepare_server_serves_lakehouse_v3_with_empty_catalog_gitkeep_and_pinned_back
     );
 
     srv.shutdown();
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

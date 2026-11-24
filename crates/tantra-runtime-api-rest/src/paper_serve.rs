@@ -1,7 +1,7 @@
 //! Standalone paper-exchange tape-serving daemon (`paper serve`).
 //!
 //! Plan 0005 D5 (T14.9): replays a recorded bar tape into the shared paper exchange and
-//! serves the standard REST + `/ws/live` surface until the tape ends, then exits cleanly.
+//! serves the standard `/api/v2` REST + `/api/v2/stream` surface until the tape ends, then exits cleanly.
 //!
 //! # Tape format
 //!
@@ -31,7 +31,7 @@
 //! [`PaperServeConfig::mis_square_off`] (`"HH:MM"`, IST) submits an opposite-side market
 //! close for every non-zero exchange position on the first bar whose UTC+05:30 clock reads
 //! `HH:MM`. The closes are submitted directly to the exchange — not through the REST risk
-//! gate — and then drained into the ledger and `/ws/live` like any other fill (a documented
+//! gate — and then drained into the ledger and `/api/v2/stream` like any other fill (a documented
 //! deviation from the REST path). The NSE trading-calendar gate is now applied (plan 0005 D5
 //! follow-on, closed): closes are only submitted when the bar's date is a trading day
 //! (`tantra_runtime_backtest::NseTradingCalendar::is_trading_day`), so weekends and exchange
@@ -186,7 +186,7 @@ pub fn parse_tape(path: &Path) -> Result<Tape, ErrorDetail> {
 /// tape's instruments (bars are fed live via [`AppState::advance_market`]), seeds a fresh
 /// paper exchange with [`PaperServeConfig::initial_cash`], binds
 /// [`PaperServeConfig::addr`], calls `on_bound` with the bound address, serves the REST +
-/// `/ws/live` surface while replaying the feed, and returns a [`PaperServeOutcome`] once the
+/// `/api/v2/stream` surface while replaying the feed, and returns a [`PaperServeOutcome`] once the
 /// feed ends and the server has shut down.
 ///
 /// The feed is selected by [`PaperServeConfig::feed`]: [`PaperFeed::Tape`] replays the tape

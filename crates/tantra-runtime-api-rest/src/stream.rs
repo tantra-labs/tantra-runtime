@@ -1,5 +1,5 @@
 //! `GET /api/v2/stream`: one authenticated, multiplexed WebSocket with JSON channel frames
-//! (design 0006 R2d), replacing `/ws`, `/ws/market` and `/ws/live`.
+//! (design 0006 R2d), replacing the removed `/ws`, `/ws/market` and `/ws/live` sockets.
 //!
 //! Client frames are JSON objects tagged by `op` (`subscribe`, `unsubscribe`, `ping`,
 //! `place_order`, `cancel_order`, `close`). Server frames are tagged by `type` (`ack`, `event`,
@@ -49,7 +49,7 @@ pub(crate) fn v2_only_manifest() -> Vec<RouteEntry> {
 }
 
 fn table() -> RouteTable {
-    RouteTable::new_v2_only().get("/stream", stream_handler, RouteScope::Required("read"))
+    RouteTable::new().get("/stream", stream_handler, RouteScope::Required("read"))
 }
 
 /// Upgrades to the multiplexed stream socket.
@@ -477,7 +477,7 @@ impl Conn {
         let (ch, symbols) = match kind {
             "OrderAccepted" => (Channel::Orders, payload_symbols(payload)),
             // Cancel/reject/stop events carry only a broker order id, no symbol: deliver them to
-            // every orders subscriber (as `/ws/live` does) so a symbol-filtered client still sees
+            // every orders subscriber (as `/api/v2/stream` does) so a symbol-filtered client still sees
             // its own order's lifecycle end.
             "Cancelled" | "Rejected" | "StopTriggered" => (
                 Channel::Orders,

@@ -52,7 +52,7 @@ async fn send(
     body: Option<Value>,
     token: Option<&str>,
 ) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     if let Some(t) = token {
         builder = builder.header("authorization", format!("Bearer {t}"));
     }
@@ -286,4 +286,12 @@ async fn post_bars_accepts_a_write_scope_token() {
     assert_eq!(s, StatusCode::OK, "{v}");
     st.stop_bar_ingest();
     pump.await.unwrap();
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

@@ -268,18 +268,15 @@ pub fn scope_for(method: &str, path: &str) -> Option<RouteScope> {
     } else {
         method
     };
-    let unversioned_path = path
-        .strip_prefix("/api/v1")
-        .or_else(|| path.strip_prefix("/api/v2"))
-        .unwrap_or(path);
-    // v2-only routes are never reachable from a v1 or root path.
-    let v2 = path.starts_with("/api/v2/");
+    // Routes live under `/api/v2`; only the documentation UI is served at the server root.
+    let (root, path) = match path.strip_prefix("/api/v2") {
+        Some(rest) if rest.starts_with('/') => (false, rest),
+        _ => (true, path),
+    };
     crate::route_registry()
         .iter()
         .find(|e| {
-            (v2 || !e.v2_only)
-                && e.method.eq_ignore_ascii_case(method)
-                && path_matches(e.path, unversioned_path)
+            e.root == root && e.method.eq_ignore_ascii_case(method) && path_matches(e.path, path)
         })
         .map(|e| e.scope)
 }

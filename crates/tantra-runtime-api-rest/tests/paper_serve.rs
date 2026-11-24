@@ -37,7 +37,7 @@ fn write_tape(dir: &Path) -> PathBuf {
     path
 }
 
-/// The daemon boots, serves `/ws/live`, fills a resting limit when the tape crosses it, and
+/// The daemon boots, serves `/api/v2/stream`, fills a resting limit when the tape crosses it, and
 /// exits cleanly once the tape ends.
 #[tokio::test]
 async fn tape_daemon_boots_fills_orders_and_exits_on_tape_end() {
@@ -63,11 +63,12 @@ async fn tape_daemon_boots_fills_orders_and_exits_on_tape_end() {
         .expect("daemon never bound a listener")
         .expect("on_bound never fired");
 
-    let (mut ws, _) = connect_async(format!("ws://{addr}/ws/live"))
+    let (mut ws, _) = connect_async(format!("ws://{addr}/api/v2/stream"))
         .await
-        .expect("connect /ws/live");
+        .expect("connect /api/v2/stream");
     let order = json!({
-        "action": "place_order",
+        "op": "place_order",
+        "request_id": "r1",
         "order": {
             "instrument_id": {"symbol": "RELIANCE", "exchange": "NSE"},
             "side": "buy",
@@ -77,6 +78,11 @@ async fn tape_daemon_boots_fills_orders_and_exits_on_tape_end() {
             "client_order_id": "tape-1"
         }
     });
+    ws.send(Message::Text(
+        json!({"op": "subscribe", "channel": "fills"}).to_string(),
+    ))
+    .await
+    .expect("subscribe fills");
     ws.send(Message::Text(order.to_string()))
         .await
         .expect("send place_order");
@@ -96,11 +102,11 @@ async fn tape_daemon_boots_fills_orders_and_exits_on_tape_end() {
                     continue;
                 };
                 match value.get("type").and_then(|t| t.as_str()) {
-                    Some("PlaceResult") => {
+                    Some("result") => {
                         saw_place_result = true;
                         place_status = value.get("status").and_then(|s| s.as_u64());
                     }
-                    Some("Fill") => {
+                    Some("event") if value["channel"] == "fills" => {
                         saw_fill = true;
                         fill_event = value.to_string();
                         break;
@@ -127,7 +133,7 @@ async fn tape_daemon_boots_fills_orders_and_exits_on_tape_end() {
 
     assert!(
         saw_place_result,
-        "expected a PlaceResult reply from /ws/live"
+        "expected a PlaceResult reply from /api/v2/stream"
     );
     assert_eq!(place_status, Some(200), "expected PlaceResult status 200");
     assert!(saw_fill, "expected a Fill broadcast for the resting limit");
@@ -165,11 +171,12 @@ async fn live_feed_replays_channel_bars_until_sender_dropped() {
         .expect("daemon never bound a listener")
         .expect("on_bound never fired");
 
-    let (mut ws, _) = connect_async(format!("ws://{addr}/ws/live"))
+    let (mut ws, _) = connect_async(format!("ws://{addr}/api/v2/stream"))
         .await
-        .expect("connect /ws/live");
+        .expect("connect /api/v2/stream");
     let order = json!({
-        "action": "place_order",
+        "op": "place_order",
+        "request_id": "r1",
         "order": {
             "instrument_id": {"symbol": "RELIANCE", "exchange": "NSE"},
             "side": "buy",
@@ -179,6 +186,11 @@ async fn live_feed_replays_channel_bars_until_sender_dropped() {
             "client_order_id": "live-1"
         }
     });
+    ws.send(Message::Text(
+        json!({"op": "subscribe", "channel": "fills"}).to_string(),
+    ))
+    .await
+    .expect("subscribe fills");
     ws.send(Message::Text(order.to_string()))
         .await
         .expect("send place_order");
@@ -197,7 +209,7 @@ async fn live_feed_replays_channel_bars_until_sender_dropped() {
                 let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
                     continue;
                 };
-                if value.get("type").and_then(|t| t.as_str()) == Some("PlaceResult") {
+                if value.get("type").and_then(|t| t.as_str()) == Some("result") {
                     placed = true;
                     break;
                 }
@@ -222,7 +234,9 @@ async fn live_feed_replays_channel_bars_until_sender_dropped() {
                 let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
                     continue;
                 };
-                if value.get("type").and_then(|t| t.as_str()) == Some("Fill") {
+                if value.get("type").and_then(|t| t.as_str()) == Some("event")
+                    && value["channel"] == "fills"
+                {
                     saw_fill = true;
                     break;
                 }

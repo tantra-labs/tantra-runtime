@@ -132,7 +132,7 @@ pub(crate) fn v2_only_manifest() -> Vec<RouteEntry> {
 
 fn v2_only_table() -> RouteTable {
     const READ: RouteScope = RouteScope::Required("read");
-    RouteTable::new_v2_only()
+    RouteTable::new()
         .get("/studies/library/entries", get_entries, READ)
         .get("/studies/library/entries/:id", get_entry, READ)
         .post_capped(

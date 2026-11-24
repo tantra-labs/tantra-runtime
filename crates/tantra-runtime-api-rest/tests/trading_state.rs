@@ -54,7 +54,7 @@ async fn send(
     body: Option<Value>,
     token: Option<&str>,
 ) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     if let Some(t) = token {
         builder = builder.header("authorization", format!("Bearer {t}"));
     }
@@ -415,4 +415,12 @@ async fn an_unconfigured_journal_writes_no_file() {
     // Nothing to assert but that the change still succeeded with no journal path.
     let (_, v) = call(&app, Method::GET, "/trading-state", None).await;
     assert_eq!(v["data"]["state"], json!("halted"));
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

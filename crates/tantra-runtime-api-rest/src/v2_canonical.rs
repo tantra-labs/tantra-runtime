@@ -1,5 +1,5 @@
 //! Canonical `/api/v2` resource routes added by design 0006 R2a. They are mounted only under
-//! `/api/v2`; the old v1-era spellings answer `308` to these (see `v1::table`).
+//! `/api/v2`; the pre-R5 spellings no longer exist (404).
 
 use axum::Router;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ fn v2_only_table() -> RouteTable {
     const READ: RouteScope = RouteScope::Required("read");
     const TRADE: RouteScope = RouteScope::Required("trade");
     const ADMIN: RouteScope = RouteScope::Required("admin");
-    RouteTable::new_v2_only()
+    RouteTable::new()
         .get("/orders/:id", orders::get_order_by_id, TRADE)
         .post("/orders/:id/cancel", orders::delete_order, TRADE)
         .get("/approvals", orders::get_approval_queue, ADMIN)

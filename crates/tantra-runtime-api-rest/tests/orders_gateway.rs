@@ -56,7 +56,7 @@ fn state() -> AppState {
 }
 
 async fn call(st: &AppState, method: Method, uri: &str, body: Option<Value>) -> StatusCode {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(value) => {
             builder = builder.header("content-type", "application/json");
@@ -99,7 +99,7 @@ async fn delete_order_withdraws_it_from_the_paper_exchange_book() {
     assert_eq!(status_of(&st, "o1"), "accepted");
 
     assert_eq!(
-        call(&st, Method::DELETE, "/orders/o1", None).await,
+        call(&st, Method::POST, "/orders/o1/cancel", Some(json!({}))).await,
         StatusCode::OK
     );
     assert_eq!(status_of(&st, "o1"), "cancelled");
@@ -140,4 +140,12 @@ async fn close_positions_reaches_the_exchange_with_a_second_real_order() {
             .iter()
             .all(|o| serde_json::to_value(o).unwrap()["status"] == "filled")
     );
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

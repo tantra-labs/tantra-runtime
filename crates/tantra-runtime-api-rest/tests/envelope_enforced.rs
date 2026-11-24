@@ -7,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tantra_runtime_api::ErrorCode;
 use tantra_runtime_api_rest::{
-    ApiConfig, AppState, V2Disposition, api_router, api_router_with_config, route_registry,
+    ApiConfig, AppState, api_router, api_router_with_config, route_registry,
 };
 use tower::util::ServiceExt;
 
@@ -27,17 +27,13 @@ async fn call(router: axum::Router, req: Request<Body>) -> (StatusCode, Value) {
 }
 
 fn fill(path: &str) -> String {
-    path.replace(":id", "X.NSE").replace(":name", "main")
+    path.replace("{id}", "X.NSE").replace("{name}", "main")
 }
 
 #[tokio::test]
 async fn every_registry_get_is_enveloped_with_matching_status() {
     let mut failures = Vec::new();
     for e in route_registry() {
-        // R2a: superseded paths answer a bodiless 308 under /api/v2.
-        if matches!(e.v2, V2Disposition::Redirect(_)) {
-            continue;
-        }
         if e.method != "GET"
             || e.path.starts_with("/ws")
             || e.path == "/acp"
@@ -127,7 +123,9 @@ async fn oversized_order_body_is_an_enveloped_413() {
 
 #[tokio::test]
 async fn bare_schema_document_is_wrapped() {
-    let req = Request::get("/api/v2/schema").body(Body::empty()).unwrap();
+    let req = Request::get("/api/v2/openapi.json")
+        .body(Body::empty())
+        .unwrap();
     let (status, v) = call(api_router(), req).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(v["api_version"], "v2");

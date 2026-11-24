@@ -164,7 +164,7 @@ pub(crate) fn v2_only_manifest() -> Vec<RouteEntry> {
 
 fn v2_only_table() -> RouteTable {
     const AUTH: RouteScope = RouteScope::Authenticated;
-    RouteTable::new_v2_only()
+    RouteTable::new()
         .get("/chat/threads", get_threads, AUTH)
         .post("/chat/threads", post_thread, AUTH)
         .get("/chat/threads/:id", get_thread, AUTH)

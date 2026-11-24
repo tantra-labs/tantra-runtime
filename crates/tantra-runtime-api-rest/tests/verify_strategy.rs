@@ -24,7 +24,7 @@ async fn post(body: Value) -> (StatusCode, Value) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/strategies/verify")
+                .uri("/api/v2/strategies/verify")
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
                 .unwrap(),

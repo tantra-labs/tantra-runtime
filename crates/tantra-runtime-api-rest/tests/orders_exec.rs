@@ -46,7 +46,7 @@ fn bar(ts: u64, open: f64) -> tantra_core::Bar {
 }
 
 async fn call(app: Router, method: Method, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(value) => {
             builder = builder.header("content-type", "application/json");
@@ -173,11 +173,24 @@ async fn approval_queue_approve_submits_to_the_exchange() {
         Some(order("buy", 25.0, "q1", None)),
     )
     .await;
+    let (_, q) = call(api_router_with(st.clone()), Method::GET, "/approvals", None).await;
+    let d = &q["data"];
+    let items = d
+        .as_array()
+        .or_else(|| d["queue"].as_array())
+        .or_else(|| d["approvals"].as_array())
+        .cloned()
+        .unwrap_or_default();
+    let id = items[0]["id"]
+        .as_str()
+        .or_else(|| items[0]["queue_id"].as_str())
+        .unwrap()
+        .to_string();
     call(
         api_router_with(st.clone()),
         Method::POST,
-        "/approval/approve",
-        None,
+        &format!("/approvals/{id}/approve"),
+        Some(json!({})),
     )
     .await;
     assert_eq!(status_of(&st, "q1"), "filled");
@@ -257,4 +270,12 @@ async fn simulator_rejections_carry_a_stable_code_and_the_reason() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["error"]["code"], "validation_invalid_request");
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

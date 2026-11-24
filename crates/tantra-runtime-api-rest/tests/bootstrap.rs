@@ -128,6 +128,7 @@ fn base_config(data_dir: &Path) -> ServeConfig {
 }
 
 fn get(addr: SocketAddr, path: &str) -> (u16, Value) {
+    let path = &v2(path);
     let mut stream = TcpStream::connect(addr).unwrap();
     write!(stream, "GET {path} HTTP/1.0\r\nHost: {addr}\r\n\r\n").unwrap();
     let mut text = String::new();
@@ -150,6 +151,7 @@ fn head_with_origin(addr: SocketAddr, origin: &str) -> String {
 }
 
 fn post(addr: SocketAddr, path: &str, body: &str) -> (u16, Value) {
+    let path = &v2(path);
     let mut stream = TcpStream::connect(addr).unwrap();
     write!(
         stream,
@@ -166,6 +168,7 @@ fn post(addr: SocketAddr, path: &str, body: &str) -> (u16, Value) {
 }
 
 fn put(addr: SocketAddr, path: &str, body: &str) -> (u16, Value) {
+    let path = &v2(path);
     let mut stream = TcpStream::connect(addr).unwrap();
     write!(
         stream,
@@ -276,7 +279,6 @@ fn serve_runs_backtests_into_the_journals_dir_and_stops_with_no_open_run() {
     assert_eq!(status, 200);
     let flagged = body["data"]["capabilities"]["not_implemented"].to_string();
     assert!(!flagged.contains("/backtests"), "{flagged}");
-    assert!(!flagged.contains("/journals"), "{flagged}");
     let (status, body) = post(srv.addr, "/backtests", "{}");
     assert_eq!(status, 422, "{body}");
     let (status, body) = get(srv.addr, "/backtests/01ARZ3NDEKTSV4RRFFQ69G5FAV");
@@ -562,4 +564,12 @@ async fn a_bad_ticks_file_fails_at_startup_naming_the_line() {
 fn an_unknown_fill_model_is_refused_by_the_parser() {
     let err = parse_fill_model("none").unwrap_err();
     assert!(err.contains("bar_fill_through"), "{err}");
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

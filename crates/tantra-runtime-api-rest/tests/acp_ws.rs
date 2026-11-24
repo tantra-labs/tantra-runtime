@@ -1,4 +1,4 @@
-//! `GET /api/v1/acp` — ACP agent WebSocket (agent plan 0019 Phase 2), exercised through the
+//! `GET /api/v2/acp` — ACP agent WebSocket (agent plan 0019 Phase 2), exercised through the
 //! real production router (`api_router_with`) so the mounted path is what clients use.
 
 use std::collections::HashMap;
@@ -67,7 +67,7 @@ async fn test_acp_initialize_new_session_prompt() {
     let registry = LlmProviderRegistry::new(llm, HashMap::new());
     let chat = ChatRuntime::with_provider_registry(registry).expect("chat");
     let addr = serve(AppState::default().with_chat_agent(chat)).await;
-    let (mut ws, _) = connect_async(format!("ws://{addr}/api/v1/acp"))
+    let (mut ws, _) = connect_async(format!("ws://{addr}/api/v2/acp"))
         .await
         .expect("connect");
 
@@ -106,7 +106,7 @@ async fn test_acp_initialize_new_session_prompt() {
 #[tokio::test]
 async fn test_acp_without_chat_returns_503() {
     let addr = serve(AppState::default()).await;
-    let err = connect_async(format!("ws://{addr}/api/v1/acp"))
+    let err = connect_async(format!("ws://{addr}/api/v2/acp"))
         .await
         .expect_err("handshake must fail");
     match err {

@@ -1,4 +1,5 @@
-//! REST API v2 routes and handlers (Latest & Recommended).
+//! REST API v2: the only API version. Merges the canonical route table with the v2-only
+//! sub-tables and applies the response envelope.
 
 use std::sync::Arc;
 
@@ -6,7 +7,7 @@ use axum::Router;
 use axum::http::HeaderValue;
 use axum::response::{IntoResponse, Response};
 
-use crate::{AppState, v1};
+use crate::{AppState, routes};
 
 /// Build the v2 router with attached state.
 pub fn routes(state: Arc<AppState>) -> Router {
@@ -15,7 +16,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
 
 /// Build the v2 router expecting State<Arc<AppState>>.
 pub fn router() -> Router<Arc<AppState>> {
-    v1::v2_router()
+    routes::router()
         .merge(crate::library_routes::v2_only_routes())
         .merge(crate::chat_threads::v2_only_routes())
         .merge(crate::v2_canonical::v2_only_routes())

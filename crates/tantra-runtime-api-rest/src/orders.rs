@@ -1239,11 +1239,6 @@ pub(crate) async fn get_approval_queue(State(state): State<Arc<AppState>>) -> Re
     }
 }
 
-/// POST /approval/approve: approve the oldest pending order (E5-S4).
-pub(crate) async fn post_approve_order(State(state): State<Arc<AppState>>) -> Response {
-    approve_with(state, |queue| queue.approve_oldest_owned()).await
-}
-
 /// `POST /approvals/{id}/approve`: approve the queued order `id` (404 when it is not pending).
 pub(crate) async fn post_approve_order_by_id(
     State(state): State<Arc<AppState>>,
@@ -1375,11 +1370,6 @@ async fn gate_and_record(
             Err(refuse(state, record, &detail, owner))
         }
     }
-}
-
-/// POST /approval/reject: reject the oldest pending order (E5-S4).
-pub(crate) async fn post_reject_order(State(state): State<Arc<AppState>>) -> Response {
-    reject_with(state, |queue| queue.reject_oldest())
 }
 
 fn reject_with(

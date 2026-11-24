@@ -4,8 +4,8 @@
 
 //! REST API server for Tantra platform using axum.
 //!
-//! Provides multi-version API routing (`/api/v1`, `/api/v2`, and root fallback)
-//! as specified in Phase 1 of the Versioning Design Plan.
+//! Serves the API under `/api/v2` only (design 0006 R5); the Swagger UI lives at `/docs`.
+//! Any other path is a 404 envelope.
 //! All responses are wrapped in the versioned envelope from `tantra-api`.
 
 use crate::auth::AuthRouterExt;
@@ -66,6 +66,7 @@ mod registry;
 mod reports;
 mod retention;
 mod route_table;
+pub mod routes;
 mod run_store;
 mod runs;
 mod screener;
@@ -79,11 +80,8 @@ mod trade_journal;
 mod trades;
 mod trading_state;
 mod user_doc;
-pub mod v1;
 pub mod v2;
 mod v2_canonical;
-pub mod ws;
-pub mod ws_live;
 
 pub use approval::ApprovalQueue;
 pub use auth::{
@@ -118,7 +116,11 @@ pub use portfolio_store::{
 pub use profile_store::{DEFAULT_USER_ID, Module, Profile, ProfileError, ProfileStore, Source};
 pub use registry::StrategyRegistry;
 pub use retention::{RetentionPolicy, evictions};
-pub use route_table::{RouteEntry, V2Disposition};
+pub use route_table::RouteEntry;
+pub use routes::{
+    get_capabilities, get_health, get_orders, get_strategies, get_sweep_by_id,
+    post_close_positions, post_orders, post_strategies, post_sweeps, post_verify_strategy,
+};
 pub use run_store::{OsEntropy, RecoveryReport, RunClock, RunEntropy, RunStore, SystemClock};
 pub use service::{
     DEFAULT_MAX_QUEUED, DEFAULT_SHUTDOWN_GRACE, RunService, RunServiceConfig, ShutdownReport,
@@ -131,14 +133,6 @@ pub use tantra_runtime_api::JournalWriter;
 pub use ticks_file::{
     ParquetBarsSummary, equity_curve, import_ticks_ndjson, load_parquet_bars_summary,
     load_ticks_ndjson, pair_fills, parse_ticks_ndjson,
-};
-pub use ws::ws_handler;
-pub use ws_live::ws_live_handler;
-
-pub use v1::{
-    delete_order, get_capabilities, get_health, get_orders, get_schema, get_strategies,
-    get_sweep_by_id, post_close_positions, post_orders, post_strategies, post_sweeps,
-    post_verify_strategy,
 };
 
 /// Serialized OpenAPI 3.1 document (v2) for codegen file emission (`tantra schema --openapi`).
@@ -217,103 +211,6 @@ impl ApiConfig {
     }
 }
 
-/// Middleware providing RFC 8594 deprecation and canonical link headers for legacy un-prefixed requests.
-/// Supports content negotiation via `Accept: application/vnd.tantra.v2+json` or `X-Tantra-Version: 2`.
-pub async fn legacy_v1_deprecation_notice(
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> Response {
-    let path = req.uri().path().to_owned();
-    let wants_v2 = req
-        .headers()
-        .get("x-tantra-version")
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v == "2")
-        .unwrap_or(false)
-        || req
-            .headers()
-            .get(axum::http::header::ACCEPT)
-            .and_then(|v| v.to_str().ok())
-            .map(|v| v.contains("application/vnd.tantra.v2+json"))
-            .unwrap_or(false);
-
-    let res = next.run(req).await;
-    let (mut parts, body) = res.into_parts();
-
-    if wants_v2 {
-        parts.headers.insert(
-            HeaderName::from_static("x-tantra-version"),
-            HeaderValue::from_static("2"),
-        );
-        let link = format!("</api/v2{path}>; rel=\"canonical\"");
-        if let Ok(val) = HeaderValue::from_str(&link) {
-            parts.headers.insert(axum::http::header::LINK, val);
-        }
-        let bytes = match axum::body::to_bytes(body, usize::MAX).await {
-            Ok(b) => b,
-            Err(_) => return Response::from_parts(parts, axum::body::Body::empty()),
-        };
-        if let Ok(mut val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-            if val.is_object() && val.get("api_version").is_some() {
-                val["api_version"] = serde_json::json!("v2");
-                let new_body = serde_json::to_vec(&val).unwrap_or_default();
-                parts.headers.insert(
-                    axum::http::header::CONTENT_LENGTH,
-                    HeaderValue::from(new_body.len()),
-                );
-                return Response::from_parts(parts, axum::body::Body::from(new_body));
-            }
-        }
-        Response::from_parts(parts, axum::body::Body::from(bytes))
-    } else {
-        parts.headers.insert(
-            HeaderName::from_static("deprecation"),
-            HeaderValue::from_static("true"),
-        );
-        parts.headers.insert(
-            HeaderName::from_static("x-tantra-version"),
-            HeaderValue::from_static("1"),
-        );
-        let link = format!("</api/v1{path}>; rel=\"canonical\"");
-        if let Ok(val) = HeaderValue::from_str(&link) {
-            parts.headers.insert(axum::http::header::LINK, val);
-        }
-        Response::from_parts(parts, body)
-    }
-}
-
-/// Adds RFC 8594 `Deprecation` + successor `Link` headers to the superseded study paths
-/// (`/api/{v1,v2}/experimental-analysis/*`, `/api/v1/studies/*`); canonical home is
-/// `/api/v2/studies/...`.
-pub async fn legacy_studies_deprecation_notice(
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> Response {
-    let path = req.uri().path().to_owned();
-    let successor = ["/api/v1/", "/api/v2/"].iter().find_map(|p| {
-        let rest = path.strip_prefix(p)?;
-        if rest.starts_with("experimental-analysis/") {
-            Some(format!("/api/v2/studies/{rest}"))
-        } else if *p == "/api/v1/" && rest.starts_with("studies/") {
-            Some(format!("/api/v2/{rest}"))
-        } else {
-            None
-        }
-    });
-    let mut res = next.run(req).await;
-    if let Some(successor) = successor {
-        res.headers_mut().insert(
-            HeaderName::from_static("deprecation"),
-            HeaderValue::from_static("true"),
-        );
-        if let Ok(val) = HeaderValue::from_str(&format!("<{successor}>; rel=\"successor-version\""))
-        {
-            res.headers_mut().insert(axum::http::header::LINK, val);
-        }
-    }
-    res
-}
-
 /// Create the API router over an empty catalogue.
 pub fn api_router() -> Router {
     api_router_with(AppState::default())
@@ -331,24 +228,14 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
         chat.bind_state(&state);
     }
 
-    let v1_router = v1::router();
-    let v2_router = v2::router();
     let (root_routes, _) = root_table().finish();
 
     let router = Router::new()
-        .nest("/api/v1", v1_router.clone())
-        .nest("/api/v2", v2_router)
-        // Root fallback defaults to v1 for existing un-prefixed clients with deprecation warning
-        .nest(
-            "/",
-            v1_router.layer(axum::middleware::from_fn(legacy_v1_deprecation_notice)),
-        )
-        // OpenAPI specifications per version
+        .nest("/api/v2", v2::router())
         .merge(root_routes)
         .fallback(unknown_route)
         .method_not_allowed_fallback(unsupported_method)
         .with_state(state)
-        .layer(axum::middleware::from_fn(legacy_studies_deprecation_notice))
         .layer(CompressionLayer::new())
         .layer(cors_layer(config))
         .layer(TraceLayer::new_for_http());
@@ -374,32 +261,17 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
 
 /// Root-level documentation routes (GET only), shared by the router and [`served_routes`].
 fn root_table() -> route_table::RouteTable {
-    route_table::RouteTable::new()
-        .get(
-            "/schema/openapi/v1.json",
-            openapi::get_openapi_v1,
-            RouteScope::Public,
-        )
-        .get(
-            "/schema/openapi/v2.json",
-            openapi::get_openapi_v2,
-            RouteScope::Public,
-        )
-        .get(
-            "/schema/openapi",
-            openapi::get_openapi_index,
-            RouteScope::Public,
-        )
+    route_table::RouteTable::new_root()
         .get("/docs", openapi::get_swagger_ui, RouteScope::Public)
         .get("/swagger-ui", openapi::get_swagger_ui, RouteScope::Public)
 }
 
-/// The v1, v2-only and root route entries, each as registered.
-pub(crate) fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEntry>) {
+/// The `/api/v2` route entries and the root documentation entries, each as registered.
+pub(crate) fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>) {
     (
-        v1::manifest(),
-        library_routes::v2_only_manifest()
+        routes::manifest()
             .into_iter()
+            .chain(library_routes::v2_only_manifest())
             .chain(chat_threads::v2_only_manifest())
             .chain(v2_canonical::v2_only_manifest())
             .chain(alerts_routes::v2_only_manifest())
@@ -415,53 +287,39 @@ pub(crate) fn registry_parts() -> (Vec<RouteEntry>, Vec<RouteEntry>, Vec<RouteEn
 pub fn route_registry() -> &'static [RouteEntry] {
     static REGISTRY: std::sync::OnceLock<Vec<RouteEntry>> = std::sync::OnceLock::new();
     REGISTRY.get_or_init(|| {
-        let (v1, v2_only, root) = registry_parts();
-        v1.into_iter().chain(v2_only).chain(root).collect()
+        let (v2, root) = registry_parts();
+        v2.into_iter().chain(root).collect()
     })
 }
 
-/// `(METHOD, full_path)` for every route the real router serves: v1 under `/api/v1` and the
-/// legacy root, v1 plus the v2-only routes under `/api/v2`, and the root documentation routes.
-/// The auth drift guard checks each of these has a scope row (design 0006 R0).
+/// `(METHOD, full_path)` for every route the real router serves: the API routes under
+/// `/api/v2` and the root documentation routes. The auth drift guard checks each of these has
+/// a scope row (design 0006 R0).
 pub fn served_routes() -> Vec<(String, String)> {
-    let (v1, v2_only, root) = registry_parts();
-    let mut out = Vec::new();
-    let join = |prefix: &str, path: &str| {
-        if prefix.is_empty() {
-            path.to_owned()
-        } else {
-            format!("{prefix}{path}")
-        }
-    };
-    for prefix in ["/api/v1", ""] {
-        for e in &v1 {
-            out.push((e.method.to_owned(), join(prefix, e.path)));
-        }
-    }
-    for e in v1.iter().chain(v2_only.iter()) {
-        out.push((e.method.to_owned(), join("/api/v2", e.path)));
-    }
-    for e in &root {
-        out.push((e.method.to_owned(), e.path.to_owned()));
-    }
+    let (v2, root) = registry_parts();
+    let mut out: Vec<(String, String)> = v2
+        .iter()
+        .map(|e| (e.method.to_owned(), format!("/api/v2{}", e.path)))
+        .collect();
+    out.extend(
+        root.iter()
+            .map(|e| (e.method.to_owned(), e.path.to_owned())),
+    );
     out
 }
 
-fn versioned_failure(uri: &axum::http::Uri, status: StatusCode, detail: ErrorDetail) -> Response {
-    let is_v2 = uri.path() == "/api/v2" || uri.path().starts_with("/api/v2/");
-    if is_v2 {
-        let mut body: tantra_runtime_api::ResponseEnvelope<serde_json::Value> =
-            ApiResponse::error(detail);
-        body.api_version = tantra_runtime_api::ApiVersion::from("v2");
-        let mut res = (status, Json(body)).into_response();
-        res.headers_mut().insert(
-            HeaderName::from_static("x-tantra-version"),
-            HeaderValue::from_static("2"),
-        );
-        res
-    } else {
-        market::failure(status, detail)
-    }
+/// A fallback error answered as a v2 envelope: since design 0006 R5 `/api/v2` is the only API
+/// version, so even a miss outside it (an old `/api/v1` or un-prefixed path) is described in v2.
+fn versioned_failure(_uri: &axum::http::Uri, status: StatusCode, detail: ErrorDetail) -> Response {
+    let mut body: tantra_runtime_api::ResponseEnvelope<serde_json::Value> =
+        ApiResponse::error(detail);
+    body.api_version = tantra_runtime_api::ApiVersion::from("v2");
+    let mut res = (status, Json(body)).into_response();
+    res.headers_mut().insert(
+        HeaderName::from_static("x-tantra-version"),
+        HeaderValue::from_static("2"),
+    );
+    res
 }
 
 /// An unknown route is a 404 `not_found` envelope, never an empty body.

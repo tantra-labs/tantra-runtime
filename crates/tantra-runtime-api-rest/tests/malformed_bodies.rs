@@ -15,7 +15,7 @@ const POST_ROUTES: [&str; 5] = [
 ];
 
 async fn post_raw(uri: &str, content_type: Option<&str>, body: &str) -> (StatusCode, Value) {
-    let mut req = Request::builder().method("POST").uri(uri);
+    let mut req = Request::builder().method("POST").uri(v2(uri));
     if let Some(ct) = content_type {
         req = req.header("content-type", ct);
     }
@@ -67,4 +67,12 @@ async fn an_unknown_field_returns_the_error_envelope() {
 async fn a_missing_content_type_returns_the_error_envelope() {
     let (status, body) = post_raw("/backtests", None, "{}").await;
     assert_envelope(status, &body, "/backtests");
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
+    }
 }

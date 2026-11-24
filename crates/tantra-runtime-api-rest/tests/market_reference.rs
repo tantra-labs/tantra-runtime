@@ -11,7 +11,7 @@ async fn call(method: &str, uri: &str) -> (StatusCode, Value) {
         .oneshot(
             Request::builder()
                 .method(method)
-                .uri(uri)
+                .uri(v2(uri))
                 .header("content-type", "application/json")
                 .body(Body::from("{}"))
                 .unwrap(),
@@ -30,7 +30,7 @@ async fn call(method: &str, uri: &str) -> (StatusCode, Value) {
 
 #[tokio::test]
 async fn symbol_profile() {
-    let (status, body) = call("GET", "/api/v1/market-data/symbol-profile/RELIANCE.NSE").await;
+    let (status, body) = call("GET", "/api/v2/instruments/RELIANCE.NSE/profile").await;
     assert_eq!(status, StatusCode::OK);
     let p = &body["data"];
     assert_eq!(p["symbol"], "NSE:RELIANCE");
@@ -42,13 +42,13 @@ async fn symbol_profile() {
 
 #[tokio::test]
 async fn symbol_profile_unknown() {
-    let (status, _body) = call("GET", "/api/v1/market-data/symbol-profile/NOPE.NSE").await;
+    let (status, _body) = call("GET", "/api/v2/instruments/NOPE.NSE/profile").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn calendar() {
-    let (status, body) = call("GET", "/api/v1/market-data/calendar").await;
+    let (status, body) = call("GET", "/api/v2/calendar").await;
     assert_eq!(status, StatusCode::OK);
     let events = &body["data"]["events"];
     assert_eq!(events.as_array().unwrap().len(), 2);
@@ -62,7 +62,7 @@ async fn calendar() {
 
 #[tokio::test]
 async fn calendar_category_filter() {
-    let (status, body) = call("GET", "/api/v1/market-data/calendar?category=Economic").await;
+    let (status, body) = call("GET", "/api/v2/calendar?category=Economic").await;
     assert_eq!(status, StatusCode::OK);
     let events = &body["data"]["events"];
     assert_eq!(events.as_array().unwrap().len(), 1);
@@ -71,20 +71,25 @@ async fn calendar_category_filter() {
 
 #[tokio::test]
 async fn routes_are_not_flagged_not_implemented() {
-    let (_status, body) = call("GET", "/api/v1/capabilities").await;
+    let (_status, body) = call("GET", "/api/v2/capabilities").await;
     let flagged: Vec<String> = body["data"]["capabilities"]["not_implemented"]
         .as_array()
         .unwrap()
         .iter()
         .map(|v| v.as_str().unwrap().to_owned())
         .collect();
-    for route in [
-        "GET /market-data/symbol-profile/:id",
-        "GET /market-data/calendar",
-    ] {
+    for route in ["GET /instruments/{id}/profile", "GET /calendar"] {
         assert!(
             !flagged.contains(&route.to_string()),
             "{route} is flagged not-implemented"
         );
+    }
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
     }
 }

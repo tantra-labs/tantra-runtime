@@ -29,7 +29,7 @@ async fn send(
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, axum::http::HeaderMap, Value) {
-    let mut b = Request::builder().method(method).uri(uri);
+    let mut b = Request::builder().method(method).uri(v2(uri));
     let body = match body {
         Some(v) => {
             b = b.header("content-type", "application/json");
@@ -179,53 +179,6 @@ async fn validation_rejects_bad_inputs() {
 }
 
 #[tokio::test]
-async fn new_routes_absent_under_v1() {
-    let (s, _, _) = send(app("echo"), "GET", "/api/v1/studies/library/entries", None).await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
-    let (s, _, _) = send(
-        app("echo"),
-        "POST",
-        "/api/v1/studies/signal-study",
-        Some(json!({"id":"x","bars_file":"main"})),
-    )
-    .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn deprecation_headers_on_legacy_study_paths_only() {
-    let (s_old, h_old, _) = send(
-        api_router(),
-        "GET",
-        "/api/v1/experimental-analysis/catalog",
-        None,
-    )
-    .await;
-    assert_eq!(h_old.get("deprecation").unwrap(), "true");
-    assert_eq!(
-        h_old.get("link").unwrap(),
-        "</api/v2/studies/experimental-analysis/catalog>; rel=\"successor-version\""
-    );
-    let (_, h_v2, _) = send(
-        api_router(),
-        "GET",
-        "/api/v2/experimental-analysis/catalog",
-        None,
-    )
-    .await;
-    assert_eq!(h_v2.get("deprecation").unwrap(), "true");
-    let (s_new, h_new, _) = send(
-        api_router(),
-        "GET",
-        "/api/v2/studies/experimental-analysis/catalog",
-        None,
-    )
-    .await;
-    assert!(h_new.get("deprecation").is_none());
-    assert_eq!(s_old, s_new);
-}
-
-#[tokio::test]
 async fn v2_envelope_rewrites_api_version_and_health_reports_library() {
     let (s, _, b) = send(api_router(), "GET", "/api/v2/health", None).await;
     assert_eq!(s, StatusCode::OK);
@@ -271,5 +224,13 @@ async fn jwt_only_auth_fails_closed_without_token() {
         let state = AppState::default().with_library_client(client("echo", 5000));
         let (s, _, _) = send(api_router_with_config(state, &config), m, uri, body).await;
         assert_eq!(s, StatusCode::UNAUTHORIZED, "{m} {uri}");
+    }
+}
+
+fn v2(uri: &str) -> String {
+    if uri.starts_with("/api/") {
+        uri.to_string()
+    } else {
+        format!("/api/v2{uri}")
     }
 }
