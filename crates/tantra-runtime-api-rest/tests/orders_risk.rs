@@ -271,7 +271,7 @@ async fn approval_queue_holds_placements() {
             .contains("approval queue")
     );
 
-    // GET /approval/queue returns the queued order
+    // GET /approvals returns the queued order
     let (status, body) = call(app.clone(), Method::GET, "/approvals", None).await;
     assert_eq!(status, StatusCode::OK);
     let queue = queue_items(&body);

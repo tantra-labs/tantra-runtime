@@ -172,7 +172,7 @@ pub enum OutlierStatus {
     DownsideOutlier,
 }
 
-/// Query parameters for `GET /experimental-analysis/catalog`.
+/// Query parameters for `GET /studies/experimental-analysis/catalog`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalCatalogQuery {
@@ -248,7 +248,7 @@ pub struct DataSourceStatus {
     pub fno_contract_count: usize,
 }
 
-/// Response payload for `GET /experimental-analysis/catalog`.
+/// Response payload for `GET /studies/experimental-analysis/catalog`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExperimentalCatalogResponse {
     /// Per-asset-class instrument groups and schedules.
@@ -257,7 +257,7 @@ pub struct ExperimentalCatalogResponse {
     pub source_status: DataSourceStatus,
 }
 
-/// Request payload for `POST /experimental-analysis/returns`.
+/// Request payload for `POST /studies/experimental-analysis/returns`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalReturnsRequest {
@@ -772,7 +772,7 @@ pub struct OutlierAnalysis {
     pub outlier_table: Vec<OutlierPeriodPoint>,
 }
 
-/// Full single-shot statistical report returned by `POST /experimental-analysis/returns`.
+/// Full single-shot statistical report returned by `POST /studies/experimental-analysis/returns`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExperimentalReturnsResponse {
     /// Analyzed instrument ID (`EXCHANGE:SYMBOL`).
@@ -1090,7 +1090,7 @@ pub struct OrbBacktestResult {
     pub trades: Vec<OrbTradeRow>,
 }
 
-/// Request payload for `POST /experimental-analysis/intraday`.
+/// Request payload for `POST /studies/experimental-analysis/intraday`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalIntradayRequest {
@@ -1169,7 +1169,7 @@ pub struct RollingPairPoint {
     pub raw_spread: Decimal,
 }
 
-/// Request payload for `POST /experimental-analysis/correlation`.
+/// Request payload for `POST /studies/experimental-analysis/correlation`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalCorrelationRequest {
@@ -1188,7 +1188,7 @@ pub struct ExperimentalCorrelationRequest {
     pub rolling_window: Option<usize>,
 }
 
-/// Response payload for `POST /experimental-analysis/correlation`.
+/// Response payload for `POST /studies/experimental-analysis/correlation`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExperimentalCorrelationResponse {
     /// Labels corresponding to matrix rows & columns.
@@ -1320,7 +1320,7 @@ pub struct OverlayEquityPoint {
     pub period_payoff_pct: Decimal,
 }
 
-/// Request payload for `POST /experimental-analysis/options-overlay`.
+/// Request payload for `POST /studies/experimental-analysis/options-overlay`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalOptionsOverlayRequest {
@@ -1351,7 +1351,7 @@ pub struct ExperimentalOptionsOverlayRequest {
     pub include_statutory_costs: bool,
 }
 
-/// Response payload for `POST /experimental-analysis/options-overlay`.
+/// Response payload for `POST /studies/experimental-analysis/options-overlay`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExperimentalOptionsOverlayResponse {
     /// Analyzed canonical instrument ID.
@@ -1487,7 +1487,7 @@ pub struct AnalogEpisode {
     pub horizon_end_pct: Decimal,
 }
 
-/// Request payload for `POST /experimental-analysis/forecast`.
+/// Request payload for `POST /studies/experimental-analysis/forecast`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalForecastRequest {
@@ -1521,7 +1521,7 @@ pub struct ExperimentalForecastRequest {
     pub include_statutory_costs: bool,
 }
 
-/// Response payload for `POST /experimental-analysis/forecast`.
+/// Response payload for `POST /studies/experimental-analysis/forecast`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExperimentalForecastResponse {
     /// Analyzed canonical instrument ID.
@@ -1616,7 +1616,7 @@ pub struct EventStudyRow {
     pub volume_ratio: Decimal,
 }
 
-/// Request payload for `POST /experimental-analysis/events`.
+/// Request payload for `POST /studies/experimental-analysis/events`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalEventStudyRequest {
@@ -1636,7 +1636,7 @@ pub struct ExperimentalEventStudyRequest {
     pub end_date: String,
 }
 
-/// Response payload for `POST /experimental-analysis/events`.
+/// Response payload for `POST /studies/experimental-analysis/events`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExperimentalEventStudyResponse {
     /// Analyzed canonical instrument ID.
@@ -1703,7 +1703,7 @@ pub struct OutlierNewsItem {
     pub instruments: Vec<String>,
 }
 
-/// Request payload for `POST /experimental-analysis/outlier-news`.
+/// Request payload for `POST /studies/experimental-analysis/outlier-news`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExperimentalOutlierNewsRequest {
@@ -1723,7 +1723,7 @@ pub struct ExperimentalOutlierNewsRequest {
     pub limit: Option<usize>,
 }
 
-/// Response payload for `POST /experimental-analysis/outlier-news`.
+/// Response payload for `POST /studies/experimental-analysis/outlier-news`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExperimentalOutlierNewsResponse {
     /// Canonical instrument ID.

@@ -1,4 +1,4 @@
-//! Handler for `GET /screener/scan`.
+//! Handler for `GET /screener/scans`.
 //!
 //! The query is resolved by `tantra-api` (bounded universe, validated filter); this handler only
 //! reads each instrument's bars through the ports and hands them to the pure evaluator, one
@@ -63,7 +63,7 @@ fn to_core_bar(bar: &crate::market_feed::wire::Bar) -> Bar {
     }
 }
 
-/// `GET /screener/scan`: the universe instruments passing the filter, in instrument-id order.
+/// `GET /screener/scans`: the universe instruments passing the filter, in instrument-id order.
 ///
 /// An unknown instrument is a 404 and a metric a bar dataset cannot compute is a 422
 /// (`reason: unsupported_metric`): a partial or empty answer is never passed off as a result.

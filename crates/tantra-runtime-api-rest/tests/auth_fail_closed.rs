@@ -1,5 +1,5 @@
 //! Deny-by-default auth (design 0006 R0): a route with no scope row, and the previously
-//! unscoped market-data / `/ws/live` / trade-journal routes, never answer anonymously.
+//! unscoped market-data / the live stream / trade-journal routes, never answer anonymously.
 
 use axum::Router;
 use axum::body::Body;

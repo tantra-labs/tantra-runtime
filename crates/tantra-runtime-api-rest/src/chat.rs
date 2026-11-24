@@ -316,7 +316,7 @@ impl ChatRuntime {
     /// caller leaves `AppState::chat` as `None` instead of failing server boot.
     ///
     /// `instruments`/`bars`/`quotes`/`risk_engine` are the same ports `AppState` already serves
-    /// `/market-data/*` from — this is how `FeedMarketReader`/`FeedSnapshotSource` answer the
+    /// market reference routes from — this is how `FeedMarketReader`/`FeedSnapshotSource` answer the
     /// chat tool catalog's market/screener tools with real data (closes the market/screener
     /// stand-in of docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md).
     /// `profiles` is the same store `/profile` routes serve: the price-alert tools read and

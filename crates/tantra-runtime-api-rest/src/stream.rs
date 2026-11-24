@@ -1,5 +1,5 @@
 //! `GET /api/v2/stream`: one authenticated, multiplexed WebSocket with JSON channel frames
-//! (design 0006 R2d), replacing the removed `/ws`, `/ws/market` and `/ws/live` sockets.
+//! (design 0006 R2d), replacing the pre-R5 market and paper sockets.
 //!
 //! Client frames are JSON objects tagged by `op` (`subscribe`, `unsubscribe`, `ping`,
 //! `place_order`, `cancel_order`, `close`). Server frames are tagged by `type` (`ack`, `event`,

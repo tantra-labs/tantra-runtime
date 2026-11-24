@@ -157,7 +157,7 @@ pub struct AppState {
     /// configured ([`AppState::with_portfolios_dir`]).
     pub portfolios: Option<Arc<PortfolioStore>>,
     /// Reader over the `tantra-data` block/bulk-deal projections (`{root}/catalog/block_deals`)
-    /// behind `GET /market-data/block-deals`; `None` until configured
+    /// behind `GET /block-deals`; `None` until configured
     /// ([`AppState::with_block_deals`]).
     pub block_deals: Option<BlockDealsProjectionReader>,
     /// Optional open-interest snapshot store (`ParquetOpenInterestStore` or
@@ -527,7 +527,7 @@ impl AppState {
         self
     }
 
-    /// Serves `/market-data/block-deals` from the `tantra-data` block/bulk-deal projections
+    /// Serves `/block-deals` from the `tantra-data` block/bulk-deal projections
     /// under `{root}/catalog/block_deals` (closes `tantra-data/docs/gaps/0005`).
     pub fn with_block_deals(mut self, root: &std::path::Path) -> Self {
         self.block_deals = Some(BlockDealsProjectionReader::new(root));

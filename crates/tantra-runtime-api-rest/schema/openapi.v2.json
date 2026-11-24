@@ -2841,7 +2841,7 @@
             "application/json": {
               "schema": {
                 "title": "ExperimentalCorrelationRequest",
-                "description": "Request payload for `POST /experimental-analysis/correlation`.",
+                "description": "Request payload for `POST /studies/experimental-analysis/correlation`.",
                 "type": "object",
                 "required": [
                   "benchmark_id",
@@ -2965,7 +2965,7 @@
             "application/json": {
               "schema": {
                 "title": "ExperimentalEventStudyRequest",
-                "description": "Request payload for `POST /experimental-analysis/events`.",
+                "description": "Request payload for `POST /studies/experimental-analysis/events`.",
                 "type": "object",
                 "required": [
                   "end_date",
@@ -3090,7 +3090,7 @@
             "application/json": {
               "schema": {
                 "title": "ExperimentalForecastRequest",
-                "description": "Request payload for `POST /experimental-analysis/forecast`.",
+                "description": "Request payload for `POST /studies/experimental-analysis/forecast`.",
                 "type": "object",
                 "required": [
                   "asset_class",
@@ -3258,7 +3258,7 @@
             "application/json": {
               "schema": {
                 "title": "ExperimentalIntradayRequest",
-                "description": "Request payload for `POST /experimental-analysis/intraday`.",
+                "description": "Request payload for `POST /studies/experimental-analysis/intraday`.",
                 "type": "object",
                 "required": [
                   "asset_class",
@@ -3433,7 +3433,7 @@
             "application/json": {
               "schema": {
                 "title": "ExperimentalOptionsOverlayRequest",
-                "description": "Request payload for `POST /experimental-analysis/options-overlay`.",
+                "description": "Request payload for `POST /studies/experimental-analysis/options-overlay`.",
                 "type": "object",
                 "required": [
                   "asset_class",
@@ -3591,7 +3591,7 @@
             "application/json": {
               "schema": {
                 "title": "ExperimentalOutlierNewsRequest",
-                "description": "Request payload for `POST /experimental-analysis/outlier-news`.",
+                "description": "Request payload for `POST /studies/experimental-analysis/outlier-news`.",
                 "type": "object",
                 "required": [
                   "asset_class",
@@ -3718,7 +3718,7 @@
             "application/json": {
               "schema": {
                 "title": "ExperimentalReturnsRequest",
-                "description": "Request payload for `POST /experimental-analysis/returns`.",
+                "description": "Request payload for `POST /studies/experimental-analysis/returns`.",
                 "type": "object",
                 "required": [
                   "asset_class",
@@ -6580,7 +6580,7 @@
       },
       "ExperimentalCatalogResponse": {
         "title": "ExperimentalCatalogResponse",
-        "description": "Response payload for `GET /experimental-analysis/catalog`.",
+        "description": "Response payload for `GET /studies/experimental-analysis/catalog`.",
         "type": "object",
         "required": [
           "groups",
@@ -6606,7 +6606,7 @@
       },
       "ExperimentalCorrelationRequest": {
         "title": "ExperimentalCorrelationRequest",
-        "description": "Request payload for `POST /experimental-analysis/correlation`.",
+        "description": "Request payload for `POST /studies/experimental-analysis/correlation`.",
         "type": "object",
         "required": [
           "benchmark_id",
@@ -6653,7 +6653,7 @@
       },
       "ExperimentalCorrelationResponse": {
         "title": "ExperimentalCorrelationResponse",
-        "description": "Response payload for `POST /experimental-analysis/correlation`.",
+        "description": "Response payload for `POST /studies/experimental-analysis/correlation`.",
         "type": "object",
         "required": [
           "aligned_sessions",
@@ -6756,7 +6756,7 @@
       },
       "ExperimentalEventStudyRequest": {
         "title": "ExperimentalEventStudyRequest",
-        "description": "Request payload for `POST /experimental-analysis/events`.",
+        "description": "Request payload for `POST /studies/experimental-analysis/events`.",
         "type": "object",
         "required": [
           "end_date",
@@ -6804,7 +6804,7 @@
       },
       "ExperimentalEventStudyResponse": {
         "title": "ExperimentalEventStudyResponse",
-        "description": "Response payload for `POST /experimental-analysis/events`.",
+        "description": "Response payload for `POST /studies/experimental-analysis/events`.",
         "type": "object",
         "required": [
           "availability_note",
@@ -6930,7 +6930,7 @@
       },
       "ExperimentalForecastRequest": {
         "title": "ExperimentalForecastRequest",
-        "description": "Request payload for `POST /experimental-analysis/forecast`.",
+        "description": "Request payload for `POST /studies/experimental-analysis/forecast`.",
         "type": "object",
         "required": [
           "asset_class",
@@ -7021,7 +7021,7 @@
       },
       "ExperimentalForecastResponse": {
         "title": "ExperimentalForecastResponse",
-        "description": "Response payload for `POST /experimental-analysis/forecast`.",
+        "description": "Response payload for `POST /studies/experimental-analysis/forecast`.",
         "type": "object",
         "required": [
           "analog_count",
@@ -7138,7 +7138,7 @@
       },
       "ExperimentalIntradayRequest": {
         "title": "ExperimentalIntradayRequest",
-        "description": "Request payload for `POST /experimental-analysis/intraday`.",
+        "description": "Request payload for `POST /studies/experimental-analysis/intraday`.",
         "type": "object",
         "required": [
           "asset_class",
@@ -7333,7 +7333,7 @@
       },
       "ExperimentalOptionsOverlayRequest": {
         "title": "ExperimentalOptionsOverlayRequest",
-        "description": "Request payload for `POST /experimental-analysis/options-overlay`.",
+        "description": "Request payload for `POST /studies/experimental-analysis/options-overlay`.",
         "type": "object",
         "required": [
           "asset_class",
@@ -7414,7 +7414,7 @@
       },
       "ExperimentalOptionsOverlayResponse": {
         "title": "ExperimentalOptionsOverlayResponse",
-        "description": "Response payload for `POST /experimental-analysis/options-overlay`.",
+        "description": "Response payload for `POST /studies/experimental-analysis/options-overlay`.",
         "type": "object",
         "required": [
           "asset_class",
@@ -7641,7 +7641,7 @@
       },
       "ExperimentalOutlierNewsRequest": {
         "title": "ExperimentalOutlierNewsRequest",
-        "description": "Request payload for `POST /experimental-analysis/outlier-news`.",
+        "description": "Request payload for `POST /studies/experimental-analysis/outlier-news`.",
         "type": "object",
         "required": [
           "asset_class",
@@ -7691,7 +7691,7 @@
       },
       "ExperimentalOutlierNewsResponse": {
         "title": "ExperimentalOutlierNewsResponse",
-        "description": "Response payload for `POST /experimental-analysis/outlier-news`.",
+        "description": "Response payload for `POST /studies/experimental-analysis/outlier-news`.",
         "type": "object",
         "required": [
           "asset_class",
@@ -7764,7 +7764,7 @@
       },
       "ExperimentalReturnsRequest": {
         "title": "ExperimentalReturnsRequest",
-        "description": "Request payload for `POST /experimental-analysis/returns`.",
+        "description": "Request payload for `POST /studies/experimental-analysis/returns`.",
         "type": "object",
         "required": [
           "asset_class",
@@ -7898,7 +7898,7 @@
       },
       "ExperimentalReturnsResponse": {
         "title": "ExperimentalReturnsResponse",
-        "description": "Full single-shot statistical report returned by `POST /experimental-analysis/returns`.",
+        "description": "Full single-shot statistical report returned by `POST /studies/experimental-analysis/returns`.",
         "type": "object",
         "required": [
           "asset_class",

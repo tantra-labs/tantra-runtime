@@ -101,7 +101,7 @@ pub struct StrategiesResponse {
 ///
 /// `pending -> running -> completed | failed | cancelled`, plus `pending -> cancelled`.
 /// The three terminal states are final (ADR 0017 decision 1; the transition table is
-/// `RunStatus::next`). `Cancelled` was added within `/api/v1` (ADR 0012 rule 2); exhaustive
+/// `RunStatus::next`). `Cancelled` was added within API v1 (ADR 0012 rule 2); exhaustive
 /// decoders must be regenerated (rule 3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

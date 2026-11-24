@@ -126,7 +126,7 @@ fn a_sweep_id_is_not_a_backtest_and_vice_versa() {
         let err = store.read_journal(id.run_id.as_str(), wrong).unwrap_err();
         assert_eq!(err.code, ErrorCode::NotFound);
     }
-    // /journals/{id} sees both kinds.
+    // /backtests/{id}/journal sees both kinds.
     assert_eq!(
         store.load_any(sw.run_id.as_str()).unwrap().kind,
         RunKind::Sweep

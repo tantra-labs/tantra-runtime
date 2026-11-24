@@ -66,7 +66,7 @@ fn feed_port_error(e: crate::market_feed::ports::PortError) -> PortError {
 }
 
 /// Read-through `MarketReader` over the same feed ports `AppState` already serves
-/// `/market-data/*` routes from, plus the shared risk engine for price bands.
+/// market reference routes (`/instruments/:id/profile`, `/calendar`, `/block-deals`) from, plus the shared risk engine for price bands.
 pub struct FeedMarketReader {
     instruments: Arc<dyn InstrumentMaster>,
     bars: Arc<dyn BarReader>,

@@ -1,4 +1,4 @@
-//! `/market-data/*` reference-data route tests (Phase 3).
+//! market reference-data route tests (Phase 3).
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};

@@ -309,7 +309,7 @@ pub fn served_routes() -> Vec<(String, String)> {
 }
 
 /// A fallback error answered as a v2 envelope: since design 0006 R5 `/api/v2` is the only API
-/// version, so even a miss outside it (an old `/api/v1` or un-prefixed path) is described in v2.
+/// version, so even a miss outside it (an old v1 or un-prefixed path) is described in v2.
 fn versioned_failure(_uri: &axum::http::Uri, status: StatusCode, detail: ErrorDetail) -> Response {
     let mut body: tantra_runtime_api::ResponseEnvelope<serde_json::Value> =
         ApiResponse::error(detail);

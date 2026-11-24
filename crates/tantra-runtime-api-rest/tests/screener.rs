@@ -1,4 +1,4 @@
-//! `GET /screener/scan` through the real router, over an in-memory daily-bar dataset.
+//! `GET /screener/scans` through the real router, over an in-memory daily-bar dataset.
 //! No network, no wall clock.
 
 use axum::Router;

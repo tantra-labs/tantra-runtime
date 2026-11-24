@@ -662,7 +662,7 @@ impl OpenApiDocument {
             },
         );
 
-        // Market reference data endpoints (/market-data/*), backed by
+        // Market reference data endpoints (instrument profile, calendar, block deals), backed by
         // tantra-data's calendar and symbol-profile ingestion.
         // Meta endpoints (capabilities, health)
         paths.insert(
@@ -1439,12 +1439,12 @@ impl OpenApiDocument {
         schemas.insert("OverlaySceneDto".to_string(), overlay_scene_schema);
 
         paths.insert(
-            "/experimental-analysis/catalog".to_string(),
+            "/studies/experimental-analysis/catalog".to_string(),
             PathItem {
                 get: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
                     summary: "Multi-asset study catalog and schedule metadata".to_string(),
-                    operation_id: "getExperimentalAnalysisCatalog".to_string(),
+                    operation_id: "studies_getExperimentalAnalysisCatalog".to_string(),
                     parameters: vec![query_param("asset_class")],
                     request_body: None,
                     responses: BTreeMap::from([(
@@ -1472,7 +1472,7 @@ impl OpenApiDocument {
             },
         );
         paths.insert(
-            "/experimental-analysis/returns".to_string(),
+            "/studies/experimental-analysis/returns".to_string(),
             PathItem {
                 get: None,
                 post: Some(Operation {
@@ -1480,7 +1480,7 @@ impl OpenApiDocument {
                     summary:
                         "Evaluate period returns, streaks, Markov, distribution, and outlier study"
                             .to_string(),
-                    operation_id: "postExperimentalAnalysisReturns".to_string(),
+                    operation_id: "studies_postExperimentalAnalysisReturns".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
                         required: true,
@@ -1516,13 +1516,13 @@ impl OpenApiDocument {
         );
 
         paths.insert(
-            "/experimental-analysis/intraday".to_string(),
+            "/studies/experimental-analysis/intraday".to_string(),
             PathItem {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
                     summary: "Evaluate intraday movement, gaps, 5-day moves, cycle progress & 15m ORB flip".to_string(),
-                    operation_id: "postExperimentalAnalysisIntraday".to_string(),
+                    operation_id: "studies_postExperimentalAnalysisIntraday".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
                         required: true,
@@ -1557,13 +1557,13 @@ impl OpenApiDocument {
             },
         );
         paths.insert(
-            "/experimental-analysis/correlation".to_string(),
+            "/studies/experimental-analysis/correlation".to_string(),
             PathItem {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
                     summary: "Evaluate cross-asset Pearson/Spearman correlation matrix & rolling pair spread".to_string(),
-                    operation_id: "postExperimentalAnalysisCorrelation".to_string(),
+                    operation_id: "studies_postExperimentalAnalysisCorrelation".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
                         required: true,
@@ -1598,14 +1598,14 @@ impl OpenApiDocument {
             },
         );
         paths.insert(
-            "/experimental-analysis/options-overlay".to_string(),
+            "/studies/experimental-analysis/options-overlay".to_string(),
             PathItem {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
                     summary: "Evaluate multi-leg F&O options overlay & live bid-ask strike lab"
                         .to_string(),
-                    operation_id: "postExperimentalAnalysisOptionsOverlay".to_string(),
+                    operation_id: "studies_postExperimentalAnalysisOptionsOverlay".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
                         required: true,
@@ -1641,14 +1641,14 @@ impl OpenApiDocument {
             },
         );
         paths.insert(
-            "/experimental-analysis/forecast".to_string(),
+            "/studies/experimental-analysis/forecast".to_string(),
             PathItem {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
                     summary: "Evaluate Markov + volatility regime analog quantile forecast"
                         .to_string(),
-                    operation_id: "postExperimentalAnalysisForecast".to_string(),
+                    operation_id: "studies_postExperimentalAnalysisForecast".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
                         required: true,
@@ -1685,13 +1685,13 @@ impl OpenApiDocument {
             },
         );
         paths.insert(
-            "/experimental-analysis/events".to_string(),
+            "/studies/experimental-analysis/events".to_string(),
             PathItem {
                 get: None,
                 post: Some(Operation {
                     tags: vec!["experimental-analysis".to_string()],
                     summary: "Evaluate [-20d, +20d] CAR event reaction study for buybacks, earnings, macro & F&O rebalance".to_string(),
-                    operation_id: "postExperimentalAnalysisEvents".to_string(),
+                    operation_id: "studies_postExperimentalAnalysisEvents".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
                         required: true,
@@ -1726,7 +1726,7 @@ impl OpenApiDocument {
             },
         );
         paths.insert(
-            "/experimental-analysis/outlier-news".to_string(),
+            "/studies/experimental-analysis/outlier-news".to_string(),
             PathItem {
                 get: None,
                 post: Some(Operation {
@@ -1734,7 +1734,7 @@ impl OpenApiDocument {
                     summary:
                         "Retrieve dated archival news, macro releases & filings for outlier windows"
                             .to_string(),
-                    operation_id: "postExperimentalAnalysisOutlierNews".to_string(),
+                    operation_id: "studies_postExperimentalAnalysisOutlierNews".to_string(),
                     parameters: vec![],
                     request_body: Some(RequestBody {
                         required: true,
@@ -2227,8 +2227,7 @@ impl OpenApiDocument {
     }
 
     /// Registers the v2-only canonical study routes: the library/signal-study surface and the
-    /// `/studies/experimental-analysis/*` operations (moved from their hand-written
-    /// `/experimental-analysis/*` metadata).
+    /// `/studies/experimental-analysis/*` operations.
     fn add_study_hand_ops(&mut self) {
         use crate::library_routes::{IndicatorComputeRequest, SignalStudyRequest};
         let bearer = || {
@@ -2251,25 +2250,6 @@ impl OpenApiDocument {
         let any_schema: Schema = schema_for!(serde_json::Value).schema.into();
         let compute_req = register_schema::<IndicatorComputeRequest>(&mut self.components.schemas);
         let study_req = register_schema::<SignalStudyRequest>(&mut self.components.schemas);
-
-        // Re-home the experimental-analysis operations under `/studies/`.
-        let old: Vec<String> = self
-            .paths
-            .keys()
-            .filter(|p| p.starts_with("/experimental-analysis/"))
-            .cloned()
-            .collect();
-        for path in old {
-            let Some(mut item) = self.paths.remove(&path) else {
-                continue;
-            };
-            for op in [&mut item.get, &mut item.post].into_iter().flatten() {
-                op.operation_id = format!("studies_{}", op.operation_id);
-            }
-            let rest = path.trim_start_matches("/experimental-analysis/");
-            self.paths
-                .insert(format!("/studies/experimental-analysis/{rest}"), item);
-        }
 
         let empty = || PathItem {
             get: None,

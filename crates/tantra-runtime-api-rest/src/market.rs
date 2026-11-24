@@ -593,7 +593,7 @@ fn calendar_events_store() -> &'static Vec<CalendarEventDto> {
     CALENDAR_EVENTS.get_or_init(sample_calendar_events)
 }
 
-/// `GET /market-data/symbol-profile/:id` — company fundamentals.
+/// `GET /instruments/:id/profile` — company fundamentals.
 ///
 /// Backed by tantra-data's symbol-profile ingestion (gap 0002). Until the
 /// tantra-data → Rust FFI bridge is wired, this serves illustrative sample
@@ -613,7 +613,7 @@ pub(crate) async fn get_symbol_profile(
     }
 }
 
-/// `GET /market-data/calendar` — economic/earnings/dividends/splits/IPO events.
+/// `GET /calendar` — economic/earnings/dividends/splits/IPO events.
 ///
 /// Backed by tantra-data's calendar ingestion (gap 0001). Until the
 /// tantra-data → Rust FFI bridge is wired, this serves illustrative sample
@@ -647,7 +647,7 @@ pub(crate) async fn get_market_calendar(
     success(MarketCalendarResponse { events })
 }
 
-/// `GET /market-data/calendar` query parameters.
+/// `GET /calendar` query parameters.
 #[derive(Debug, Deserialize)]
 pub struct MarketCalendarQuery {
     #[serde(default)]
@@ -658,13 +658,13 @@ pub struct MarketCalendarQuery {
     pub category: Option<String>,
 }
 
-/// `GET /market-data/block-deals` response: every matching block/bulk deal.
+/// `GET /block-deals` response: every matching block/bulk deal.
 #[derive(Debug, Clone, Serialize)]
 pub struct BlockDealsResponse {
     pub deals: Vec<tantra_agent_chat_tools::ports::market::BlockDeal>,
 }
 
-/// `GET /market-data/block-deals` query parameters.
+/// `GET /block-deals` query parameters.
 #[derive(Debug, Deserialize)]
 pub struct BlockDealsQuery {
     #[serde(default)]
@@ -687,7 +687,7 @@ fn parse_projection_instrument(s: &str) -> Option<InstrumentId> {
     Some(InstrumentId::new(exchange, symbol))
 }
 
-/// `GET /market-data/block-deals` — block/bulk deal disclosures read through the
+/// `GET /block-deals` — block/bulk deal disclosures read through the
 /// `tantra-data` projections (`{root}/catalog/block_deals`, gap 0005 closed). Calendar-day
 /// equality, the same convention the chat adapter's `block_deals` tool uses.
 pub(crate) async fn get_block_deals(

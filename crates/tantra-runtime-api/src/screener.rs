@@ -1,4 +1,4 @@
-//! Query resolution and per-instrument evaluation for `GET /screener/scan`.
+//! Query resolution and per-instrument evaluation for `GET /screener/scans`.
 //!
 //! Pure like [`crate::market`]: the REST handler reads bars through its port and hands each
 //! instrument's history to [`ResolvedScreenerQuery::evaluate`]; nothing here does I/O. The
@@ -424,7 +424,7 @@ fn validate_predicate_value(op: FilterOp, value: &PredicateValue) -> Result<(), 
 pub fn validate_group(group: &ScreenerFilterGroup) -> Result<(), ScreenerError> {
     if group.classification.as_ref().is_some_and(|c| !c.is_empty()) {
         return Err(ScreenerError::InvalidFilter(
-            "classification filters are not supported on bar-only /screener/scan".to_owned(),
+            "classification filters are not supported on bar-only /screener/scans".to_owned(),
         ));
     }
     for item in &group.items {
@@ -433,7 +433,7 @@ pub fn validate_group(group: &ScreenerFilterGroup) -> Result<(), ScreenerError> 
             ScreenerFilterItem::Predicate(predicate) => {
                 if predicate.relative_to.is_some() || predicate.relative_stat.is_some() {
                     return Err(ScreenerError::InvalidFilter(
-                        "relative_to predicates are not supported on bar-only /screener/scan"
+                        "relative_to predicates are not supported on bar-only /screener/scans"
                             .to_owned(),
                     ));
                 }

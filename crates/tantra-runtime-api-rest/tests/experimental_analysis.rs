@@ -1,6 +1,6 @@
-//! Integration tests for `GET /experimental-analysis/catalog`,
-//! `POST /experimental-analysis/returns`, `POST /experimental-analysis/intraday`,
-//! and `POST /experimental-analysis/correlation` through the real v1/v2 routers.
+//! Integration tests for `GET /studies/experimental-analysis/catalog`,
+//! `POST /studies/experimental-analysis/returns`, `POST /studies/experimental-analysis/intraday`,
+//! and `POST /studies/experimental-analysis/correlation` through the real v1/v2 routers.
 
 use axum::Router;
 use axum::body::Body;

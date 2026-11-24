@@ -51,7 +51,7 @@ pub struct BarsQuery {
     pub to: Option<String>,
 }
 
-/// `GET /screener/scan` query parameters.
+/// `GET /screener/scans` query parameters.
 ///
 /// The structured values are JSON text inside the query string, so the whole request is one
 /// flat string map on every transport.

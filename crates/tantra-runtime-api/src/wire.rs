@@ -386,7 +386,7 @@ pub enum ParamLocation {
 pub struct Endpoint<Q, B> {
     /// The HTTP method.
     pub method: HttpMethod,
-    /// The path, joined onto `/api/v1`; `{name}` marks a path parameter.
+    /// The path, joined onto `/api/v2`; `{name}` marks a path parameter.
     pub path: String,
     /// The access tier the route is gated by.
     pub access: Access,

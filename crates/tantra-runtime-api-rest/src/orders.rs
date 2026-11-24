@@ -1229,7 +1229,7 @@ pub(crate) async fn post_close_positions(
     success(serde_json::json!({"status": "closing"}))
 }
 
-/// GET /approval/queue: list pending orders in the approval queue (E5-S4).
+/// GET /approvals: list pending orders in the approval queue (E5-S4).
 pub(crate) async fn get_approval_queue(State(state): State<Arc<AppState>>) -> Response {
     if let Some(queue) = &state.approval_queue {
         let pending = queue.pending();

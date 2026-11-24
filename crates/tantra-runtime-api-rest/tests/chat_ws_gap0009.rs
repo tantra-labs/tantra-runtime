@@ -1,7 +1,7 @@
 //! `/ws/chat` per-turn `model` override + multimodal image attachments (gap 0009 — T17.2).
 //!
 //! Boots the real WebSocket handler over an in-memory [`AppState`] with a fake provider
-//! registry, exactly like `tests/ws_tests.rs` boots `/ws/market`, and proves:
+//! registry, exactly like `tests/ws_tests.rs` boots the market stream, and proves:
 //! 1. wire round-trip — the legacy `{ "text": ... }` shape still parses (`model`/`attachments`
 //!    default to `None`), and the new shape with `model` + `attachments` round-trips;
 //! 2. per-turn model routing — an override differing from the server default routes the turn

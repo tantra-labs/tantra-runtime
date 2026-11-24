@@ -22,7 +22,7 @@
 //! Every fill the engine books is appended to the run journal as one
 //! [`Event::Fill`] record carrying the wire [`Trade`] (the transport-owned view of
 //! `tantra_core::FillReport`, which names the instrument `instrument_id`), so
-//! `GET /backtests/{id}/journal` and `GET /journals/{id}` aggregate the run's
+//! `GET /backtests/{id}/journal` (for either run kind) aggregate the run's
 //! trades from the journal.
 //!
 //! A sweep ([`ResolvedRequest::Sweep`]) builds the Cartesian parameter grid

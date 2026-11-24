@@ -1,4 +1,4 @@
-//! `/market-data/block-deals` route tests: block/bulk-deal disclosures read through the
+//! `/block-deals` route tests: block/bulk-deal disclosures read through the
 //! `tantra-data` projections (`{root}/catalog/block_deals`, T7.3).
 
 use std::sync::Arc;

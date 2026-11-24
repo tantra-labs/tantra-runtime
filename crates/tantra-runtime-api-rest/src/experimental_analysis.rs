@@ -1,6 +1,6 @@
-//! REST handlers for `Experimental-Analysis` (`/experimental-analysis/catalog`,
-//! `/experimental-analysis/returns`, `/experimental-analysis/intraday`, and
-//! `/experimental-analysis/correlation`).
+//! REST handlers for `Experimental-Analysis` (`/studies/experimental-analysis/catalog`,
+//! `/studies/experimental-analysis/returns`, `/studies/experimental-analysis/intraday`, and
+//! `/studies/experimental-analysis/correlation`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -729,7 +729,7 @@ fn asset_class_label(c: StudyAssetClass) -> &'static str {
     }
 }
 
-/// `GET /experimental-analysis/catalog`: returns grouped multi-asset catalog, schedule rules,
+/// `GET /studies/experimental-analysis/catalog`: returns grouped multi-asset catalog, schedule rules,
 /// and live/historical feed status.
 pub(crate) async fn get_catalog(
     State(state): State<Arc<AppState>>,
@@ -975,7 +975,7 @@ fn map_slot_stat(s: studies::IntradaySlotStat) -> IntradaySlotStat {
     }
 }
 
-/// `POST /experimental-analysis/returns`: runs complete multi-asset period return,
+/// `POST /studies/experimental-analysis/returns`: runs complete multi-asset period return,
 /// F&O spread/basis/cost adjustment, streak, Markov, distribution, probability-level,
 /// conditional forward, and survivability outlier computations on `1d` historical bars.
 pub(crate) async fn post_returns(
@@ -1509,7 +1509,7 @@ pub(crate) async fn post_returns(
     success(resp)
 }
 
-/// `POST /experimental-analysis/intraday`: computes Phase 2 Intraday Movement (`5m`),
+/// `POST /studies/experimental-analysis/intraday`: computes Phase 2 Intraday Movement (`5m`),
 /// Overnight Gaps (`1d`), Rolling 5-Day Moves (`1d`), Cycle Progress Cone (`0-100%`),
 /// and 15m ORB Flip Backtest (`5m`, honest `available: false` when `5m` bars are missing).
 pub(crate) async fn post_intraday(
@@ -1771,7 +1771,7 @@ pub(crate) async fn post_intraday(
     success(resp)
 }
 
-/// `POST /experimental-analysis/correlation`: computes N×N Pearson & Spearman correlation
+/// `POST /studies/experimental-analysis/correlation`: computes N×N Pearson & Spearman correlation
 /// matrices, rolling pair beta, and normalized relative spread curves across 2..=12 instruments.
 pub(crate) async fn post_correlation(
     State(state): State<Arc<AppState>>,
@@ -1969,7 +1969,7 @@ pub(crate) async fn read_live_spot(
     None
 }
 
-/// `POST /experimental-analysis/options-overlay`: evaluates multi-leg F&O option overlay
+/// `POST /studies/experimental-analysis/options-overlay`: evaluates multi-leg F&O option overlay
 /// payoffs & live option chain bid-ask strike liquidity lab.
 pub(crate) async fn post_options_overlay(
     State(state): State<Arc<AppState>>,
@@ -2187,7 +2187,7 @@ pub(crate) async fn post_options_overlay(
     })
 }
 
-/// `POST /experimental-analysis/forecast`: computes Markov + trailing volatility regime
+/// `POST /studies/experimental-analysis/forecast`: computes Markov + trailing volatility regime
 /// conditioned multi-step quantile fans & historical analog episodes (Tab 11).
 pub(crate) async fn post_forecast(
     State(state): State<Arc<AppState>>,
@@ -2342,7 +2342,7 @@ pub(crate) async fn post_forecast(
     })
 }
 
-/// `POST /experimental-analysis/events`: computes `[-20d, +20d]` benchmark-adjusted CAR & AAR
+/// `POST /studies/experimental-analysis/events`: computes `[-20d, +20d]` benchmark-adjusted CAR & AAR
 /// event reaction curves over real Lakehouse corporate actions, filings, and economic calendar releases.
 pub(crate) async fn post_events(
     State(state): State<Arc<AppState>>,
@@ -2626,7 +2626,7 @@ pub(crate) async fn post_events(
     })
 }
 
-/// `POST /experimental-analysis/outlier-news`: retrieves real dated news headlines,
+/// `POST /studies/experimental-analysis/outlier-news`: retrieves real dated news headlines,
 /// macro calendar releases, corporate actions & filings inside `[window_start - 2d, window_end + 1d]`.
 pub(crate) async fn post_outlier_news(
     State(state): State<Arc<AppState>>,

@@ -231,7 +231,7 @@ impl RunStore {
         self.lookup(id, Some(kind))
     }
 
-    /// Like [`RunStore::load`] for either kind (`GET /journals/{id}`).
+    /// Like [`RunStore::load`] for either kind (`GET /backtests/{id}/journal`).
     pub fn load_any(&self, id: &str) -> Result<RunManifest, ErrorDetail> {
         self.lookup(id, None)
     }

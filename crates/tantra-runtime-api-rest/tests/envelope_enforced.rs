@@ -35,10 +35,9 @@ async fn every_registry_get_is_enveloped_with_matching_status() {
     let mut failures = Vec::new();
     for e in route_registry() {
         if e.method != "GET"
-            || e.path.starts_with("/ws")
+            || e.path.starts_with("/ws/")
             || e.path == "/acp"
             || e.path == "/stream"
-            || e.path.starts_with("/schema/openapi")
             || e.path == "/docs"
             || e.path.starts_with("/swagger-ui")
         {
