@@ -24,7 +24,7 @@ Engine-side items (actors, backtest, jobs, audit) are in sibling plan [0013](001
 | [0024](../gaps/0024-decimal-to-f64-on-wire.md) | Decimal money cast to f64 on wire and glue | design-flaw | medium |
 | [0025](../gaps/0025-async-purity-auth-sse.md) | Sync I/O and wall clock in async request paths | design-flaw | medium |
 | [0026](../gaps/0026-single-composition-root-serve.md) | Two composition roots; partial `tantra serve`; scattered env | design-flaw | high |
-| [0027](../gaps/0027-options-chain-oi-change-and-iv-fields.md) | Options chain lacks OI-change/LTP-change/IV; web fabricates | design-flaw | high |
+| [0027](../gaps/0027-options-chain-oi-change-and-iv-fields.md) | Options-chain fields encode unavailable data as zero/model values, no per-field provenance | design-flaw | high |
 
 Plan-only items (no standalone gap doc):
 
@@ -41,7 +41,7 @@ Plan-only items (no standalone gap doc):
 1. **0020**: `allow_insecure_bind`, `Result`-returning router build, `AUTHORIZATION` in CORS.
 2. **0018**: owner on `RunManifest`/`RunStore`, per-caller `StrategyCatalog`, admin bypass.
 3. **0024**: decimal-string approvals, `Decimal` leverage/tape fields; file the `tantra-market-store` wire `Bar` gap.
-4. **0027**: add OI-change, LTP-change, IV fields and `unavailable` markers; regenerate OpenAPI and TS types.
+4. **0027**: make OI, OI-change and LTP-change nullable, tag IV/greeks provenance (`Quoted | Derived | Modelled | Unavailable`), never emit `Decimal::ZERO` for missing data; regenerate OpenAPI and TS types.
 5. **R1 (part)**: derive algo id per `(caller, strategy)` via an `AlgoRegistry` port; stop sharing one `RiskEngine` OTR bucket across callers.
 
 **Gate**: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `make check`, targeted `cargo test -p tantra-runtime-api-rest --test runs_tenant_isolation --profile prod`, `--test bootstrap`, `--test openapi_conformance`, `make prod`.
