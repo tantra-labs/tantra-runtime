@@ -542,9 +542,11 @@ fn port_error(e: PortError) -> ErrorDetail {
         PortError::Unsupported(_) => ErrorCode::NotImplemented,
         PortError::NotFound(_) => ErrorCode::NotFound,
         PortError::Timeout => ErrorCode::Timeout,
+        PortError::Unavailable { .. } => ErrorCode::ServiceUnavailable,
         PortError::ConnectionFailed(_) | PortError::CalculationFailed(_) => {
             ErrorCode::InternalError
         }
+        _ => ErrorCode::InternalError,
     };
     ErrorDetail::new(code, format!("bar read failed: {e}"))
         .with_context(json!({"reason": "bar_read"}))
