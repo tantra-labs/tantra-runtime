@@ -84,6 +84,10 @@ fn map_broker_error(err: BrokerError) -> String {
         BrokerError::RateLimited(msg) => format!("rate limited: {msg}"),
         BrokerError::Transport(msg) => format!("network error: {msg}"),
         BrokerError::Timeout => "network error: request timed out".to_string(),
+        BrokerError::OutcomeUnknown {
+            client_order_id,
+            message,
+        } => format!("network error: order outcome unknown ({client_order_id}): {message}"),
         BrokerError::OrderNotFound(msg)
         | BrokerError::Rejected(msg)
         | BrokerError::InvalidRequest(msg) => {
