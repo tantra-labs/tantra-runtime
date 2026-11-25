@@ -469,7 +469,7 @@ async fn ws_chat_and_threads_enforce_caller_isolation_and_fail_closed_thread_id(
     let state = AppState::default().with_chat_agent(chat);
 
     let (config, _dir) = auth_config_with_users();
-    let router = api_router_with_config(state, &config);
+    let router = api_router_with_config(state, &config).unwrap();
     let addr = spawn_router(router.clone()).await;
 
     // 1. Unauthenticated HTTP CRUD is 401.

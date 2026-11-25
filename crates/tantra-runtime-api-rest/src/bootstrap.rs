@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::FileTokenStore;
 use crate::market_feed::{InMemoryTickReader, ParquetTickStore};
 use anyhow::{Context, Result, bail};
 use tantra_core::TradingState;
@@ -26,6 +27,86 @@ use crate::{
     ApiConfig, AppState, BarPumpReport, JwtConfig, RetentionPolicy, RunServiceConfig,
     ShutdownReport,
 };
+
+/// Environment variable that explicitly overrides the fail-closed check on unauthenticated
+/// non-loopback binds (`1`, `true`, `yes`, or `on`).
+pub const ALLOW_INSECURE_BIND_ENV: &str = "TANTRA_ALLOW_INSECURE_BIND";
+
+/// Typed startup error raised during fail-closed bind validation or router assembly.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum StartupError {
+    /// Refused to bind a non-loopback socket address without authentication or explicit override.
+    #[error(
+        "refusing to bind non-loopback address {addr} without authentication (--tokens-file, \
+         --jwt-secret, or --jwt-rsa-key); set ServeConfig::allow_insecure_bind = true, pass \
+         --allow-insecure-bind, or set {ALLOW_INSECURE_BIND_ENV}=1 to override explicitly"
+    )]
+    UnauthenticatedNonLoopback {
+        /// Requested non-loopback socket address.
+        addr: SocketAddr,
+    },
+    /// `TANTRA_ALLOW_INSECURE_BIND` held a value that is not a recognized boolean.
+    #[error(
+        "invalid {ALLOW_INSECURE_BIND_ENV} value {value:?}; expected true/1/yes/on or false/0/no/off"
+    )]
+    InvalidInsecureBindEnv {
+        /// Raw environment variable value.
+        value: String,
+    },
+    /// Reading or parsing a configured bearer `--tokens-file` failed.
+    #[error("failed to load token file {}: {reason}", path.display())]
+    TokenFileLoad {
+        /// Configured token file path.
+        path: PathBuf,
+        /// Underlying I/O or TOML parse reason.
+        reason: String,
+    },
+}
+
+/// Parses a boolean override flag from `TANTRA_ALLOW_INSECURE_BIND`.
+pub fn parse_allow_insecure_bind_flag(raw: &str) -> std::result::Result<bool, StartupError> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "" | "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(StartupError::InvalidInsecureBindEnv {
+            value: raw.to_string(),
+        }),
+    }
+}
+
+/// Reads [`ALLOW_INSECURE_BIND_ENV`] from the process environment (`false` when unset).
+pub fn allow_insecure_bind_from_env() -> std::result::Result<bool, StartupError> {
+    match std::env::var(ALLOW_INSECURE_BIND_ENV) {
+        Ok(raw) => parse_allow_insecure_bind_flag(&raw),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(std::env::VarError::NotUnicode(_)) => Err(StartupError::InvalidInsecureBindEnv {
+            value: "<non-unicode>".to_string(),
+        }),
+    }
+}
+
+/// Validates fail-closed bind security: non-loopback addresses require authentication unless
+/// `allow_insecure_bind` is explicitly enabled.
+pub fn validate_bind_security(
+    addr: SocketAddr,
+    auth_enabled: bool,
+    allow_insecure_bind: bool,
+) -> std::result::Result<(), StartupError> {
+    if addr.ip().is_loopback() || auth_enabled || allow_insecure_bind {
+        return Ok(());
+    }
+    Err(StartupError::UnauthenticatedNonLoopback { addr })
+}
+
+fn insecure_bind_override_warning(addr: SocketAddr, auth_enabled: bool) -> Option<String> {
+    if auth_enabled || addr.ip().is_loopback() {
+        return None;
+    }
+    Some(format!(
+        "warning: listening on non-loopback {addr} without auth or TLS \
+         (explicitly permitted via allow_insecure_bind / {ALLOW_INSECURE_BIND_ENV})"
+    ))
+}
 
 /// Parses a `--trading-state` wire spelling (`active`, `reducing`, or `halted`) into
 /// [`tantra_core::TradingState`] (ADR 0018 decision 2).
@@ -65,17 +146,6 @@ pub fn to_api_trading_state(state: TradingState) -> tantra_runtime_api::TradingS
         TradingState::Paused { .. } => tantra_runtime_api::TradingState::Reducing,
         TradingState::Halted { .. } => tantra_runtime_api::TradingState::Halted,
     }
-}
-
-/// Returns the stderr security warning for a non-loopback listen address, or `None` for loopback.
-pub fn non_loopback_warning(addr: SocketAddr) -> Option<String> {
-    if addr.ip().is_loopback() {
-        return None;
-    }
-    Some(format!(
-        "warning: listening on {addr}, which is not loopback; without --tokens-file or \
-         --jwt-secret the API has no auth or TLS, so anyone who can reach it can read the data"
-    ))
 }
 
 /// Parses a `--fill-model` wire spelling (`bar_fill`, `bar_fill_through`, or `l2`).
@@ -281,6 +351,8 @@ pub struct ServeConfig {
     pub data_dir: PathBuf,
     /// Socket address to bind (default `127.0.0.1:8000`; `127.0.0.1:0` binds an ephemeral port).
     pub addr: SocketAddr,
+    /// Explicit override permitting unauthenticated non-loopback binds (default `false`).
+    pub allow_insecure_bind: bool,
     /// Explicit CORS origins allowed to read the API (empty = CORS disabled).
     pub cors_origins: Vec<String>,
     /// Initial operator trading state enforced by write routes.
@@ -299,11 +371,12 @@ pub struct ServeConfig {
 
 impl ServeConfig {
     /// Creates a [`ServeConfig`] rooted at `data_dir` with canonical defaults (`127.0.0.1:8000`,
-    /// `TradingState::Active`, CORS off).
+    /// fail-closed non-loopback bind, `TradingState::Active`, CORS off).
     pub fn new(data_dir: impl Into<PathBuf>) -> Self {
         Self {
             data_dir: data_dir.into(),
             addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8000),
+            allow_insecure_bind: false,
             cors_origins: Vec::new(),
             trading_state: TradingState::Active,
             runs: ServeRunsConfig::default(),
@@ -346,7 +419,7 @@ fn clamp_usize(n: u64) -> usize {
 pub struct ServeOutcome {
     /// Actual bound socket address.
     pub bound_addr: SocketAddr,
-    /// Non-loopback warning emitted when unauthenticated on a non-loopback address.
+    /// Security warning emitted when an unauthenticated non-loopback bind was explicitly allowed.
     pub non_loopback_warning: Option<String>,
     /// Final bar-ingest drain report when `bar_ingest` was enabled.
     pub bar_ingest: Option<BarPumpReport>,
@@ -358,15 +431,20 @@ pub struct ServeOutcome {
 pub struct PreparedServer {
     addr: SocketAddr,
     auth_enabled: bool,
+    allow_insecure_bind: bool,
     bar_ingest: bool,
     bar_ingest_capacity: usize,
     api_config: ApiConfig,
+    token_store: Option<FileTokenStore>,
     state: AppState,
 }
 
 /// Validates `config` and loads market data, risk limits, ticks, and run stores before any
 /// network socket is bound.
 pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
+    let allow_insecure_bind = config.allow_insecure_bind || allow_insecure_bind_from_env()?;
+    validate_bind_security(config.addr, config.auth.is_enabled(), allow_insecure_bind)?;
+
     config.runs.validate()?;
     config.ingest.validate()?;
     let (execution, ticks) = config.fill.resolve()?;
@@ -378,15 +456,24 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
         .with_cors_origins(&config.cors_origins)
         .map_err(|e| anyhow::anyhow!(e))
         .context("invalid --cors-origin (cors)")?;
+    api_config.allow_insecure_bind = allow_insecure_bind;
 
-    if let Some(tokens_file) = &config.auth.tokens_file {
+    let token_store = if let Some(tokens_file) = &config.auth.tokens_file {
+        let store =
+            FileTokenStore::new(tokens_file.clone()).map_err(|e| StartupError::TokenFileLoad {
+                path: tokens_file.clone(),
+                reason: e.to_string(),
+            })?;
         api_config.auth.tokens_file = Some(tokens_file.clone());
         if let Some(audit_log_file) = &config.auth.audit_log_file {
             api_config.auth.audit_log_path = Some(audit_log_file.clone());
         } else {
             api_config.auth.audit_log_path = Some(config.runs.journals_dir.join("audit.log"));
         }
-    }
+        Some(store)
+    } else {
+        None
+    };
 
     if config.auth.jwt_secret.is_some() || config.auth.jwt_rsa_key.is_some() {
         let rsa_pem = if let Some(path) = &config.auth.jwt_rsa_key {
@@ -507,9 +594,11 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
     Ok(PreparedServer {
         addr: config.addr,
         auth_enabled: config.auth.is_enabled(),
+        allow_insecure_bind,
         bar_ingest: config.ingest.bar_ingest,
         bar_ingest_capacity: clamp_usize(config.ingest.bar_ingest_capacity),
         api_config,
+        token_store,
         state,
     })
 }
@@ -521,13 +610,14 @@ impl PreparedServer {
     /// Bar ingest is not started and the run service is not drained on drop: call
     /// [`AppState::shutdown_runs`] on the returned state when the embedder closes.
     pub fn into_router(self) -> (axum::Router, AppState) {
-        let router = crate::api_router_with_config(self.state.clone(), &self.api_config);
+        let router =
+            crate::build_router_with_store(self.state.clone(), &self.api_config, self.token_store);
         (router, self.state)
     }
 
     /// Binds the configured address inside an active Tokio runtime, invokes `on_bound` with the
-    /// bound [`SocketAddr`] and optional security warning, serves until `shutdown` resolves, and
-    /// drains both the bar pump and run service cleanly.
+    /// bound [`SocketAddr`] and optional insecure-override warning, serves until `shutdown`
+    /// resolves, and drains both the bar pump and run service cleanly.
     pub async fn serve_with_shutdown<F, S>(self, on_bound: F, shutdown: S) -> Result<ServeOutcome>
     where
         F: FnOnce(SocketAddr, Option<&str>) + Send,
@@ -536,21 +626,20 @@ impl PreparedServer {
         let Self {
             addr,
             auth_enabled,
+            allow_insecure_bind,
             bar_ingest,
             bar_ingest_capacity,
             api_config,
+            token_store: _,
             state,
         } = self;
 
+        validate_bind_security(addr, auth_enabled, allow_insecure_bind)?;
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .with_context(|| format!("binding {addr}"))?;
         let bound_addr = listener.local_addr()?;
-        let warning = if !auth_enabled {
-            non_loopback_warning(addr)
-        } else {
-            None
-        };
+        let warning = insecure_bind_override_warning(bound_addr, auth_enabled);
         let pump = bar_ingest.then(|| state.start_bar_ingest(bar_ingest_capacity));
         on_bound(bound_addr, warning.as_deref());
 
@@ -595,16 +684,20 @@ pub fn run_server_blocking(config: &ServeConfig) -> Result<()> {
         let PreparedServer {
             addr,
             auth_enabled,
+            allow_insecure_bind,
             bar_ingest,
             bar_ingest_capacity,
             api_config,
+            token_store: _,
             state,
         } = prepared;
 
+        validate_bind_security(addr, auth_enabled, allow_insecure_bind)?;
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .with_context(|| format!("binding {addr}"))?;
-        if !auth_enabled && let Some(warning) = non_loopback_warning(addr) {
+        if let Some(warning) = insecure_bind_override_warning(listener.local_addr()?, auth_enabled)
+        {
             eprintln!("{warning}");
         }
         let pump = bar_ingest.then(|| state.start_bar_ingest(bar_ingest_capacity));

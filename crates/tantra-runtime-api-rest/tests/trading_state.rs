@@ -247,7 +247,7 @@ fn authed_state(scopes: &str, st: AppState) -> (Router, tempfile::TempDir) {
     .unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    (api_router_with_config(st, &config), dir)
+    (api_router_with_config(st, &config).unwrap(), dir)
 }
 
 #[tokio::test]

@@ -32,6 +32,7 @@ fn auth_on(dir: &std::path::Path) -> Router {
         AppState::default().with_profiles_dir(dir.join("profiles")),
         &config,
     )
+    .unwrap()
 }
 
 async fn call(

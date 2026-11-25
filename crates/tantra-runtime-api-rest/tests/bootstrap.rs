@@ -13,8 +13,8 @@ use parquet::arrow::ArrowWriter;
 use serde_json::Value;
 use tantra_runtime_api_rest::market_feed::import::parquet_source::bar_schema;
 use tantra_runtime_api_rest::{
-    ServeConfig, ServeOutcome, import_ticks_ndjson, parse_fill_model, parse_trading_state,
-    prepare_server,
+    ApiConfig, AppState, ServeConfig, ServeOutcome, StartupError, import_ticks_ndjson,
+    parse_fill_model, parse_trading_state, prepare_server, serve_with_config,
 };
 use tantra_runtime_config::FillModel;
 use tokio::sync::oneshot;
@@ -243,24 +243,103 @@ async fn an_invalid_cors_origin_fails_before_listening() {
     assert!(err.contains("cors"), "{err}");
 }
 
-#[test]
-fn a_non_loopback_address_warns_and_loopback_does_not() {
+#[tokio::test]
+async fn unauthenticated_non_loopback_fails_before_listening_unless_overridden() {
     let tmp = tempfile::tempdir().unwrap();
-    let dir = data_dir(tmp.path(), "warn");
+    let dir = data_dir(tmp.path(), "non-loopback-fail-closed");
 
     let mut wild = base_config(&dir);
     wild.addr = "0.0.0.0:0".parse().unwrap();
-    let srv = RunningServer::start(wild);
-    let err = srv.warning.clone().expect("must warn on 0.0.0.0");
+    let err = prepare_server(&wild)
+        .await
+        .err()
+        .expect("0.0.0.0 without auth must fail");
+    let typed = err
+        .downcast_ref::<StartupError>()
+        .expect("must return typed StartupError");
+    assert!(matches!(
+        typed,
+        StartupError::UnauthenticatedNonLoopback { addr } if *addr == wild.addr
+    ));
+
+    // Direct `serve_with_config` calls must also fail closed on non-loopback without auth.
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
+    let io_err = serve_with_config(
+        listener,
+        AppState::default(),
+        &ApiConfig::default(),
+        async {},
+    )
+    .await
+    .expect_err("serve_with_config on 0.0.0.0 without auth must fail closed");
+    assert_eq!(io_err.kind(), std::io::ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn non_loopback_with_override_or_auth_starts_and_loopback_needs_no_override() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = data_dir(tmp.path(), "non-loopback-ok");
+
+    let mut wild_override = base_config(&dir);
+    wild_override.addr = "0.0.0.0:0".parse().unwrap();
+    wild_override.allow_insecure_bind = true;
+    let srv = RunningServer::start(wild_override);
+    let warn = srv
+        .warning
+        .clone()
+        .expect("explicit allow_insecure_bind override must still emit security warning");
     assert!(
-        err.contains("warning") && err.contains("auth") && err.contains("TLS"),
-        "{err}"
+        warn.contains("warning") && warn.contains("allow_insecure_bind"),
+        "{warn}"
     );
+    srv.shutdown();
+
+    let tokens = tmp.path().join("tokens.toml");
+    std::fs::write(&tokens, "tokens = []\n").unwrap();
+    let mut wild_auth = base_config(&dir);
+    wild_auth.addr = "0.0.0.0:0".parse().unwrap();
+    wild_auth.runs.journals_dir = dir.join("_journals_auth");
+    wild_auth.runs.profiles_dir = dir.join("_profiles_auth");
+    wild_auth.runs.portfolios_dir = dir.join("_portfolios_auth");
+    wild_auth.auth.tokens_file = Some(tokens);
+    let srv = RunningServer::start(wild_auth);
+    assert!(srv.warning.is_none());
     srv.shutdown();
 
     let srv = RunningServer::start(base_config(&dir));
     assert!(srv.warning.is_none());
     srv.shutdown();
+}
+
+#[tokio::test]
+async fn bad_tokens_file_fails_before_listening_without_panicking() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = data_dir(tmp.path(), "bad-tokens");
+
+    let mut cfg_missing = base_config(&dir);
+    let missing = tmp.path().join("missing.toml");
+    cfg_missing.auth.tokens_file = Some(missing.clone());
+    let err = prepare_server(&cfg_missing)
+        .await
+        .err()
+        .expect("missing tokens file must fail");
+    let typed = err
+        .downcast_ref::<StartupError>()
+        .expect("must return StartupError::TokenFileLoad");
+    assert!(matches!(typed, StartupError::TokenFileLoad { path, .. } if path == &missing));
+
+    let bad = tmp.path().join("malformed.toml");
+    std::fs::write(&bad, "[[tokens]\n").unwrap();
+    let mut cfg_bad = base_config(&dir);
+    cfg_bad.auth.tokens_file = Some(bad.clone());
+    let err = prepare_server(&cfg_bad)
+        .await
+        .err()
+        .expect("malformed tokens file must fail");
+    let typed = err
+        .downcast_ref::<StartupError>()
+        .expect("must return StartupError::TokenFileLoad");
+    assert!(matches!(typed, StartupError::TokenFileLoad { path, .. } if path == &bad));
 }
 
 #[test]

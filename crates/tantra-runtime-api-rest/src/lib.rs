@@ -90,10 +90,11 @@ pub use auth::{
 };
 pub use bar_pump::BarPumpReport;
 pub use bootstrap::{
-    PreparedServer, ServeAuthConfig, ServeConfig, ServeFillConfig, ServeIngestConfig, ServeOutcome,
-    ServeRiskConfig, ServeRunsConfig, TickSource, load_risk_limits, non_loopback_warning,
+    ALLOW_INSECURE_BIND_ENV, PreparedServer, ServeAuthConfig, ServeConfig, ServeFillConfig,
+    ServeIngestConfig, ServeOutcome, ServeRiskConfig, ServeRunsConfig, StartupError, TickSource,
+    allow_insecure_bind_from_env, load_risk_limits, parse_allow_insecure_bind_flag,
     parse_fill_model, parse_trading_state, parse_trading_state_command, prepare_server,
-    run_server_blocking, to_api_trading_state,
+    run_server_blocking, to_api_trading_state, validate_bind_security,
 };
 pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog, load_lakehouse_v3};
 pub use chat::{
@@ -177,12 +178,14 @@ where
     }
 }
 
-/// Server configuration beyond the data: today only the CORS allow-list and auth.
+/// Server configuration beyond the data: CORS allow-list, auth, and explicit insecure-bind override.
 #[derive(Clone, Debug, Default)]
 pub struct ApiConfig {
     cors_origins: Vec<HeaderValue>,
-    /// Auth configuration; when `tokens_file` is Some, Bearer token auth is enforced
+    /// Auth configuration; when `tokens_file` or `jwt_config` is `Some`, Bearer auth is enforced.
     pub auth: AuthConfig,
+    /// Explicitly allow binding a non-loopback address without auth configured (`false` by default).
+    pub allow_insecure_bind: bool,
 }
 
 impl ApiConfig {
@@ -218,11 +221,35 @@ pub fn api_router() -> Router {
 
 /// Create the API router serving `state`.
 pub fn api_router_with(state: AppState) -> Router {
-    api_router_with_config(state, &ApiConfig::default())
+    build_router_with_store(state, &ApiConfig::default(), None)
 }
 
 /// Create the API router serving `state` under `config`.
-pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
+///
+/// # Errors
+///
+/// Returns [`StartupError::TokenFileLoad`] when `config.auth.tokens_file` cannot be read or
+/// parsed instead of panicking.
+pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Result<Router, StartupError> {
+    let store = match config.auth.tokens_file.as_ref() {
+        Some(f) => {
+            Some(
+                FileTokenStore::new(f.clone()).map_err(|e| StartupError::TokenFileLoad {
+                    path: f.clone(),
+                    reason: e.to_string(),
+                })?,
+            )
+        }
+        None => None,
+    };
+    Ok(build_router_with_store(state, config, store))
+}
+
+pub(crate) fn build_router_with_store(
+    state: AppState,
+    config: &ApiConfig,
+    store: Option<FileTokenStore>,
+) -> Router {
     let state = Arc::new(state);
     if let Some(chat) = state.chat.as_ref() {
         chat.bind_state(&state);
@@ -230,24 +257,22 @@ pub fn api_router_with_config(state: AppState, config: &ApiConfig) -> Router {
 
     let (root_routes, _) = root_table().finish();
 
-    let router = Router::new()
+    let mut router = Router::new()
         .nest("/api/v2", v2::router())
         .merge(root_routes)
         .fallback(unknown_route)
         .method_not_allowed_fallback(unsupported_method)
         .with_state(state)
-        .layer(CompressionLayer::new())
-        .layer(cors_layer(config))
-        .layer(TraceLayer::new_for_http());
+        .layer(CompressionLayer::new());
+
+    if let Some(cors) = cors_layer(config) {
+        router = router.layer(cors);
+    }
+    let router = router.layer(TraceLayer::new_for_http());
 
     // Add auth middleware if configured
     if config.auth.is_enabled() {
         let audit_log_path = config.auth.audit_log_path.clone();
-        let store = config
-            .auth
-            .tokens_file
-            .as_ref()
-            .map(|f| FileTokenStore::new(f.clone()).expect("failed to load token file"));
         let auth_layer = Arc::new(AuthLayer::from_parts(
             store,
             audit_log_path,
@@ -346,21 +371,31 @@ async fn unsupported_method(method: Method, uri: axum::http::Uri) -> Response {
     )
 }
 
-/// No CORS headers unless origins are listed; then only for those, read methods only.
-fn cors_layer(config: &ApiConfig) -> CorsLayer {
+/// Returns `None` when `cors_origins` is empty (CORS middleware disabled; no `Access-Control-*`
+/// headers are emitted). When explicit origins are configured, permits those origins, standard API
+/// methods, `Content-Type`, and `Authorization` whenever auth is enabled.
+fn cors_layer(config: &ApiConfig) -> Option<CorsLayer> {
     if config.cors_origins.is_empty() {
-        return CorsLayer::new();
+        return None;
     }
-    CorsLayer::new()
+    let layer = CorsLayer::new()
         .allow_origin(AllowOrigin::list(config.cors_origins.clone()))
         .allow_methods([
             Method::GET,
             Method::POST,
             Method::PUT,
+            Method::PATCH,
             Method::DELETE,
             Method::OPTIONS,
-        ])
-        .allow_headers([axum::http::header::CONTENT_TYPE])
+        ]);
+    if config.auth.is_enabled() {
+        Some(layer.allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+        ]))
+    } else {
+        Some(layer.allow_headers([axum::http::header::CONTENT_TYPE]))
+    }
 }
 
 /// Serves [`api_router_with`]`(state)` on `listener` until `shutdown` completes.
@@ -373,13 +408,26 @@ pub async fn serve(
 }
 
 /// [`serve`] under an explicit [`ApiConfig`].
+///
+/// # Errors
+///
+/// Fails closed if `listener` is bound to a non-loopback address without authentication unless
+/// `config.allow_insecure_bind` or `TANTRA_ALLOW_INSECURE_BIND` is enabled, or if a configured
+/// `--tokens-file` cannot be read or parsed.
 pub async fn serve_with_config(
     listener: tokio::net::TcpListener,
     state: AppState,
     config: &ApiConfig,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
-    let router = api_router_with_config(state, config);
+    let local_addr = listener.local_addr()?;
+    let allow_insecure = config.allow_insecure_bind
+        || bootstrap::allow_insecure_bind_from_env()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    bootstrap::validate_bind_security(local_addr, config.auth.is_enabled(), allow_insecure)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e))?;
+    let router = api_router_with_config(state, config)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown)
         .await

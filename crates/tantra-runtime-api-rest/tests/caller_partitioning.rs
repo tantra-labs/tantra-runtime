@@ -80,7 +80,7 @@ fn build_state_and_config() -> (AppState, ApiConfig, tempfile::TempDir) {
 /// Auth-on router with two `read`+`trade` tokens: `alice-secret` and `bob-secret`.
 fn router() -> (Router, tempfile::TempDir) {
     let (state, config, dir) = build_state_and_config();
-    (api_router_with_config(state, &config), dir)
+    (api_router_with_config(state, &config).unwrap(), dir)
 }
 
 async fn call(
@@ -292,7 +292,7 @@ async fn client_order_id_cannot_collide_across_callers() {
 async fn per_caller_positions_close_and_reduce_only_are_isolated() {
     let (state, config, _dir) = build_state_and_config();
     state.advance_market(&[bar(1_000, 100.0)]).unwrap();
-    let router = api_router_with_config(state.clone(), &config);
+    let router = api_router_with_config(state.clone(), &config).unwrap();
 
     // Alice buys 25, Bob shorts 25 (net across whole server is 0!).
     let (s, alice_buy) = call(

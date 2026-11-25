@@ -37,7 +37,10 @@ fn auth_router() -> (Router, tempfile::TempDir) {
     .unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    (api_router_with_config(AppState::default(), &config), dir)
+    (
+        api_router_with_config(AppState::default(), &config).unwrap(),
+        dir,
+    )
 }
 
 async fn status(router: &Router, method: &str, uri: &str, token: Option<&str>) -> StatusCode {
@@ -122,7 +125,7 @@ async fn cors_preflight_is_not_denied() {
         .with_cors_origins(["https://app.example"])
         .unwrap();
     config.auth.tokens_file = Some(path);
-    let router = api_router_with_config(AppState::default(), &config);
+    let router = api_router_with_config(AppState::default(), &config).unwrap();
     let res = router
         .oneshot(
             Request::builder()
@@ -152,7 +155,7 @@ async fn bare_options_without_preflight_header_is_denied() {
     .unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    let router = api_router_with_config(AppState::default(), &config);
+    let router = api_router_with_config(AppState::default(), &config).unwrap();
     let res = router
         .oneshot(
             Request::builder()

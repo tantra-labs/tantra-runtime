@@ -219,6 +219,11 @@ pub async fn run_tape_serve(
         },
         PaperFeed::Live(_) => parse_tape(&config.tape)?,
     };
+    let allow_insecure =
+        crate::bootstrap::allow_insecure_bind_from_env().map_err(|e| err(e.to_string()))?;
+    crate::bootstrap::validate_bind_security(config.addr, false, allow_insecure)
+        .map_err(|e| err(e.to_string()))?;
+
     let state = build_state(&tape, config.initial_cash);
 
     let listener = TcpListener::bind(config.addr)
@@ -231,17 +236,16 @@ pub async fn run_tape_serve(
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let state_serve = state.clone();
-    // `serve_with_config` takes `&ApiConfig`, but a spawned task needs `'static`; the daemon
-    // lives for the whole run, so leaking one default config is fine.
-    let config_ref: &'static ApiConfig = Box::leak(Box::new(ApiConfig::default()));
-    let server_task = tokio::spawn(serve_with_config(
-        listener,
-        state_serve,
-        config_ref,
-        async move {
+    let api_config = ApiConfig {
+        allow_insecure_bind: allow_insecure,
+        ..ApiConfig::default()
+    };
+    let server_task = tokio::spawn(async move {
+        serve_with_config(listener, state_serve, &api_config, async move {
             let _ = shutdown_rx.await;
-        },
-    ));
+        })
+        .await
+    });
 
     // Warm-up window so early WebSocket clients can connect and place resting orders before
     // the tape starts replaying; keeps the R6 acceptance flow deterministic.

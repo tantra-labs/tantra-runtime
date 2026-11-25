@@ -5,24 +5,77 @@ use rust_decimal::Decimal;
 use tantra_core::TradingState;
 use tantra_risk::{OrderRateLimit, RiskLimits};
 use tantra_runtime_api_rest::bootstrap::{
-    ServeConfig, load_risk_limits, non_loopback_warning, parse_trading_state,
-    parse_trading_state_command,
+    ServeConfig, StartupError, load_risk_limits, parse_allow_insecure_bind_flag,
+    parse_trading_state, parse_trading_state_command, validate_bind_security,
 };
+use tantra_runtime_api_rest::{ApiConfig, AppState, api_router_with_config};
 
 #[test]
-fn loopback_addresses_do_not_warn() {
-    assert!(non_loopback_warning("127.0.0.1:8080".parse().unwrap()).is_none());
-    assert!(non_loopback_warning("[::1]:8080".parse().unwrap()).is_none());
+fn loopback_addresses_are_permitted_without_auth() {
+    assert_eq!(
+        validate_bind_security("127.0.0.1:8080".parse().unwrap(), false, false),
+        Ok(())
+    );
+    assert_eq!(
+        validate_bind_security("[::1]:8080".parse().unwrap(), false, false),
+        Ok(())
+    );
 }
 
 #[test]
-fn other_addresses_warn_about_missing_auth_and_tls() {
-    for addr in ["0.0.0.0:8080", "192.168.1.5:80", "[::]:80"] {
-        let warning = non_loopback_warning(addr.parse().unwrap()).unwrap();
-        assert!(warning.contains("auth"), "{warning}");
-        assert!(warning.contains("TLS"), "{warning}");
-        assert!(warning.contains(addr), "{warning}");
+fn unauthenticated_non_loopback_addresses_fail_closed_unless_overridden() {
+    for raw in ["0.0.0.0:8080", "192.168.1.5:80", "[::]:80"] {
+        let addr = raw.parse().unwrap();
+        let err = validate_bind_security(addr, false, false).unwrap_err();
+        assert_eq!(err, StartupError::UnauthenticatedNonLoopback { addr });
+        let msg = err.to_string();
+        assert!(msg.contains(raw), "{msg}");
+        assert!(msg.contains("TANTRA_ALLOW_INSECURE_BIND"), "{msg}");
+
+        assert_eq!(validate_bind_security(addr, true, false), Ok(()));
+        assert_eq!(validate_bind_security(addr, false, true), Ok(()));
     }
+}
+
+#[test]
+fn allow_insecure_bind_env_flag_parses_strict_booleans() {
+    for truthy in ["1", "true", "TRUE", "yes", "on"] {
+        assert_eq!(parse_allow_insecure_bind_flag(truthy), Ok(true), "{truthy}");
+    }
+    for falsy in ["", "0", "false", "FALSE", "no", "off"] {
+        assert_eq!(parse_allow_insecure_bind_flag(falsy), Ok(false), "{falsy}");
+    }
+    let err = parse_allow_insecure_bind_flag("maybe").unwrap_err();
+    assert_eq!(
+        err,
+        StartupError::InvalidInsecureBindEnv {
+            value: "maybe".to_string()
+        }
+    );
+}
+
+#[test]
+fn api_router_with_config_returns_err_on_missing_or_malformed_token_file() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let missing = dir.path().join("missing-tokens.toml");
+    let mut cfg_missing = ApiConfig::default();
+    cfg_missing.auth.tokens_file = Some(missing.clone());
+    let err = api_router_with_config(AppState::default(), &cfg_missing).unwrap_err();
+    assert!(matches!(
+        err,
+        StartupError::TokenFileLoad { ref path, .. } if path == &missing
+    ));
+
+    let bad = dir.path().join("malformed-tokens.toml");
+    std::fs::write(&bad, "[[tokens]\nnot valid toml =").unwrap();
+    let mut cfg_bad = ApiConfig::default();
+    cfg_bad.auth.tokens_file = Some(bad.clone());
+    let err = api_router_with_config(AppState::default(), &cfg_bad).unwrap_err();
+    assert!(matches!(
+        err,
+        StartupError::TokenFileLoad { ref path, .. } if path == &bad
+    ));
 }
 
 #[test]
@@ -65,6 +118,7 @@ fn set_spellings_map_to_trading_state_and_refuse_unknown() {
 fn serve_config_defaults_and_bounds_match_adr_values() {
     let cfg = ServeConfig::new("bars");
     assert_eq!(cfg.addr, "127.0.0.1:8000".parse().unwrap());
+    assert!(!cfg.allow_insecure_bind);
     assert!(cfg.cors_origins.is_empty());
     assert_eq!(cfg.trading_state, TradingState::Active);
     assert_eq!(cfg.runs.journals_dir, PathBuf::from("data/journals"));

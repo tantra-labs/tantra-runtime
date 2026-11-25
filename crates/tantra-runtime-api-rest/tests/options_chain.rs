@@ -118,7 +118,7 @@ async fn options_chain_requires_read_scope_when_auth_enabled() {
     std::fs::write(&path, token_toml("reader", "reader-secret", "\"read\"")).unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    let router = api_router_with_config(AppState::default(), &config);
+    let router = api_router_with_config(AppState::default(), &config).unwrap();
 
     let anon = router
         .clone()

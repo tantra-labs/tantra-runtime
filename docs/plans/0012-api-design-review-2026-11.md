@@ -1,6 +1,6 @@
 # 0012 — tantra-runtime API design review (2026-11): tenant scoping, fail-closed serving, bounded work & one composition root
 
-**Status**: Proposed (2026-11-23)
+**Status**: In Progress (`0020` closed 2026-11-25)
 **Scope**: `tantra-runtime` (`tantra-runtime-api`, `tantra-runtime-api-rest`, `tantra-runtime-client`) · **Umbrella**: root `docs/plans/0021-workspace-design-review-2026-11.md`
 
 ## 0. Executive Summary & Objective
@@ -17,7 +17,7 @@ Engine-side items (actors, backtest, jobs, audit) are in sibling plan [0013](001
 |---|---|---|---|
 | [0018](../gaps/0018-caller-scoping-runs-and-catalog.md) | Runs and strategy catalog not Caller-scoped | design-flaw | high |
 | [0019](../gaps/0019-bounded-compute-and-request-limits.md) | CPU work on Tokio workers; no timeouts/concurrency limits | design-flaw | high |
-| [0020](../gaps/0020-fail-closed-bind-and-cors.md) | Insecure non-loopback bind only warns; CORS lacks Authorization | design-flaw | high |
+| ~~0020~~ *(closed 2026-11-25)* | Fail-closed non-loopback bind, `Result`-returning `api_router_with_config`, CORS `AUTHORIZATION` | design-flaw | high |
 | [0021](../gaps/0021-durable-trading-state.md) | Order/approval/halt/job state in memory only | design-flaw | high |
 | [0022](../gaps/0022-observability-health-readiness.md) | No readiness/metrics/request-id; broker metrics invisible | deployment | medium |
 | [0023](../gaps/0023-single-route-inventory.md) | Three route inventories; stale capability manifest | duplication | medium |
@@ -37,8 +37,8 @@ Plan-only items (no standalone gap doc):
 
 ## 2. Component Specifications & Phases
 
-### Phase A — Security and quick fixes (gaps 0020, 0018, 0024, 0027)
-1. **0020**: `allow_insecure_bind`, `Result`-returning router build, `AUTHORIZATION` in CORS.
+### Phase A — Security and quick fixes (gaps ~~0020~~, 0018, 0024, 0027)
+1. ~~**0020** *(closed 2026-11-25)*: `allow_insecure_bind`, `Result`-returning router build, `AUTHORIZATION` in CORS.~~
 2. **0018**: owner on `RunManifest`/`RunStore`, per-caller `StrategyCatalog`, admin bypass.
 3. **0024**: decimal-string approvals, `Decimal` leverage/tape fields; file the `tantra-market-store` wire `Bar` gap.
 4. **0027**: make OI, OI-change and LTP-change nullable, tag IV/greeks provenance (`Quoted | Derived | Modelled | Unavailable`), never emit `Decimal::ZERO` for missing data; regenerate OpenAPI and TS types.

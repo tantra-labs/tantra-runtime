@@ -223,7 +223,7 @@ async fn approving_needs_the_admin_scope() {
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
     let r = send(
-        api_router_with_config(state(), &config),
+        api_router_with_config(state(), &config).unwrap(),
         Method::POST,
         "/api/v2/approvals/x/approve",
         None,

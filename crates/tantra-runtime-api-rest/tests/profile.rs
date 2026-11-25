@@ -30,7 +30,7 @@ fn router(tokens: &[(&str, &str, &str)]) -> (Router, tempfile::TempDir) {
     std::fs::write(&path, toml).unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    (api_router_with_config(state, &config), dir)
+    (api_router_with_config(state, &config).unwrap(), dir)
 }
 
 fn two_users() -> (Router, tempfile::TempDir) {

@@ -145,7 +145,7 @@ async fn scope_denial_is_forbidden() {
     .unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    let router = api_router_with_config(AppState::default(), &config);
+    let router = api_router_with_config(AppState::default(), &config).unwrap();
     let req = Request::post("/api/v2/orders")
         .header("authorization", "Bearer reader-secret")
         .header("content-type", "application/json")

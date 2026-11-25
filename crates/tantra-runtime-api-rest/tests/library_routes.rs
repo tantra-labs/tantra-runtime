@@ -222,7 +222,13 @@ async fn jwt_only_auth_fails_closed_without_token() {
         ),
     ] {
         let state = AppState::default().with_library_client(client("echo", 5000));
-        let (s, _, _) = send(api_router_with_config(state, &config), m, uri, body).await;
+        let (s, _, _) = send(
+            api_router_with_config(state, &config).unwrap(),
+            m,
+            uri,
+            body,
+        )
+        .await;
         assert_eq!(s, StatusCode::UNAUTHORIZED, "{m} {uri}");
     }
 }

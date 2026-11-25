@@ -252,7 +252,7 @@ fn authed_router(st: &AppState, scopes: &str) -> (axum::Router, tempfile::TempDi
     .unwrap();
     let mut config = ApiConfig::default();
     config.auth.tokens_file = Some(path);
-    (api_router_with_config(st.clone(), &config), dir)
+    (api_router_with_config(st.clone(), &config).unwrap(), dir)
 }
 
 #[tokio::test]
