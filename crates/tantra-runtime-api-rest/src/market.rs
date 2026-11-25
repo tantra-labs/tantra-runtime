@@ -24,7 +24,7 @@ use tantra_core::{Exchange, InstrumentId, Price, Quantity};
 use tantra_runtime_api::{
     ApiResponse, BarsQuery, BarsResponse, DepthLevel, DepthQuery, DepthResponse, ErrorCode,
     ErrorDetail, InstrumentsQuery, InstrumentsResponse, QuotesQuery, QuotesResponse,
-    ResponseEnvelope, instrument_json, parse_instrument_id,
+    ResponseEnvelope, fuzzy_score_instrument, instrument_json, parse_instrument_id,
 };
 
 use crate::AppState;
@@ -262,18 +262,42 @@ pub(crate) fn port_failure(error: PortError) -> Response {
     failure(status, ErrorDetail::new(code, error.to_string()))
 }
 
-/// `GET /instruments`: every instrument passing the query filters, in id order.
+/// `GET /instruments`: instruments passing the query filters, fuzzy-ranked when `q` is set.
 pub(crate) async fn get_instruments(
     State(state): State<Arc<AppState>>,
     ApiQuery(query): ApiQuery<InstrumentsQuery>,
 ) -> Response {
+    let resolved = match query.resolve() {
+        Ok(resolved) => resolved,
+        Err(detail) => return unprocessable(detail),
+    };
     match state.instruments.list_instruments().await {
         Ok(mut all) => {
-            all.sort_by(|a, b| a.id().cmp(b.id()));
-            let instruments = all
-                .iter()
-                .filter(|instrument| query.matches(instrument.id()))
-                .map(|instrument| instrument_json(&to_api_instrument(instrument)))
+            let mut ranked: Vec<(u32, &crate::market_feed::wire::Instrument)> = if let Some(q) =
+                resolved.q
+            {
+                all.iter()
+                    .filter(|instrument| query.matches(instrument.id()))
+                    .filter_map(|instrument| {
+                        fuzzy_score_instrument(q, instrument.id()).map(|score| (score, instrument))
+                    })
+                    .collect()
+            } else {
+                all.sort_by(|a, b| a.id().cmp(b.id()));
+                all.iter()
+                    .filter(|instrument| query.matches(instrument.id()))
+                    .map(|instrument| (0, instrument))
+                    .collect()
+            };
+            if resolved.q.is_some() {
+                ranked.sort_by(|(sa, a), (sb, b)| sb.cmp(sa).then_with(|| a.id().cmp(b.id())));
+            }
+            if let Some(limit) = resolved.limit {
+                ranked.truncate(limit);
+            }
+            let instruments = ranked
+                .into_iter()
+                .map(|(_, instrument)| instrument_json(&to_api_instrument(instrument)))
                 .collect();
             success(InstrumentsResponse { instruments })
         }

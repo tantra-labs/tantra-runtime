@@ -335,9 +335,14 @@ impl OpenApiDocument {
             PathItem {
                 get: Some(Operation {
                     tags: vec!["market".to_string()],
-                    summary: "List all instruments".to_string(),
+                    summary: "List or fuzzy-search instruments".to_string(),
                     operation_id: "getInstruments".to_string(),
-                    parameters: vec![],
+                    parameters: vec![
+                        query_param("exchange"),
+                        query_param("symbol"),
+                        query_param("q"),
+                        query_param("limit"),
+                    ],
                     request_body: None,
                     responses: BTreeMap::from([(
                         "200".to_string(),

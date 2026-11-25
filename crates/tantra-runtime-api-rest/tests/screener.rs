@@ -270,3 +270,11 @@ async fn the_scan_is_deterministic() {
     let (_, second) = scan(app(), query).await;
     assert_eq!(first, second);
 }
+
+#[tokio::test]
+async fn fractional_bar_closes_do_not_leak_ieee754_mantissa_noise() {
+    let query = q(gt("close", 40.0), json!(["CLEANDEC.NSE"]));
+    let (status, body) = scan(app_with(vec![daily("CLEANDEC", &[42.06])]), query).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["rows"][0]["metrics"]["close"], "42.06");
+}

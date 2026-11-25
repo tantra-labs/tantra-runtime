@@ -1268,9 +1268,46 @@
         "tags": [
           "market"
         ],
-        "summary": "List all instruments",
+        "summary": "List or fuzzy-search instruments",
         "operationId": "getInstruments",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "String",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": null,
         "responses": {
           "200": {

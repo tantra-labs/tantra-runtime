@@ -149,6 +149,46 @@ async fn a_filter_with_no_match_is_an_empty_list_not_an_error() {
 }
 
 #[tokio::test]
+async fn instruments_fuzzy_search_and_limit_rank_and_cap_results() {
+    let dataset = Dataset::from_slices(vec![
+        slice("RELIANCE", "NSE", 1),
+        slice("COREL", "NSE", 1),
+        slice("RECLTD", "NSE", 1),
+        slice("TCS", "NSE", 1),
+        slice("INFY", "NSE", 1),
+    ])
+    .unwrap();
+    let router = api_router_with(AppState::from_reader(DatasetReader::from_dataset(dataset)));
+
+    // Subsequence fuzzy match (`rlnc` -> RELIANCE)
+    let (status, fuzzy) = get(router.clone(), "/instruments?q=rlnc").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(ids(&fuzzy), vec!["RELIANCE.NSE"]);
+
+    // Prefix (RELIANCE) ranks ahead of substring (COREL) ahead of subsequence (RECLTD),
+    // and `limit` caps the returned rows.
+    let (status, ranked) = get(router.clone(), "/instruments?q=rel").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        ids(&ranked),
+        vec!["RELIANCE.NSE", "COREL.NSE", "RECLTD.NSE"]
+    );
+
+    let (status, limited) = get(router.clone(), "/instruments?q=rel&limit=2").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(ids(&limited), vec!["RELIANCE.NSE", "COREL.NSE"]);
+
+    // Out-of-range limit is rejected with 422 validation_invalid_request.
+    let (status, bad_limit) = get(router, "/instruments?limit=0").await;
+    assert_error(
+        status,
+        &bad_limit,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "validation_invalid_request",
+    );
+}
+
+#[tokio::test]
 async fn an_unknown_instruments_query_parameter_is_a_422() {
     let (status, body) = get(app(), "/instruments?exhange=NSE").await;
     assert_error(

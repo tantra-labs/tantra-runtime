@@ -18,6 +18,12 @@ pub struct InstrumentsQuery {
     /// Symbol filter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
+    /// Case-insensitive fuzzy search query over instrument symbol, id, or exchange.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub q: Option<String>,
+    /// Maximum number of instruments to return (`1..=MAX_INSTRUMENTS_LIMIT`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
 }
 
 /// Quotes query parameters.

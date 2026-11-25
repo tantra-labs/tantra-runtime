@@ -26,6 +26,22 @@ pub const DEFAULT_DEPTH_LEVELS: usize = 5;
 /// The most levels per side `GET /depth/{id}` accepts.
 pub const MAX_DEPTH_LEVELS: u32 = 50;
 
+/// Maximum number of instruments a `GET /instruments?limit=...` query may request.
+pub const MAX_INSTRUMENTS_LIMIT: u32 = 500;
+
+/// An [`InstrumentsQuery`] resolved into validated filter and search parameters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedInstrumentsQuery<'a> {
+    /// Exact exchange filter, if set.
+    pub exchange: Option<&'a str>,
+    /// Exact symbol filter, if set.
+    pub symbol: Option<&'a str>,
+    /// Trimmed non-empty fuzzy search query, if set.
+    pub q: Option<&'a str>,
+    /// Maximum number of rows to return, if set.
+    pub limit: Option<usize>,
+}
+
 /// A [`QuotesQuery`] resolved into domain values.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedQuotesQuery {
@@ -136,8 +152,141 @@ impl BarsQuery {
     }
 }
 
+fn subsequence_score(needle: &[u8], haystack: &[u8]) -> Option<u32> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    let mut score: i64 = 100;
+    let mut consecutive: i64 = 0;
+    let mut prev_match: Option<usize> = None;
+    let mut j = 0usize;
+
+    for &nc in needle {
+        let mut found = None;
+        while j < haystack.len() {
+            if haystack[j] == nc {
+                found = Some(j);
+                j += 1;
+                break;
+            }
+            j += 1;
+        }
+        let pos = found?;
+        if let Some(prev) = prev_match {
+            if pos == prev + 1 {
+                consecutive += 1;
+                score += 20 + consecutive * 5;
+            } else {
+                consecutive = 0;
+                let gap = i64::try_from(pos - prev - 1).unwrap_or(i64::MAX);
+                score -= gap.saturating_mul(2);
+            }
+        } else if pos == 0 {
+            score += 15;
+        }
+        if pos > 0 {
+            let prev_byte = haystack[pos - 1];
+            let curr_byte = haystack[pos];
+            let is_boundary = matches!(prev_byte, b':' | b'-' | b'_' | b' ')
+                || (prev_byte.is_ascii_digit() && curr_byte.is_ascii_alphabetic())
+                || (prev_byte.is_ascii_alphabetic() && curr_byte.is_ascii_digit());
+            if is_boundary {
+                score += 15;
+            }
+        }
+        prev_match = Some(pos);
+    }
+
+    let extra = i64::try_from(haystack.len().saturating_sub(needle.len())).unwrap_or(0);
+    score -= extra;
+    Some(u32::try_from(score.max(1)).unwrap_or(u32::MAX))
+}
+
+fn score_token(token: &str, symbol: &str, full_id: &str) -> Option<u32> {
+    if symbol == token {
+        return Some(2000);
+    }
+    if full_id == token {
+        return Some(1900);
+    }
+    if symbol.starts_with(token) {
+        let len_diff = u32::try_from(symbol.len().saturating_sub(token.len())).unwrap_or(u32::MAX);
+        return Some(1500_u32.saturating_sub(len_diff));
+    }
+    if let Some(pos) = symbol.find(token) {
+        let pos_u32 = u32::try_from(pos).unwrap_or(u32::MAX);
+        let len_diff = u32::try_from(symbol.len().saturating_sub(token.len())).unwrap_or(u32::MAX);
+        return Some(
+            1100_u32
+                .saturating_sub(pos_u32.saturating_mul(4))
+                .saturating_sub(len_diff),
+        );
+    }
+    if full_id.starts_with(token) {
+        let len_diff = u32::try_from(full_id.len().saturating_sub(token.len())).unwrap_or(u32::MAX);
+        return Some(950_u32.saturating_sub(len_diff));
+    }
+    if let Some(pos) = full_id.find(token) {
+        let pos_u32 = u32::try_from(pos).unwrap_or(u32::MAX);
+        return Some(850_u32.saturating_sub(pos_u32.saturating_mul(4)));
+    }
+    if let Some(sub) = subsequence_score(token.as_bytes(), symbol.as_bytes()) {
+        return Some(150_u32.saturating_add(sub));
+    }
+    if let Some(sub) = subsequence_score(token.as_bytes(), full_id.as_bytes()) {
+        return Some(50_u32.saturating_add(sub));
+    }
+    None
+}
+
+/// Scores how well `id` fuzzy-matches `query` (higher is better; `None` if no match).
+///
+/// An empty or whitespace-only query matches with score `0`. Multi-token queries
+/// require every whitespace-delimited token to match either `id.symbol()` or the
+/// full `EXCHANGE:SYMBOL` string (exact, prefix, substring, or subsequence).
+pub fn fuzzy_score_instrument(query: &str, id: &InstrumentId) -> Option<u32> {
+    let normalized = query.trim().to_ascii_uppercase();
+    if normalized.is_empty() {
+        return Some(0);
+    }
+    let symbol = id.symbol().to_ascii_uppercase();
+    let full_id = id.to_string().to_ascii_uppercase();
+    let mut total = 0_u32;
+    for token in normalized.split_whitespace() {
+        let score = score_token(token, &symbol, &full_id)?;
+        total = total.saturating_add(score);
+    }
+    Some(total)
+}
+
 impl InstrumentsQuery {
-    /// Reports whether `id` passes every filter that is set (exact, case-sensitive).
+    /// Resolves and validates the query parameters.
+    pub fn resolve(&self) -> Result<ResolvedInstrumentsQuery<'_>, ErrorDetail> {
+        let limit = match self.limit {
+            None => None,
+            Some(n) if (1..=MAX_INSTRUMENTS_LIMIT).contains(&n) => Some(n as usize),
+            Some(n) => {
+                return Err(invalid(
+                    "limit",
+                    "out_of_range",
+                    format!("limit {n} is not between 1 and {MAX_INSTRUMENTS_LIMIT}"),
+                ));
+            }
+        };
+        let q = self
+            .q
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty());
+        Ok(ResolvedInstrumentsQuery {
+            exchange: self.exchange.as_deref(),
+            symbol: self.symbol.as_deref(),
+            q,
+            limit,
+        })
+    }
+
+    /// Reports whether `id` passes every exact filter that is set (case-sensitive).
     pub fn matches(&self, id: &InstrumentId) -> bool {
         self.exchange
             .as_deref()

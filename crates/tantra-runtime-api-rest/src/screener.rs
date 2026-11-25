@@ -51,7 +51,7 @@ fn to_feed_spec(spec: BarSpecification) -> crate::market_feed::wire::BarSpecific
 /// `Decimal`-valued [`Bar`] the pure screener evaluator (`tantra_runtime_api::screener`) is written
 /// against.
 fn to_core_bar(bar: &crate::market_feed::wire::Bar) -> Bar {
-    let to_decimal = |v: f64| Decimal::from_f64_retain(v).unwrap_or_default();
+    let to_decimal = |v: f64| Decimal::try_from(v).unwrap_or_default();
     Bar {
         instrument: bar.bar_type().instrument_id().clone(),
         open: Price::try_new(to_decimal(bar.open())).unwrap_or(Price::ZERO),

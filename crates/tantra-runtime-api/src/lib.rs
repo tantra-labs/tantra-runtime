@@ -62,8 +62,9 @@ pub use experimental_analysis::{
 };
 pub use ingest::{MAX_INGEST_BARS, check_ingest_batch};
 pub use market::{
-    DEFAULT_DEPTH_LEVELS, DEFAULT_TIMEFRAME, MAX_DEPTH_LEVELS, ResolvedBarsQuery,
-    ResolvedQuotesQuery, instrument_json, parse_instrument_id, parse_timeframe,
+    DEFAULT_DEPTH_LEVELS, DEFAULT_TIMEFRAME, MAX_DEPTH_LEVELS, MAX_INSTRUMENTS_LIMIT,
+    ResolvedBarsQuery, ResolvedInstrumentsQuery, ResolvedQuotesQuery, fuzzy_score_instrument,
+    instrument_json, parse_instrument_id, parse_timeframe,
 };
 pub use options_chain::{
     OptionChainRowDto, OptionChainSource, OptionExpiryDto, OptionLegSnapshotDto, OptionsChainQuery,
