@@ -204,7 +204,7 @@ async fn overview() {
     assert_eq!(metrics["net_pnl"], "980");
     assert_eq!(metrics["trades_with_risk"], 1);
     let edge = &body["data"]["edge_score"];
-    assert_eq!(edge["version"], 1);
+    assert_eq!(edge["version"], 2); // tantra-ledger-performance EDGE_SCORE_VERSION
     // With a single trade the score is None (needs >= 5).
     assert!(edge["score"].is_null());
 }
