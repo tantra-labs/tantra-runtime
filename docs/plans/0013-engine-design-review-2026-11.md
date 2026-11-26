@@ -13,7 +13,7 @@ Non-goals: items already owned by root plan 0019 (for example P3.3 typed errors,
 
 | Gap | Title | Kind | Severity |
 |---|---|---|---|
-| [0028](../gaps/0028-strategy-crate-concrete-executor-and-nested-runtime.md) | Strategy crate: concrete `ZerodhaExecutor`, nested runtime, secret `Debug` | design-flaw | high |
+| 0028 | Strategy crate: concrete `ZerodhaExecutor`, nested runtime, secret `Debug` — **closed 2026-11-26** (see [gaps index](../gaps/README.md)) | design-flaw | high |
 | [0029](../gaps/0029-actor-supervision-restart.md) | Supervisor never supervises; restart cannot recover state | design-flaw | high |
 | [0030](../gaps/0030-risk-actor-blocking-broker-ack.md) | Risk actor blocks mailbox on broker ack | design-flaw | high |
 | [0031](../gaps/0031-synthetic-oco-trail-stop-safety.md) | Synthetic OCO `trail_stop` unprotected window and state corruption | design-flaw | high |
@@ -35,7 +35,7 @@ Plan-only items (no standalone gap doc):
 ## 2. Component Specifications & Phases
 
 ### Phase A — Safety-critical, low-risk fixes
-1. **0028** — move `ZerodhaKiteAdapter` to the composition root, drop the `tantra-exec-zerodha` dependency and `Runtime::new`/`block_on`, redact `Debug`. Add the dependency-rule test first (TDD).
+1. ~~**0028**~~ (closed 2026-11-26: executor injected as `Arc<dyn BrokerExecutor>` + `Handle`) — move `ZerodhaKiteAdapter` to the composition root, drop the `tantra-exec-zerodha` dependency and `Runtime::new`/`block_on`, redact `Debug`. Add the dependency-rule test first (TDD).
 2. **0030** — spawn the ack await, add a priority control channel for halts, add a timeout.
 3. **0034** — propagate OMS errors; make audit failure on `order_attempt` order-blocking.
 4. **0037** — `QuantityError` and `unsupported_jurisdiction` instead of silent defaults.

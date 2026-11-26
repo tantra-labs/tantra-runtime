@@ -4,10 +4,10 @@
 //! delegates `submit_order` / `cancel_order` to the real `tantra-exec-zerodha`
 //! wire transport, and that broker errors normalize into `DispatchError`.
 //!
-//! The mock Kite Connect server is a blocking std HTTP/1.1 server so these
-//! tests stay synchronous: the adapter bridges the async executor via
-//! `tokio::runtime::Runtime::block_on`, which must not run inside a tokio
-//! context.
+//! The mock Kite Connect server is a blocking std HTTP/1.1 server. The
+//! executor is injected as `Arc<dyn BrokerExecutor>` together with a handle to
+//! a test-owned multi-thread runtime (gap 0028); the adapter bridges async to
+//! sync via `Handle::block_on` / `block_in_place`.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -19,7 +19,7 @@ use rust_decimal::Decimal;
 use tantra_core::{Exchange, InstrumentId, Quantity};
 use tantra_risk::RiskEngine;
 use tantra_runtime_strategy::{
-    BrokerAdapter, DispatchError, Dispatcher, OrderIntent, ZerodhaAdapter,
+    AngelOneAdapter, BrokerAdapter, DispatchError, Dispatcher, OrderIntent, ZerodhaAdapter,
 };
 
 fn fixed_now() -> DateTime<Utc> {
@@ -92,17 +92,98 @@ fn success_state() -> Arc<Mutex<MockState>> {
     }))
 }
 
+fn live_adapter_at(base_url: &str) -> (tokio::runtime::Runtime, ZerodhaAdapter) {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .expect("test runtime");
+    let exec: Arc<dyn tantra_exec_core::BrokerExecutor> =
+        Arc::new(tantra_exec_zerodha::ZerodhaExecutor::with_base_url(
+            "test_api_key",
+            "test_access_token",
+            base_url,
+        ));
+    let adapter =
+        ZerodhaAdapter::with_executor(exec, rt.handle().clone(), Decimal::from(1_000_000));
+    (rt, adapter)
+}
+
+fn live_adapter(port: u16) -> (tokio::runtime::Runtime, ZerodhaAdapter) {
+    live_adapter_at(&format!("http://127.0.0.1:{port}"))
+}
+
+fn market_buy_intent() -> OrderIntent {
+    let infy = InstrumentId::try_new(Exchange::Nse, "INFY").unwrap();
+    OrderIntent::market_buy(infy, Quantity::from_u64(10))
+}
+
+#[test]
+fn debug_output_redacts_credentials() {
+    let a =
+        AngelOneAdapter::with_credentials("SECRET_KEY", "CLIENT1", "SECRET_JWT", Decimal::from(1));
+    let d = format!("{a:?}");
+    assert!(d.contains("[REDACTED]"));
+    assert!(!d.contains("SECRET_KEY"));
+    assert!(!d.contains("SECRET_JWT"));
+    assert!(!d.contains("CLIENT1"));
+    let port = spawn_mock(success_state());
+    let (_rt, z) = live_adapter(port);
+    assert!(!format!("{z:?}").contains("test_access_token"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn submit_from_async_multi_thread_context_does_not_panic() {
+    let port = spawn_mock(success_state());
+    let exec: Arc<dyn tantra_exec_core::BrokerExecutor> =
+        Arc::new(tantra_exec_zerodha::ZerodhaExecutor::with_base_url(
+            "test_api_key",
+            "test_access_token",
+            format!("http://127.0.0.1:{port}"),
+        ));
+    let adapter = ZerodhaAdapter::with_executor(
+        exec,
+        tokio::runtime::Handle::current(),
+        Decimal::from(1_000_000),
+    );
+    let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(adapter));
+    let id = dispatcher
+        .dispatch_intent_with_id(
+            &market_buy_intent(),
+            tantra_core::uuid::Uuid::from_u128(0x000C_10EF_0002),
+            fixed_now(),
+        )
+        .expect("submit from multi-thread context");
+    assert_eq!(id, "ZERODHA_ORD_1001");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn submit_from_current_thread_runtime_errors_instead_of_panicking() {
+    let port = spawn_mock(success_state());
+    let (rt, adapter) = live_adapter(port);
+    let mut dispatcher = Dispatcher::new(RiskEngine::default(), Box::new(adapter));
+    let res = dispatcher.dispatch_intent_with_id(
+        &market_buy_intent(),
+        tantra_core::uuid::Uuid::from_u128(0x000C_10EF_0003),
+        fixed_now(),
+    );
+    // The guard's own error: the executor was never driven, so no request left.
+    let err = res.expect_err("current-thread runtime must be refused");
+    assert!(
+        err.to_string().contains("current-thread"),
+        "unexpected error: {err}"
+    );
+    thread::spawn(move || drop(rt))
+        .join()
+        .expect("drop runtime");
+}
+
 #[test]
 fn test_zerodha_wire_submit_order_delegates_to_kite_transport() {
     let state = success_state();
     let port = spawn_mock(state.clone());
 
-    let adapter = ZerodhaAdapter::with_base_url(
-        "test_api_key",
-        "test_access_token",
-        format!("http://127.0.0.1:{port}"),
-        Decimal::from(1_000_000),
-    );
+    let (_rt, adapter) = live_adapter(port);
     assert_eq!(adapter.broker_name(), "zerodha");
 
     let nse = Exchange::Nse;
@@ -139,12 +220,7 @@ fn test_zerodha_wire_auth_error_maps_to_session_expired() {
     }));
     let port = spawn_mock(state.clone());
 
-    let adapter = ZerodhaAdapter::with_base_url(
-        "test_api_key",
-        "test_access_token",
-        format!("http://127.0.0.1:{port}"),
-        Decimal::from(1_000_000),
-    );
+    let (_rt, adapter) = live_adapter(port);
     let nse = Exchange::Nse;
     let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
@@ -184,12 +260,7 @@ fn test_zerodha_wire_rate_limit_error_maps_to_rate_limited() {
     }));
     let port = spawn_mock(state.clone());
 
-    let adapter = ZerodhaAdapter::with_base_url(
-        "test_api_key",
-        "test_access_token",
-        format!("http://127.0.0.1:{port}"),
-        Decimal::from(1_000_000),
-    );
+    let (_rt, adapter) = live_adapter(port);
     let nse = Exchange::Nse;
     let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
@@ -214,12 +285,7 @@ fn test_zerodha_wire_rate_limit_error_maps_to_rate_limited() {
 #[test]
 fn test_zerodha_wire_network_error_maps_to_network() {
     // Point at a port with no listener: connection refused -> transport error.
-    let adapter = ZerodhaAdapter::with_base_url(
-        "test_api_key",
-        "test_access_token",
-        "http://127.0.0.1:19999",
-        Decimal::from(1_000_000),
-    );
+    let (_rt, adapter) = live_adapter_at("http://127.0.0.1:19999");
     let nse = Exchange::Nse;
     let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));
@@ -268,12 +334,7 @@ fn test_zerodha_wire_cancel_order_delegates_to_kite_transport() {
     }));
     let port = spawn_mock(state.clone());
 
-    let adapter = ZerodhaAdapter::with_base_url(
-        "test_api_key",
-        "test_access_token",
-        format!("http://127.0.0.1:{port}"),
-        Decimal::from(1_000_000),
-    );
+    let (_rt, adapter) = live_adapter(port);
     let nse = Exchange::Nse;
     let infy = InstrumentId::try_new(nse, "INFY").unwrap();
     let intent = OrderIntent::market_buy(infy, Quantity::from_u64(10));

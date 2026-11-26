@@ -17,7 +17,6 @@ tantra-market-indicators.workspace = true
 tantra-market-finance.workspace = true
 tantra-exec-core.workspace = true
 tantra-exec-paper.workspace = true
-tantra-exec-zerodha.workspace = true
 tantra-ledger-oms.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -30,6 +29,7 @@ thiserror.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
+tantra-exec-zerodha.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
 tantra-runtime-testing.workspace = true

@@ -1,7 +1,8 @@
 //! Strategy intent to multi-broker dispatch boundary.
 //!
 //! Provides the [`BrokerAdapter`] boundary, [`Dispatcher`] coordinator, and
-//! paper/Zerodha/AngelOne execution adapters and scaffolds.
+//! paper/Zerodha/AngelOne execution adapters and scaffolds. Live brokers are
+//! injected as `Arc<dyn BrokerExecutor>` by the composition root.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -13,11 +14,10 @@ use tantra_core::uuid::Uuid;
 use tantra_core::{FillReport, InstrumentId, OrderRequest, OrderSide, Price, Quantity, Tick};
 use tantra_exec_core::{BrokerError, BrokerExecutor};
 use tantra_exec_paper::{FillCostFn, OrderState, PaperExchange};
-use tantra_exec_zerodha::ZerodhaExecutor;
 use tantra_market_finance::india::costs::NseCashEquitySchedule;
 use tantra_market_finance::{CostSchedule, MarketSegment};
 use tantra_risk::{RiskEngine, RiskRefusal};
-use tokio::runtime::Runtime;
+use tokio::runtime::{Handle, RuntimeFlavor};
 
 use crate::intent::{IntentError, OrderIntent};
 use crate::synthetic_oco::SyntheticOco;
@@ -549,34 +549,46 @@ impl BrokerAdapter for PaperAdapter {
     }
 }
 
+/// Live broker executor plus the Tokio handle used to drive it from the sync
+/// [`BrokerAdapter`] boundary. Built by the composition root; holds no
+/// credentials itself.
+#[derive(Clone)]
+struct LiveExecutor {
+    executor: Arc<dyn BrokerExecutor>,
+    handle: Handle,
+}
+
+/// Bridges an async executor call onto the sync adapter boundary without
+/// panicking when called from inside a Tokio runtime.
+fn block_on_executor<F: std::future::Future>(handle: &Handle, fut: F) -> Result<F::Output, String> {
+    match Handle::try_current() {
+        Err(_) => Ok(handle.block_on(fut)),
+        Ok(current) => match current.runtime_flavor() {
+            RuntimeFlavor::MultiThread => {
+                Ok(tokio::task::block_in_place(|| handle.block_on(fut)))
+            }
+            _ => Err("live broker adapter cannot block a current-thread Tokio runtime; drive it from a multi-thread runtime worker or a plain thread".to_string()),
+        },
+    }
+}
+
 /// Concrete implementation for Zerodha (Kite Connect v3) execution adapter.
+///
+/// Live trading is injected as an `Arc<dyn BrokerExecutor>` via
+/// [`ZerodhaKiteAdapter::with_executor`]; this crate holds no credentials.
 #[derive(Clone)]
 pub struct ZerodhaKiteAdapter {
-    api_key: Option<String>,
-    access_token: Option<String>,
     venue: Arc<Mutex<PaperVenue>>,
-    /// Live Kite Connect executor, only present when credentials are supplied.
+    /// Live executor, only present when injected by the composition root.
     /// When `None` the adapter runs in simulation/scaffold mode.
-    executor: Option<Arc<ZerodhaExecutor>>,
-    /// Tokio runtime used to drive the async `ZerodhaExecutor` from the sync
-    /// [`BrokerAdapter`] trait methods. Only `Some` alongside `executor`.
-    runtime: Option<Arc<Runtime>>,
+    live: Option<LiveExecutor>,
 }
 
 impl std::fmt::Debug for ZerodhaKiteAdapter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ZerodhaKiteAdapter")
-            .field("api_key", &self.api_key)
-            .field("access_token", &self.access_token)
             .field("venue", &"paper-exchange")
-            .field(
-                "executor",
-                &self.executor.as_ref().map(|_| "ZerodhaExecutor"),
-            )
-            .field(
-                "runtime",
-                &self.runtime.as_ref().map(|_| "tokio::runtime::Runtime"),
-            )
+            .field("live", &self.live.as_ref().map(|_| "BrokerExecutor"))
             .finish()
     }
 }
@@ -585,76 +597,32 @@ impl ZerodhaKiteAdapter {
     /// Creates a new [`ZerodhaKiteAdapter`] in simulation/scaffold mode with the given initial cash.
     pub fn new(initial_cash: Decimal) -> Self {
         Self {
-            api_key: None,
-            access_token: None,
             venue: Arc::new(Mutex::new(PaperVenue {
                 exchange: exchange_with_fees(initial_cash),
                 market_prices: HashMap::new(),
                 last_prices: HashMap::new(),
                 orders: HashMap::new(),
             })),
-            executor: None,
-            runtime: None,
+            live: None,
         }
     }
 
-    /// Creates a new [`ZerodhaKiteAdapter`] configured with Kite Connect credentials
-    /// and the default Kite Connect base URL (`https://api.kite.trade`).
+    /// Creates a live-mode adapter around an injected executor.
     ///
-    /// When credentials are supplied the adapter holds a live
-    /// [`ZerodhaExecutor`] (backed by [`tantra-exec`]) plus a tokio runtime so
-    /// the sync [`BrokerAdapter`] trait can drive the async wire transport.
-    /// [`submit_order`](Self::submit_order) / [`cancel_order`](Self::cancel_order)
-    /// then hit the real Kite Connect `POST /orders/regular` / `DELETE
-    /// /orders/regular/{id}` endpoints instead of the in-process simulation.
-    pub fn with_credentials(
-        api_key: impl Into<String>,
-        access_token: impl Into<String>,
+    /// The composition root builds the concrete executor (e.g.
+    /// `ZerodhaExecutor`) and passes a handle to a multi-thread runtime it
+    /// owns; this crate never constructs brokers or runtimes. The caller must
+    /// keep that runtime alive for the adapter's lifetime: a handle to a shut
+    /// down runtime cannot drive the executor's I/O. Request timeouts belong to
+    /// the executor's HTTP client.
+    pub fn with_executor(
+        executor: Arc<dyn BrokerExecutor>,
+        handle: Handle,
         initial_cash: Decimal,
     ) -> Self {
-        Self::with_base_url(
-            api_key,
-            access_token,
-            ZerodhaExecutor::DEFAULT_BASE_URL,
-            initial_cash,
-        )
-    }
-
-    /// Creates a new [`ZerodhaKiteAdapter`] configured with Kite Connect
-    /// credentials and a custom base URL (useful for testing against a local
-    /// mock or point-of-presence).
-    pub fn with_base_url(
-        api_key: impl Into<String>,
-        access_token: impl Into<String>,
-        base_url: impl Into<String>,
-        initial_cash: Decimal,
-    ) -> Self {
-        let key = api_key.into();
-        let token = access_token.into();
-        let exec = ZerodhaExecutor::with_base_url(key.clone(), token.clone(), base_url);
-        let runtime = Runtime::new().expect("tokio runtime for zerodha wire transport");
-        Self {
-            api_key: Some(key),
-            access_token: Some(token),
-            venue: Arc::new(Mutex::new(PaperVenue {
-                exchange: exchange_with_fees(initial_cash),
-                market_prices: HashMap::new(),
-                last_prices: HashMap::new(),
-                orders: HashMap::new(),
-            })),
-            executor: Some(Arc::new(exec)),
-            runtime: Some(Arc::new(runtime)),
-        }
-    }
-
-    /// Returns the configured Kite API key if set.
-    pub fn api_key(&self) -> Option<&str> {
-        self.api_key.as_deref()
-    }
-
-    /// Returns the configured Kite access token if set.
-    pub fn access_token(&self) -> Option<&str> {
-        self.access_token.as_deref()
+        let mut adapter = Self::new(initial_cash);
+        adapter.live = Some(LiveExecutor { executor, handle });
+        adapter
     }
 
     /// Sets or updates the market price for an instrument.
@@ -705,23 +673,8 @@ impl BrokerAdapter for ZerodhaKiteAdapter {
     }
 
     fn submit_order(&self, order: &OrderRequest, now: DateTime<Utc>) -> Result<String, String> {
-        // When a live ZerodhaExecutor is configured (credentials supplied),
-        // place the order on the real Kite Connect wire transport, delegating
-        // auth/session/rate-limiting to `tantra-exec`. Otherwise fall back to
-        // the shared paper-exchange venue (preserving determinism and
-        // paper/live economic parity for the sim path).
-        if let Some(exec) = &self.executor {
-            let runtime = self
-                .runtime
-                .as_ref()
-                .expect("zerodha executor configured without tokio runtime");
-            // NOTE: `block_on` must not be called from within a tokio runtime
-            // worker thread (it panics). The sync `BrokerAdapter` boundary is
-            // currently only invoked from sync code; if the `Dispatcher` is
-            // later driven from an async actor context, this seam must become
-            // async or marshal onto a dedicated thread.
-            let ack = runtime
-                .block_on(exec.place_order(order.clone()))
+        if let Some(live) = &self.live {
+            let ack = block_on_executor(&live.handle, live.executor.place_order(order.clone()))?
                 .map_err(map_broker_error)?;
             return Ok(ack.order_id);
         }
@@ -729,13 +682,8 @@ impl BrokerAdapter for ZerodhaKiteAdapter {
     }
 
     fn cancel_order(&self, broker_order_id: &str, now: DateTime<Utc>) -> Result<(), String> {
-        if let Some(exec) = &self.executor {
-            let runtime = self
-                .runtime
-                .as_ref()
-                .expect("zerodha executor configured without tokio runtime");
-            return runtime
-                .block_on(exec.cancel_order(broker_order_id))
+        if let Some(live) = &self.live {
+            return block_on_executor(&live.handle, live.executor.cancel_order(broker_order_id))?
                 .map_err(map_broker_error);
         }
         cancel_on_venue(&self.venue, broker_order_id, now)
@@ -750,6 +698,9 @@ impl BrokerAdapter for ZerodhaKiteAdapter {
 /// remains a simulation/scaffold identical in economics to [`PaperAdapter`].
 /// The real SmartAPI wire transport belongs in `tantra-exec`/`tantra-adapters`
 /// and will plug into this same [`BrokerAdapter`] boundary once available.
+///
+/// Zeroize-on-drop of the credential fields is deferred to the shared secret
+/// types of `tantra-exec/docs/gaps/0007-*.md` (tantra-exec gap 0007).
 #[derive(Clone)]
 pub struct AngelOneSmartApiAdapter {
     api_key: Option<String>,
@@ -761,9 +712,12 @@ pub struct AngelOneSmartApiAdapter {
 impl std::fmt::Debug for AngelOneSmartApiAdapter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AngelOneSmartApiAdapter")
-            .field("api_key", &self.api_key)
-            .field("client_code", &self.client_code)
-            .field("jwt_token", &self.jwt_token)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "client_code",
+                &self.client_code.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("jwt_token", &self.jwt_token.as_ref().map(|_| "[REDACTED]"))
             .field("venue", &"paper-exchange")
             .finish()
     }
