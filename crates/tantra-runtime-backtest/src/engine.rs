@@ -984,15 +984,18 @@ impl<S: Strategy> BacktestEngine<S> {
         // (depository participant) charge, so it's folded into
         // `exchange_charges` — the closest "other venue/infra charge"
         // bucket — to keep `fee_breakdown.total()` equal to `fees.total()`.
+        // Every component is in the venue's settlement currency, so the
+        // breakdown's checked total equals `fee` by construction.
+        let currency = order.instrument.exchange().currency();
         let fee_breakdown = FeeBreakdown {
-            brokerage: Money::inr(fees.brokerage),
-            stt: Money::inr(fees.stt),
-            exchange_charges: Money::inr(fees.exchange_turnover + fees.dp_charge),
-            gst: Money::inr(fees.gst),
-            stamp_duty: Money::inr(fees.stamp_duty),
-            sebi_charges: Money::inr(fees.sebi_turnover),
+            brokerage: Money::new(fees.brokerage, currency),
+            stt: Money::new(fees.stt, currency),
+            exchange_charges: Money::new(fees.exchange_turnover + fees.dp_charge, currency),
+            gst: Money::new(fees.gst, currency),
+            stamp_duty: Money::new(fees.stamp_duty, currency),
+            sebi_charges: Money::new(fees.sebi_turnover, currency),
         };
-        let fee = fee_breakdown.total();
+        let fee = Money::new(fees.total(), currency);
 
         let fill_report = FillReport {
             fill_id: fill_id.clone(),

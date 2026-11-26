@@ -25,7 +25,9 @@ use crate::AppState;
 use crate::caller::Caller;
 use crate::market::{ApiQuery, error, failure, success};
 use tantra_ledger_performance::calendar::build_calendar;
-use tantra_ledger_performance::metrics::{MetricsInput, compute_edge_score, compute_metrics};
+use tantra_ledger_performance::metrics::{
+    MetricsError, MetricsInput, compute_edge_score, compute_metrics,
+};
 use tantra_ledger_performance::store::StoreError;
 use tantra_ledger_performance::{
     model::{AccountProvenance, ClosedTrade, JournalAccountId, TradeAnnotation},
@@ -625,7 +627,10 @@ pub async fn get_trade_journal_overview(
     let now = Utc::now();
     let trades = store.closed_trades_in_range(query.from, query.to);
     let input = MetricsInput::new(trades.into_iter().cloned().collect(), now);
-    let metrics = compute_metrics(&input).unwrap_or_else(|_| default_metrics());
+    let metrics = match metrics_or_default(&input) {
+        Ok(m) => m,
+        Err(r) => return *r,
+    };
     let edge_score = compute_edge_score(&metrics);
 
     let range_dto = RangeDto {
@@ -643,15 +648,17 @@ pub async fn get_trade_journal_overview(
             }
             _ => (None, None),
         };
-        let prior = compute_metrics(&MetricsInput::new(
+        let prior = match metrics_or_default(&MetricsInput::new(
             store
                 .closed_trades_in_range(from, to)
                 .into_iter()
                 .cloned()
                 .collect(),
             now,
-        ))
-        .unwrap_or_else(|_| default_metrics());
+        )) {
+            Ok(m) => m,
+            Err(r) => return *r,
+        };
         Some(format!("{:?}", compute_edge_score(&prior).score))
     } else {
         None
@@ -756,7 +763,7 @@ pub async fn get_trade_journal_calendar(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let calendar = build_calendar(
+    let calendar = match build_calendar(
         &store
             .closed_trades()
             .into_iter()
@@ -764,7 +771,15 @@ pub async fn get_trade_journal_calendar(
             .collect::<Vec<ClosedTrade>>(),
         year,
         month,
-    );
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            return failure(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                ErrorDetail::new(ErrorCode::ValidationInvalidRequest, e.to_string()),
+            );
+        }
+    };
     success(CalendarResponse {
         calendar: CalendarDto {
             year: calendar.year,
@@ -928,11 +943,15 @@ pub async fn get_trade_journal_compare(
         );
     };
 
-    let metrics_a =
-        compute_metrics(&MetricsInput::new(trades_a, now)).unwrap_or_else(|_| default_metrics());
+    let metrics_a = match metrics_or_default(&MetricsInput::new(trades_a, now)) {
+        Ok(m) => m,
+        Err(r) => return *r,
+    };
     let edge_a = compute_edge_score(&metrics_a);
-    let metrics_b =
-        compute_metrics(&MetricsInput::new(trades_b, now)).unwrap_or_else(|_| default_metrics());
+    let metrics_b = match metrics_or_default(&MetricsInput::new(trades_b, now)) {
+        Ok(m) => m,
+        Err(r) => return *r,
+    };
     let edge_b = compute_edge_score(&metrics_b);
 
     success(CompareResponse {
@@ -990,6 +1009,21 @@ fn parse_month(s: &str) -> Result<(i32, u32), Response> {
         ));
     }
     Ok((year, month))
+}
+
+/// Compute metrics, defaulting for empty/unsorted input but rejecting mixed
+/// currencies with a 422 rather than silently reporting zeros.
+fn metrics_or_default(
+    input: &MetricsInput,
+) -> Result<tantra_ledger_performance::metrics::PerformanceMetrics, Box<Response>> {
+    match compute_metrics(input) {
+        Ok(m) => Ok(m),
+        Err(e @ MetricsError::CurrencyMismatch { .. }) => Err(Box::new(failure(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ErrorDetail::new(ErrorCode::ValidationInvalidRequest, e.to_string()),
+        ))),
+        Err(_) => Ok(default_metrics()),
+    }
 }
 
 fn default_metrics() -> tantra_ledger_performance::metrics::PerformanceMetrics {
