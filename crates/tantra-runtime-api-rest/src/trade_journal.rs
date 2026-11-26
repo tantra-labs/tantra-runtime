@@ -392,8 +392,8 @@ fn journal_store(state: &AppState, caller: &str) -> Result<Arc<Mutex<JournalStor
 
 fn money_dto(money: &tantra_ledger_performance::Money) -> MoneyDto {
     MoneyDto {
-        amount: money.amount.to_string(),
-        currency: money.currency.code().to_string(),
+        amount: money.amount().to_string(),
+        currency: money.currency().code().to_string(),
     }
 }
 
@@ -409,8 +409,8 @@ fn trade_dto(trade: &ClosedTrade) -> ClosedTradeDto {
         quantity: trade.quantity.value().to_string(),
         entry_price: trade.entry_price.value().to_string(),
         exit_price: trade.exit_price.value().to_string(),
-        net_pnl: trade.net_pnl().amount.to_string(),
-        fees: trade.fees.amount.to_string(),
+        net_pnl: trade.net_pnl().amount().to_string(),
+        fees: trade.fees.amount().to_string(),
         holding_period_days: trade.holding_period_days,
         is_long_term: trade.is_long_term,
         exit_date: trade.exit_date.to_string(),
@@ -450,9 +450,9 @@ fn metrics_dto(
         wins: m.wins,
         losses: m.losses,
         breakevens: m.breakevens,
-        net_pnl: m.net_pnl.amount.to_string(),
-        gross_pnl: m.gross_pnl.amount.to_string(),
-        fees: m.fees.amount.to_string(),
+        net_pnl: m.net_pnl.amount().to_string(),
+        gross_pnl: m.gross_pnl.amount().to_string(),
+        fees: m.fees.amount().to_string(),
         win_rate: m.win_rate.map(|d| d.to_string()),
         day_win_rate: m.day_win_rate.map(|d| d.to_string()),
         trading_days: m.trading_days,
@@ -462,14 +462,14 @@ fn metrics_dto(
         avg_loss: m.avg_loss.as_ref().map(money_dto),
         avg_win_loss_ratio: m.avg_win_loss_ratio.map(|d| d.to_string()),
         expectancy: m.expectancy.as_ref().map(money_dto),
-        largest_win: m.largest_win.amount.to_string(),
-        largest_loss: m.largest_loss.amount.to_string(),
+        largest_win: m.largest_win.amount().to_string(),
+        largest_loss: m.largest_loss.amount().to_string(),
         max_win_streak: m.max_win_streak,
         max_loss_streak: m.max_loss_streak,
         current_streak: m.current_streak,
-        total_volume: m.total_volume.amount.to_string(),
+        total_volume: m.total_volume.amount().to_string(),
         avg_duration_ms: m.avg_duration_ms,
-        max_drawdown: m.max_drawdown.amount.to_string(),
+        max_drawdown: m.max_drawdown.amount().to_string(),
         max_drawdown_pct: m.max_drawdown_pct.map(|d| d.to_string()),
         recovery_factor: m.recovery_factor.map(|d| d.to_string()),
         profit_concentration: m.profit_concentration.map(|d| d.to_string()),
@@ -528,7 +528,7 @@ pub async fn get_trade_journal_accounts(
             display_name: a.display_name.clone(),
             provenance: format!("{:?}", a.provenance),
             currency: a.currency.code().to_string(),
-            starting_balance: a.starting_balance.as_ref().map(|m| m.amount.to_string()),
+            starting_balance: a.starting_balance.as_ref().map(|m| m.amount().to_string()),
         })
         .collect();
     success(serde_json::json!({"accounts": accounts}))
@@ -582,7 +582,7 @@ pub async fn post_trade_journal_account(
                 "display_name": account.display_name,
                 "provenance": format!("{:?}", account.provenance),
                 "currency": account.currency.code(),
-                "starting_balance": account.starting_balance.map(|m| m.amount.to_string()),
+                "starting_balance": account.starting_balance.map(|m| m.amount().to_string()),
             })),
             Err(StoreError::AccountAlreadyExists(id)) => failure(
                 StatusCode::CONFLICT,
@@ -664,7 +664,7 @@ pub async fn get_trade_journal_overview(
         metrics: metrics_dto(&metrics),
         edge_score: edge_score_dto(&edge_score),
         days: metrics.trading_days.to_string(),
-        equity: metrics.net_pnl.amount.to_string(),
+        equity: metrics.net_pnl.amount().to_string(),
         open_positions: metrics.open_trades.to_string(),
         previous: previous.unwrap_or_default(),
     };
@@ -778,14 +778,14 @@ pub async fn get_trade_journal_calendar(
                         .into_iter()
                         .map(|d| DayDto {
                             date: d.date.to_string(),
-                            net_pnl: d.net_pnl.amount.to_string(),
-                            gross_pnl: d.gross_pnl.amount.to_string(),
-                            fees: d.fees.amount.to_string(),
+                            net_pnl: d.net_pnl.amount().to_string(),
+                            gross_pnl: d.gross_pnl.amount().to_string(),
+                            fees: d.fees.amount().to_string(),
                             trades: d.trades,
                             wins: d.wins,
                             losses: d.losses,
                             breakevens: d.breakevens,
-                            volume: d.volume.amount.to_string(),
+                            volume: d.volume.amount().to_string(),
                         })
                         .collect(),
                 })

@@ -295,7 +295,7 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
         // Gap-0003: paper and live adapters must carry real (non-zero) statutory
         // fees from the shared cost engine, not zero-fee sim fills.
         assert!(
-            pf.fee.amount > Decimal::ZERO,
+            pf.fee.amount() > Decimal::ZERO,
             "Fill #{i} must carry a real (non-zero) statutory fee"
         );
     }

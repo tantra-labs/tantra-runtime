@@ -117,7 +117,7 @@ async fn test_ledger_portfolio_reader() {
     let accts = reader.accounts().await.unwrap();
     assert_eq!(accts.len(), 1);
     assert_eq!(accts[0].account_id, account_id);
-    assert_eq!(accts[0].cash.amount, dec!(250000.0));
+    assert_eq!(accts[0].cash.amount(), dec!(250000.0));
 
     // Test positions
     let pos = reader.positions(&account_id).await.unwrap();
@@ -135,7 +135,7 @@ async fn test_ledger_portfolio_reader() {
     // Test cash
     let cash = reader.cash(&account_id).await.unwrap();
     assert_eq!(cash.len(), 1);
-    assert_eq!(cash[0].amount, dec!(250000.0));
+    assert_eq!(cash[0].amount(), dec!(250000.0));
 
     // Test orders (active only)
     let active_orders = reader
@@ -156,7 +156,7 @@ async fn test_ledger_portfolio_reader() {
         .realized_pnl(&account_id, DateRange::default())
         .await
         .unwrap();
-    assert_eq!(pnl.amount, dec!(0.0));
+    assert_eq!(pnl.amount(), dec!(0.0));
 }
 
 #[tokio::test]

@@ -170,7 +170,7 @@ pub async fn get_ledger(
         let quantity = trade.quantity.value();
         let price = trade.price.value();
         let notional = quantity * price;
-        let costs = trade.fee.amount;
+        let costs = trade.fee.amount();
         let amount = if trade.side == OrderSide::Buy {
             -(notional + costs)
         } else {
@@ -195,7 +195,7 @@ pub async fn get_ledger(
                 trade.instrument,
                 trade.price.value()
             ),
-            currency: trade.fee.currency,
+            currency: trade.fee.currency(),
             amount,
             amount_usd: None, // TODO: FX conversion
             balance,
@@ -276,7 +276,7 @@ pub async fn get_tax_report(
             let mut remaining = trade.quantity.value();
             let sell_price = trade.price.value();
             let trade_quantity = trade.quantity.value();
-            let trade_costs = trade.fee.amount;
+            let trade_costs = trade.fee.amount();
 
             while remaining > Decimal::ZERO && !open_buys.is_empty() {
                 let buy = open_buys[0];
@@ -596,7 +596,7 @@ pub async fn get_concentration_risk(
                 let mark = avg_price;
                 let market_value = quantity * mark;
                 let unrealized = Decimal::ZERO; // Would need live mark
-                let realized = position.realized_pnl.amount; // Decimal
+                let realized = position.realized_pnl.amount(); // Decimal
 
                 entries.push(ConcentrationEntry {
                     instrument: position.instrument.to_string(),
@@ -737,7 +737,7 @@ pub async fn get_fees_report(
     let mut by_type: HashMap<String, (Decimal, u64)> = HashMap::new();
 
     for trade in &document.trades {
-        let costs = trade.fee.amount;
+        let costs = trade.fee.amount();
         if costs > Decimal::ZERO {
             let fee_types = vec![
                 ("STT", costs * Decimal::from_str("0.4").unwrap()),
@@ -758,7 +758,7 @@ pub async fn get_fees_report(
                     fee_type: fee_type.to_string(),
                     instrument: Some(trade.instrument.to_string()),
                     amount,
-                    currency: trade.fee.currency,
+                    currency: trade.fee.currency(),
                     order_id: Some(trade.order_id.clone()),
                 });
 
@@ -931,7 +931,7 @@ pub async fn get_order_fills(
         if trade.order_id == order_id {
             let quantity = trade.quantity.value();
             let price = trade.price.value();
-            let costs = trade.fee.amount;
+            let costs = trade.fee.amount();
 
             fills.push(FillEntry {
                 id: format!("FILL-{}-{}", trade.order_id, fills.len()),
@@ -943,7 +943,7 @@ pub async fn get_order_fills(
                 quantity,
                 price,
                 costs,
-                currency: trade.fee.currency,
+                currency: trade.fee.currency(),
             });
         }
     }

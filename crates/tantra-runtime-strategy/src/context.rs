@@ -107,7 +107,7 @@ impl LedgerContext {
     /// An empty ledger starting with `cash`.
     pub fn with_cash(cash: Money) -> Self {
         Self {
-            currency: cash.currency,
+            currency: cash.currency(),
             cash,
             ..Self::default()
         }
@@ -149,21 +149,22 @@ impl LedgerContext {
     /// overflow the balance is refused with an error and leaves the ledger
     /// untouched, rather than moving the position without the cash.
     pub fn apply_fill(&mut self, fill: &FillReport) -> Result<()> {
-        if fill.fee.currency != self.currency {
+        if fill.fee.currency() != self.currency {
             return Err(StrategyError::other(format!(
                 "fill fee currency {:?} does not match ledger currency {:?}",
-                fill.fee.currency, self.currency
+                fill.fee.currency(),
+                self.currency
             )));
         }
         let notional = (fill.price.value() * fill.quantity.value()).min(Decimal::MAX);
-        let costs = fill.fee.amount;
+        let costs = fill.fee.amount();
 
         let delta = if fill.side == OrderSide::Buy {
             -(notional + costs)
         } else {
             notional - costs
         };
-        self.cash = Money::new(self.cash.amount + delta, self.cash.currency);
+        self.cash = Money::new(self.cash.amount() + delta, self.cash.currency());
 
         let signed = if fill.side == OrderSide::Buy {
             fill.quantity.value()

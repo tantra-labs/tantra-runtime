@@ -172,7 +172,7 @@ impl SharedLedger {
         let mut accounts = self.accounts.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(account) = accounts.get_account(&account_id).ok().flatten() {
             let updated = AccountRecord {
-                cash: Money::new(account.cash.amount + delta, account.cash.currency),
+                cash: Money::new(account.cash.amount() + delta, account.cash.currency()),
                 updated_at: fill.timestamp,
                 ..account
             };

@@ -50,8 +50,8 @@ pub struct PortfolioActor {
 impl PortfolioActor {
     /// Create a new portfolio actor with initial cash.
     pub fn new(initial_cash: Money, rx: mpsc::Receiver<PortfolioMsg>) -> Self {
-        let mut portfolio = PortfolioState::new(initial_cash.currency);
-        let default_account = AccountState::new(initial_cash.currency, vec![]);
+        let mut portfolio = PortfolioState::new(initial_cash.currency());
+        let default_account = AccountState::new(initial_cash.currency(), vec![]);
         portfolio
             .accounts
             .insert("default".to_string(), default_account);
@@ -64,7 +64,7 @@ impl PortfolioActor {
             audit_ledger: None,
             status: ActorStatus::Starting,
             rx,
-            base_currency: initial_cash.currency,
+            base_currency: initial_cash.currency(),
         }
     }
 
@@ -275,20 +275,20 @@ impl PortfolioActor {
         let mut cash = Money::inr(Decimal::ZERO);
 
         for account in self.portfolio.accounts.values() {
-            cash = Money {
-                amount: cash.amount + account.cash.amount,
-                currency: account.cash.currency,
-            };
+            cash = Money::new(
+                cash.amount() + account.cash.amount(),
+                account.cash.currency(),
+            );
 
             for pos in &account.positions {
                 if let Some(mark) = self.marks.marks.get(&pos.instrument) {
                     let market_value = mark.value() * pos.quantity.value();
                     let cost_basis = pos.entry_price.value() * pos.quantity.value();
                     let unrealized = market_value - cost_basis;
-                    total_unrealized = Money {
-                        amount: total_unrealized.amount + unrealized,
-                        currency: tantra_core::Currency::Inr,
-                    };
+                    total_unrealized = Money::new(
+                        total_unrealized.amount() + unrealized,
+                        tantra_core::Currency::Inr,
+                    );
                 }
             }
         }
@@ -303,17 +303,17 @@ impl PortfolioActor {
             {
                 let pos = &account.positions[idx];
                 let (pnl, _) = compute_capital_gains(pos, *fill_qty, *fill_price, *fill_date);
-                total_realized = Money {
-                    amount: total_realized.amount + pnl.amount,
-                    currency: tantra_core::Currency::Inr,
-                };
+                total_realized = Money::new(
+                    total_realized.amount() + pnl.amount(),
+                    tantra_core::Currency::Inr,
+                );
             }
         }
 
-        let total_equity = Money {
-            amount: cash.amount + total_unrealized.amount,
-            currency: tantra_core::Currency::Inr,
-        };
+        let total_equity = Money::new(
+            cash.amount() + total_unrealized.amount(),
+            tantra_core::Currency::Inr,
+        );
 
         let positions: BTreeMap<String, Vec<HeldPosition>> = self
             .portfolio

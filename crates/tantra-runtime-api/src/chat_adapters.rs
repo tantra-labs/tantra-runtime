@@ -176,11 +176,11 @@ impl PortfolioReader for LedgerPortfolioReader {
             .map_err(|e| PortError::internal(e.to_string()))?;
         let currency = positions
             .first()
-            .map(|p| p.realized_pnl.currency)
+            .map(|p| p.realized_pnl.currency())
             .unwrap_or(Currency::Inr);
         let total_amount = positions
             .into_iter()
-            .fold(Decimal::ZERO, |acc, p| acc + p.realized_pnl.amount);
+            .fold(Decimal::ZERO, |acc, p| acc + p.realized_pnl.amount());
         Ok(Money::new(total_amount, currency))
     }
 }

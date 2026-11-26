@@ -244,7 +244,7 @@ impl SqlxAccountStore {
                 client_id,
                 algo_id,
                 "institutional",
-                account.cash.amount,
+                account.cash.amount(),
                 account.updated_at,
             )
             .await?;

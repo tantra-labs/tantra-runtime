@@ -644,7 +644,7 @@ impl<S: Strategy> BacktestEngine<S> {
                     OrderSide::Buy => tantra_core::PositionSide::Long,
                     OrderSide::Sell => tantra_core::PositionSide::Short,
                 };
-                let equity = Money::inr(self.account.cash.amount.max(Decimal::ZERO));
+                let equity = Money::inr(self.account.cash.amount().max(Decimal::ZERO));
                 let budget = tantra_core::sizing::RiskBudget::new(
                     equity,
                     self.sizing_risk_pct,
@@ -1031,7 +1031,7 @@ impl<S: Strategy> BacktestEngine<S> {
             filled_qty_u64,
             fill_price,
         );
-        self.gross_pnl += realized.amount;
+        self.gross_pnl += realized.amount();
 
         // Track the net position per instrument so `check_mis_square_off`
         // can find every instrument with an open position, and feed the
@@ -1115,7 +1115,7 @@ impl<S: Strategy> BacktestEngine<S> {
 
         self.pending_settlements.push((
             instruction.settle_date,
-            instruction.cash_flow.amount - fees.total(),
+            instruction.cash_flow.amount() - fees.total(),
         ));
     }
 
