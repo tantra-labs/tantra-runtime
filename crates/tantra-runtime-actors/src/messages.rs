@@ -190,7 +190,7 @@ pub enum PortfolioMsg {
     },
     /// Get current portfolio snapshot.
     GetSnapshot {
-        reply_to: oneshot::Sender<PortfolioSnapshot>,
+        reply_to: oneshot::Sender<Result<PortfolioSnapshot, PortfolioError>>,
     },
     /// Get tax summary for a period.
     GetTaxSummary {
@@ -272,6 +272,9 @@ pub enum PortfolioError {
     TaxError(String),
     #[error("Internal error: {0}")]
     Internal(String),
+    /// Money arithmetic across currencies (or overflow) while aggregating.
+    #[error("Money error: {0}")]
+    Money(#[from] tantra_core::CoreError),
 }
 
 /// Settlement result for portfolio.

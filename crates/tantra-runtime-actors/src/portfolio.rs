@@ -51,7 +51,9 @@ impl PortfolioActor {
     /// Create a new portfolio actor with initial cash.
     pub fn new(initial_cash: Money, rx: mpsc::Receiver<PortfolioMsg>) -> Self {
         let mut portfolio = PortfolioState::new(initial_cash.currency());
-        let default_account = AccountState::new(initial_cash.currency(), vec![]);
+        let mut default_account = AccountState::new(initial_cash.currency(), vec![]);
+        // `AccountState::new` starts at zero; seed the requested opening cash.
+        default_account.cash = initial_cash;
         portfolio
             .accounts
             .insert("default".to_string(), default_account);
@@ -269,26 +271,31 @@ impl PortfolioActor {
     }
 
     /// Get current portfolio snapshot.
-    fn get_snapshot(&self) -> PortfolioSnapshot {
-        let mut total_unrealized = Money::inr(Decimal::ZERO);
-        let mut total_realized = Money::inr(Decimal::ZERO);
-        let mut cash = Money::inr(Decimal::ZERO);
+    /// Sums every account in its own currency with checked arithmetic, so a
+    /// portfolio mixing currencies is an error instead of a relabelled total.
+    fn get_snapshot(&self) -> Result<PortfolioSnapshot, PortfolioError> {
+        let mut cash: Option<Money> = None;
+        for account in self.portfolio.accounts.values() {
+            cash = Some(match cash {
+                None => account.cash,
+                Some(sum) => sum.checked_add(account.cash)?,
+            });
+        }
+        let currency = cash.map_or(tantra_core::Currency::Inr, |c| c.currency());
+        let cash = cash.unwrap_or(Money::zero(currency));
+        let mut total_unrealized = Money::zero(currency);
+        let mut total_realized = Money::zero(currency);
 
         for account in self.portfolio.accounts.values() {
-            cash = Money::new(
-                cash.amount() + account.cash.amount(),
-                account.cash.currency(),
-            );
-
             for pos in &account.positions {
                 if let Some(mark) = self.marks.marks.get(&pos.instrument) {
                     let market_value = mark.value() * pos.quantity.value();
                     let cost_basis = pos.entry_price.value() * pos.quantity.value();
-                    let unrealized = market_value - cost_basis;
-                    total_unrealized = Money::new(
-                        total_unrealized.amount() + unrealized,
-                        tantra_core::Currency::Inr,
-                    );
+                    // Marks and entry prices are in the account's currency.
+                    total_unrealized = total_unrealized.checked_add(Money::new(
+                        market_value - cost_basis,
+                        account.cash.currency(),
+                    ))?;
                 }
             }
         }
@@ -303,17 +310,11 @@ impl PortfolioActor {
             {
                 let pos = &account.positions[idx];
                 let (pnl, _) = compute_capital_gains(pos, *fill_qty, *fill_price, *fill_date);
-                total_realized = Money::new(
-                    total_realized.amount() + pnl.amount(),
-                    tantra_core::Currency::Inr,
-                );
+                total_realized = total_realized.checked_add(pnl)?;
             }
         }
 
-        let total_equity = Money::new(
-            cash.amount() + total_unrealized.amount(),
-            tantra_core::Currency::Inr,
-        );
+        let total_equity = cash.checked_add(total_unrealized)?;
 
         let positions: BTreeMap<String, Vec<HeldPosition>> = self
             .portfolio
@@ -322,13 +323,13 @@ impl PortfolioActor {
             .map(|(k, v)| (k.clone(), v.positions.clone()))
             .collect();
 
-        PortfolioSnapshot {
+        Ok(PortfolioSnapshot {
             total_equity,
             cash,
             unrealized_pnl: total_unrealized,
             realized_pnl: total_realized,
             positions,
-        }
+        })
     }
 
     /// Get tax summary for a period.
