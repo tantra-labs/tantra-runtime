@@ -450,7 +450,13 @@ pub async fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
     let (execution, ticks) = config.fill.resolve()?;
     let risk_limits = match &config.risk.risk_config {
         Some(path) => load_risk_limits(path)?,
-        None => tantra_risk::RiskLimits::default(),
+        // No --risk-config: the paper gate keeps the pre-0006 skip-when-missing behaviour
+        // until reference data is loaded (stand-in for tantra-runtime/docs/gaps/0039). A risk
+        // file is honoured as written; omitting `strictness` there means `fail_closed`.
+        None => tantra_risk::RiskLimits {
+            strictness: tantra_risk::RiskStrictness::Permissive,
+            ..tantra_risk::RiskLimits::default()
+        },
     };
     let mut api_config = ApiConfig::default()
         .with_cors_origins(&config.cors_origins)

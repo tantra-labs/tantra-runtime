@@ -19,7 +19,7 @@ use tantra_market_store::{
     BlockDealsProjectionReader, ManifestCommit, ManifestResolver, OpenInterestStore,
     ParquetOpenInterestStore,
 };
-use tantra_risk::RiskEngine;
+use tantra_risk::{RiskEngine, RiskStrictness};
 use tantra_runtime_api::{
     ErrorDetail, LoopSessionSnapshotSummaryDto, StrategyCatalog, TradingState,
 };
@@ -247,7 +247,10 @@ impl AppState {
         quotes: Arc<dyn QuoteReader>,
         depth: Arc<dyn DepthReader>,
     ) -> Self {
+        // Paper gate: no price-band / freeze-limit loader exists yet, so keep the pre-0006
+        // skip-when-missing behaviour explicitly (stand-in for tantra-runtime/docs/gaps/0039).
         let mut engine = RiskEngine::default();
+        engine.limits.strictness = RiskStrictness::Permissive;
         engine.register_algo(crate::orders::REST_ALGO_ID);
         let orders = OrderLedger::default();
         let exec = crate::exec::ExecGateway::default_sim();

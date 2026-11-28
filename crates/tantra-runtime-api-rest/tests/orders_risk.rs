@@ -618,11 +618,14 @@ async fn close_goes_through_the_approval_queue_when_enabled() {
 /// sets the touch, and a market order whose touch is outside the collar is refused.
 mod collar {
     use super::*;
-    use tantra_risk::RiskLimits;
+    use tantra_risk::{RiskLimits, RiskStrictness};
 
+    /// The REST collar is fed from quotes; nothing loads engine price bands yet, so these
+    /// fixtures run the engine `Permissive` (tantra-runtime/docs/gaps/0039).
     fn limits(bps: u32) -> RiskLimits {
         RiskLimits {
             price_collar_bps: Some(bps),
+            strictness: RiskStrictness::Permissive,
             ..Default::default()
         }
     }
@@ -677,6 +680,26 @@ mod collar {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(body["error"]["code"], json!("risk_price_collar"));
         assert_eq!(body["error"]["context"]["expected_price"], json!(97.0));
+    }
+
+    /// Fail-closed limits (the serde default) refuse a collared market order whose engine
+    /// price band was never loaded (tantra-risk gap 0006; loader is gap 0039).
+    #[tokio::test]
+    async fn fail_closed_collar_without_an_engine_band_is_refused() {
+        let st = pumped(None, 97.0, 103.0).with_risk_limits(RiskLimits {
+            price_collar_bps: Some(400),
+            ..Default::default()
+        });
+        let (status, body) = place(st, "buy").await;
+        assert_ne!(status, StatusCode::OK);
+        assert_eq!(
+            body["error"]["context"]["reason"],
+            json!("missing_reference_data")
+        );
+        assert_eq!(
+            body["error"]["context"]["details"]["field"],
+            json!("price_band")
+        );
     }
 
     #[tokio::test]

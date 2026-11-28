@@ -49,7 +49,7 @@ use tantra_core::{
 };
 use tantra_ledger_journal::ProductType;
 use tantra_market_store::{ManifestCommit, ManifestError};
-use tantra_risk::RiskEngine;
+use tantra_risk::{RiskEngine, RiskStrictness};
 use tantra_runtime_api::wire::BarAggregation;
 use tantra_runtime_api::{
     BacktestMetrics, CacheKey, CachedResult, ErrorCode, ErrorDetail, Event, JournalWriter, Message,
@@ -277,7 +277,10 @@ impl BacktestExecutor {
         // The engine runs the strategy under its own SEBI algo id: register it so the
         // pre-trade gate's AlgoNotRegistered check cannot refuse every order.
         let algo_id = strategy.name().to_string();
+        // Research backtests have no exchange band / freeze data; run the gate Permissive
+        // (stand-in for tantra-runtime/docs/gaps/0039).
         let mut risk_engine = RiskEngine::default();
+        risk_engine.limits.strictness = RiskStrictness::Permissive;
         risk_engine.register_algo(algo_id);
         let mut engine =
             BacktestEngine::new(DynStrategy::new(strategy), risk_engine, config, calendar);

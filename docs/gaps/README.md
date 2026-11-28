@@ -28,6 +28,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 | [0036](0036-portfolio-actor-bounded-history.md) | `PortfolioActor` keeps unbounded whole-account `fills_history`; zero-qty and unwrap on fractional fills | `tantra-runtime-actors` (`portfolio.rs`) | Open (2026-11-23), medium, plan [0013](../plans/0013-engine-design-review-2026-11.md) |
 | [0037](0037-backtest-qty-truncation-and-venue-fees.md) | Backtest truncates quantities silently and prices all non-India venues with NSE fees | `tantra-runtime-backtest` (`engine.rs`) | Open (2026-11-23), medium, plan [0013](../plans/0013-engine-design-review-2026-11.md) |
 | [0038](0038-screener-scan-top-n-and-pagination.md) | Screener scan has no top-N or pagination: >500 matches is a 422, so clients cap the universe at 500 | `tantra-runtime-api` (`screener.rs`), `tantra-runtime-api-rest` (`screener.rs`), `tantra-ui-web` | Open |
+| [0039](0039-risk-reference-data-loading.md) | Live risk gate has no price-band / freeze-limit loader; REST and backtest engines run `Permissive` | `tantra-runtime-api-rest` (`state.rs`, `executor.rs`), provider `tantra-market` / `tantra-data` | Open (2026-11-27), high — from `tantra-risk` 0006 |
 
 ## Closed Gaps
 | # | Title | Target Scope | Closed In |
